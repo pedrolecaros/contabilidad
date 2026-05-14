@@ -39,18 +39,24 @@
       <div class="card-header bg-dark text-white"><strong>Haberes</strong></div>
       <div class="card-body p-0">
         <table class="table table-sm mb-0">
+          <thead class="table-secondary"><tr><th class="small text-uppercase">Imponibles</th><th></th></tr></thead>
           <tbody>
-            <tr class="table-light"><td colspan="2" class="fw-semibold text-muted small px-3 py-1">Imponibles</td></tr>
             <tr><td>Sueldo Base</td><td class="text-end">$ {{ num(liq.sueldo_base) }}</td></tr>
             {% if liq.horas_extra %}<tr><td>Horas Extra</td><td class="text-end">$ {{ num(liq.horas_extra) }}</td></tr>{% endif %}
             {% if liq.gratificacion %}<tr><td>Gratificación</td><td class="text-end">$ {{ num(liq.gratificacion) }}</td></tr>{% endif %}
             {% if liq.otros_haberes %}<tr><td>Otros Haberes</td><td class="text-end">$ {{ num(liq.otros_haberes) }}</td></tr>{% endif %}
-            {% if liq.bono_colacion or liq.bono_movilizacion %}
-            <tr class="table-light"><td colspan="2" class="fw-semibold text-muted small px-3 py-1">No Imponibles</td></tr>
-            {% if liq.bono_colacion %}<tr><td>Bono Colación</td><td class="text-end">$ {{ num(liq.bono_colacion) }}</td></tr>{% endif %}
-            {% if liq.bono_movilizacion %}<tr><td>Bono Movilización</td><td class="text-end">$ {{ num(liq.bono_movilizacion) }}</td></tr>{% endif %}
-            {% endif %}
           </tbody>
+        </table>
+        {% if liq.bono_colacion or liq.bono_movilizacion %}
+        <table class="table table-sm mb-0 border-top">
+          <thead class="table-secondary"><tr><th class="small text-uppercase">No Imponibles</th><th></th></tr></thead>
+          <tbody>
+            {% if liq.bono_colacion %}<tr><td>Colación</td><td class="text-end">$ {{ num(liq.bono_colacion) }}</td></tr>{% endif %}
+            {% if liq.bono_movilizacion %}<tr><td>Movilización</td><td class="text-end">$ {{ num(liq.bono_movilizacion) }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+        {% endif %}
+        <table class="table table-sm mb-0">
           <tfoot class="table-dark">
             <tr><th>Total Haberes</th><th class="text-end">$ {{ num(liq.total_haberes) }}</th></tr>
           </tfoot>

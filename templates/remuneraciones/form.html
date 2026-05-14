@@ -63,12 +63,12 @@
     <div class="form-text" id="tipo_sueldo_help">El monto ingresado es el sueldo <strong>bruto</strong>.</div>
   </div>
   <div class="col-md-3">
-    <label class="form-label">Bono colación ($)</label>
+    <label class="form-label">Colación ($)</label>
     <input type="text" name="bono_colacion" class="form-control num-fmt" inputmode="numeric"
            value="{{ emp.bono_colacion | int | clp if emp else '0' }}">
   </div>
   <div class="col-md-3">
-    <label class="form-label">Bono movilización ($)</label>
+    <label class="form-label">Movilización ($)</label>
     <input type="text" name="bono_movilizacion" class="form-control num-fmt" inputmode="numeric"
            value="{{ emp.bono_movilizacion | int | clp if emp else '0' }}">
   </div>

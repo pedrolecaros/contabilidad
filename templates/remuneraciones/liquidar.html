@@ -93,21 +93,29 @@
       <div class="card-header py-2"><strong>Haberes</strong></div>
       <div class="card-body p-0">
         <table class="table table-sm mb-0">
+          <thead class="table-secondary"><tr><th class="small text-uppercase">Imponibles</th><th></th></tr></thead>
           <tbody>
-            <tr class="table-light"><td colspan="2" class="fw-semibold text-muted small px-3 py-1">Imponibles</td></tr>
             <tr><td>Sueldo base</td><td class="text-end">${{ preview.sueldo_base | clp }}</td></tr>
             {% if preview.horas_extra %}<tr><td>Horas extra</td><td class="text-end">${{ preview.horas_extra | clp }}</td></tr>{% endif %}
             <tr><td>Gratificación legal</td><td class="text-end">${{ preview.gratificacion | clp }}</td></tr>
             {% if preview.otros_haberes %}<tr><td>Otros haberes</td><td class="text-end">${{ preview.otros_haberes | clp }}</td></tr>{% endif %}
-            {% if preview.bono_colacion or preview.bono_movilizacion %}
-            <tr class="table-light"><td colspan="2" class="fw-semibold text-muted small px-3 py-1">No Imponibles</td></tr>
-            {% if preview.bono_colacion %}<tr><td>Bono colación</td><td class="text-end">${{ preview.bono_colacion | clp }}</td></tr>{% endif %}
-            {% if preview.bono_movilizacion %}<tr><td>Bono movilización</td><td class="text-end">${{ preview.bono_movilizacion | clp }}</td></tr>{% endif %}
-            {% endif %}
-            <tr class="table-secondary fw-bold"><td>Total haberes</td><td class="text-end">${{ preview.total_haberes | clp }}</td></tr>
-            <tr class="text-muted"><td><small>Renta imponible</small></td><td class="text-end small">${{ preview.renta_imponible | clp }}</td></tr>
           </tbody>
         </table>
+        {% if preview.bono_colacion or preview.bono_movilizacion %}
+        <table class="table table-sm mb-0 border-top">
+          <thead class="table-secondary"><tr><th class="small text-uppercase">No Imponibles</th><th></th></tr></thead>
+          <tbody>
+            {% if preview.bono_colacion %}<tr><td>Colación</td><td class="text-end">${{ preview.bono_colacion | clp }}</td></tr>{% endif %}
+            {% if preview.bono_movilizacion %}<tr><td>Movilización</td><td class="text-end">${{ preview.bono_movilizacion | clp }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+        {% endif %}
+        <table class="table table-sm mb-0">
+          <tfoot class="table-secondary fw-bold">
+            <tr><th>Total haberes</th><th class="text-end">${{ preview.total_haberes | clp }}</th></tr>
+          </tfoot>
+        </table>
+        <div class="px-3 py-1 small text-muted">Renta imponible: ${{ preview.renta_imponible | clp }}</div>
       </div>
     </div>
   </div>

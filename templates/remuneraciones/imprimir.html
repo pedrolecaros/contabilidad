@@ -62,19 +62,27 @@
 
 <!-- Haberes -->
 <div class="seccion">
-  <h3>Haberes</h3>
+  <h3>Haberes Imponibles</h3>
   <table>
     <tr><th>Concepto</th><th class="text-right" style="width:25%">Monto ($)</th></tr>
-    <tr><td colspan="2" style="background:#f5f5f5;font-size:9pt;font-weight:bold;color:#555;padding:2px 8px">Haberes Imponibles</td></tr>
     <tr><td>Sueldo Base</td><td class="text-right">{{ num(liq.sueldo_base) }}</td></tr>
     {% if liq.horas_extra %}<tr><td>Horas Extra</td><td class="text-right">{{ num(liq.horas_extra) }}</td></tr>{% endif %}
     {% if liq.gratificacion %}<tr><td>Gratificación</td><td class="text-right">{{ num(liq.gratificacion) }}</td></tr>{% endif %}
     {% if liq.otros_haberes %}<tr><td>Otros Haberes</td><td class="text-right">{{ num(liq.otros_haberes) }}</td></tr>{% endif %}
-    {% if liq.bono_colacion or liq.bono_movilizacion %}
-    <tr><td colspan="2" style="background:#f5f5f5;font-size:9pt;font-weight:bold;color:#555;padding:2px 8px">Haberes No Imponibles</td></tr>
-    {% if liq.bono_colacion %}<tr><td>Bono Colación</td><td class="text-right">{{ num(liq.bono_colacion) }}</td></tr>{% endif %}
-    {% if liq.bono_movilizacion %}<tr><td>Bono Movilización</td><td class="text-right">{{ num(liq.bono_movilizacion) }}</td></tr>{% endif %}
-    {% endif %}
+  </table>
+</div>
+{% if liq.bono_colacion or liq.bono_movilizacion %}
+<div class="seccion">
+  <h3>Haberes No Imponibles</h3>
+  <table>
+    <tr><th>Concepto</th><th class="text-right" style="width:25%">Monto ($)</th></tr>
+    {% if liq.bono_colacion %}<tr><td>Colación</td><td class="text-right">{{ num(liq.bono_colacion) }}</td></tr>{% endif %}
+    {% if liq.bono_movilizacion %}<tr><td>Movilización</td><td class="text-right">{{ num(liq.bono_movilizacion) }}</td></tr>{% endif %}
+  </table>
+</div>
+{% endif %}
+<div class="seccion">
+  <table>
     <tr class="total-row"><td>Total Haberes</td><td class="text-right">{{ num(liq.total_haberes) }}</td></tr>
   </table>
 </div>
