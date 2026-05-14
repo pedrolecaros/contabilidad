@@ -17,14 +17,8 @@ CUENTA_CODIGO_TIPO = {
 
 
 def _default_rango():
-    """Devuelve (desde_mes, hasta_mes) como strings YYYY-MM: 3 meses atrás → hoy."""
-    hoy = date_.today()
-    hasta = f'{hoy.year}-{hoy.month:02d}'
-    y, m = hoy.year, hoy.month - 3
-    while m <= 0:
-        m += 12
-        y -= 1
-    return f'{y}-{m:02d}', hasta
+    """Sin restricción por defecto: muestra todos los pendientes."""
+    return '', ''
 
 
 def _mes_a_fecha_inicio(mes_str):

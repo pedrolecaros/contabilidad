@@ -1,0 +1,232 @@
+{% extends 'base.html' %}
+{% block title %}Libro de Remuneraciones – {{ empresa.razon_social }}{% endblock %}
+
+{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+
+{% block content %}
+{# ── Header ── #}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>Libro de Remuneraciones</h4>
+    <small class="text-muted">{{ empresa.razon_social }} &mdash; RUT {{ empresa.rut }}</small>
+  </div>
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    {# Period selector #}
+    <form method="get" class="d-flex align-items-center gap-1">
+      <label class="form-label mb-0 text-nowrap small">Período:</label>
+      <select name="periodo" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+        {% if not periodos or periodo not in periodos %}
+          <option value="{{ periodo }}" selected>{{ periodo }}</option>
+        {% endif %}
+        {% for p in periodos %}
+          <option value="{{ p }}" {% if p == periodo %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <a href="{{ url_for('remuneraciones.libro_imprimir', eid=empresa.id, periodo=periodo) }}"
+       class="btn btn-outline-secondary btn-sm" target="_blank">
+      <i class="bi bi-printer me-1"></i>Imprimir
+    </a>
+    <a href="{{ url_for('remuneraciones.libro_excel', eid=empresa.id, periodo=periodo) }}"
+       class="btn btn-outline-success btn-sm">
+      <i class="bi bi-file-earmark-excel me-1"></i>Excel
+    </a>
+    <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}"
+       class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Volver
+    </a>
+  </div>
+</div>
+
+{% if not liqs %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>No hay liquidaciones para el período <strong>{{ periodo }}</strong>.
+</div>
+{% else %}
+
+{# ── Styles for sticky columns ── #}
+<style>
+  .libro-wrap {
+    overflow-x: auto;
+    max-height: 75vh;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+  }
+  .libro-table {
+    font-size: 0.78rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 1600px;
+  }
+  .libro-table thead tr th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+  .libro-table thead tr:last-child th {
+    top: 28px; /* height of group row */
+  }
+  /* Sticky columns */
+  .col-num  { position: sticky; left: 0;    min-width: 36px;  max-width: 36px;  z-index: 2; }
+  .col-rut  { position: sticky; left: 36px; min-width: 100px; max-width: 100px; z-index: 2; }
+  .col-nombre { position: sticky; left: 136px; min-width: 160px; max-width: 160px; z-index: 2; }
+  /* Sticky headers have higher z-index */
+  thead .col-num, thead .col-rut, thead .col-nombre { z-index: 5; }
+  /* Group header colors */
+  .gh-id   { background: #1f2937; color: #fff; }
+  .gh-imp  { background: #1e40af; color: #fff; }
+  .gh-noimp{ background: #6b7280; color: #fff; }
+  .gh-tot  { background: #374151; color: #fff; }
+  .gh-desc { background: #991b1b; color: #fff; }
+  .gh-liq  { background: #4b5563; color: #fff; }
+  .gh-emp  { background: #5b21b6; color: #fff; }
+  /* Individual header */
+  .libro-table thead tr:last-child th { background: #1f2937; color: #fff; }
+  /* Sticky body cells inherit white bg */
+  tbody .col-num, tbody .col-rut, tbody .col-nombre { background: #fff; }
+  tbody tr:nth-child(even) .col-num,
+  tbody tr:nth-child(even) .col-rut,
+  tbody tr:nth-child(even) .col-nombre { background: #f9fafb; }
+  .libro-table tbody tr:nth-child(even) td { background: #f9fafb; }
+  .libro-table tbody tr:hover td { background: #eff6ff !important; }
+  .libro-table tbody tr:hover .col-num,
+  .libro-table tbody tr:hover .col-rut,
+  .libro-table tbody tr:hover .col-nombre { background: #eff6ff !important; }
+  /* Totals row */
+  .row-total td { background: #1f2937 !important; color: #fff; font-weight: 700; }
+  /* Border helpers */
+  .libro-table th, .libro-table td { border: 1px solid #d1d5db; white-space: nowrap; }
+  /* Band accents (left border) */
+  .band-imp  > td:first-child { border-left: 2px solid #3b82f6; }
+  .band-noimp > td:first-child { border-left: 2px solid #9ca3af; }
+  .band-tot  > td:first-child { border-left: 2px solid #6b7280; }
+  .band-desc > td:first-child { border-left: 2px solid #ef4444; }
+  .band-liq  > td:first-child { border-left: 2px solid #6b7280; }
+  .band-emp  > td:first-child { border-left: 2px solid #8b5cf6; }
+  /* Column group left-border highlights in header */
+  .bdr-imp  { border-left: 2px solid #3b82f6 !important; }
+  .bdr-noimp{ border-left: 2px solid #9ca3af !important; }
+  .bdr-tot  { border-left: 2px solid #6b7280 !important; }
+  .bdr-desc { border-left: 2px solid #ef4444 !important; }
+  .bdr-liq  { border-left: 2px solid #9ca3af !important; }
+  .bdr-emp  { border-left: 2px solid #8b5cf6 !important; }
+</style>
+
+<div class="libro-wrap">
+  <table class="libro-table">
+    <thead>
+      {# ── Group row ── #}
+      <tr style="height:28px">
+        <th colspan="5" class="gh-id col-num text-center">Identificación</th>
+        <th colspan="4" class="gh-imp text-center bdr-imp">Haberes Imponibles</th>
+        <th colspan="2" class="gh-noimp text-center bdr-noimp">No Imponibles</th>
+        <th colspan="2" class="gh-tot text-center bdr-tot">Totales</th>
+        <th colspan="4" class="gh-desc text-center bdr-desc">Descuentos Legales</th>
+        <th colspan="2" class="gh-liq text-center bdr-liq">Total Desc. / Líquido</th>
+        <th colspan="4" class="gh-emp text-center bdr-emp">Aportes Empleador</th>
+      </tr>
+      {# ── Individual columns row ── #}
+      <tr>
+        <th class="col-num text-center">N°</th>
+        <th class="col-rut text-center">RUT</th>
+        <th class="col-nombre">Nombre</th>
+        <th class="text-center">AFP</th>
+        <th class="text-center">Salud</th>
+        {# Imponibles #}
+        <th class="text-end bdr-imp">Sueldo Base</th>
+        <th class="text-end">HH.EE.</th>
+        <th class="text-end">Gratif.</th>
+        <th class="text-end">Otros Imp.</th>
+        {# No Imponibles #}
+        <th class="text-end bdr-noimp">Colación</th>
+        <th class="text-end">Moviliz.</th>
+        {# Totales #}
+        <th class="text-end bdr-tot">Total Haberes</th>
+        <th class="text-end">Renta Imp.</th>
+        {# Descuentos #}
+        <th class="text-end bdr-desc">AFP $</th>
+        <th class="text-end">Salud $</th>
+        <th class="text-end">Ces.Trab</th>
+        <th class="text-end">Imp.2aCat</th>
+        {# Líquido #}
+        <th class="text-end bdr-liq">Total Desc.</th>
+        <th class="text-end">Líquido</th>
+        {# Empleador #}
+        <th class="text-end bdr-emp">SIS</th>
+        <th class="text-end">Ces.Emp</th>
+        <th class="text-end">Mutual</th>
+        <th class="text-end">Costo Emp.</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for liq in liqs %}
+      {% set emp = liq.empleado %}
+      <tr>
+        <td class="col-num text-center text-muted">{{ loop.index }}</td>
+        <td class="col-rut text-center text-muted">{{ emp.rut }}</td>
+        <td class="col-nombre">
+          <a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=emp.id) }}"
+             class="text-decoration-none text-dark fw-semibold">{{ emp.nombre }}</a>
+        </td>
+        <td class="text-center">{{ emp.afp }}</td>
+        <td class="text-center">{{ emp.tipo_salud }}{% if emp.isapre %} – {{ emp.isapre }}{% endif %}</td>
+        {# Imponibles #}
+        <td class="text-end bdr-imp">{{ num(liq.sueldo_base) }}</td>
+        <td class="text-end">{{ num(liq.horas_extra) }}</td>
+        <td class="text-end">{{ num(liq.gratificacion) }}</td>
+        <td class="text-end">{{ num(liq.otros_haberes) }}</td>
+        {# No Imponibles #}
+        <td class="text-end bdr-noimp">{{ num(liq.bono_colacion) }}</td>
+        <td class="text-end">{{ num(liq.bono_movilizacion) }}</td>
+        {# Totales #}
+        <td class="text-end bdr-tot fw-semibold">{{ num(liq.total_haberes) }}</td>
+        <td class="text-end">{{ num(liq.renta_imponible) }}</td>
+        {# Descuentos #}
+        <td class="text-end bdr-desc">{{ num(liq.afp) }}</td>
+        <td class="text-end">{{ num(liq.salud) }}</td>
+        <td class="text-end">{{ num(liq.cesantia_trab) }}</td>
+        <td class="text-end">{{ num(liq.impuesto_renta) }}</td>
+        {# Líquido #}
+        <td class="text-end bdr-liq">{{ num(liq.total_descuentos) }}</td>
+        <td class="text-end fw-bold">{{ num(liq.liquido) }}</td>
+        {# Empleador #}
+        <td class="text-end bdr-emp">{{ num(liq.sis) }}</td>
+        <td class="text-end">{{ num(liq.cesantia_emp) }}</td>
+        <td class="text-end">{{ num(liq.mutual) }}</td>
+        <td class="text-end fw-semibold">{{ num(liq.costo_empresa) }}</td>
+      </tr>
+      {% endfor %}
+      {# ── Totals row ── #}
+      <tr class="row-total">
+        <td class="col-num text-center" colspan="3">TOTAL</td>
+        <td colspan="2"></td>
+        <td class="text-end bdr-imp">{{ num(liqs | map(attribute='sueldo_base') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='horas_extra') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='gratificacion') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='otros_haberes') | sum) }}</td>
+        <td class="text-end bdr-noimp">{{ num(liqs | map(attribute='bono_colacion') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='bono_movilizacion') | sum) }}</td>
+        <td class="text-end bdr-tot">{{ num(liqs | map(attribute='total_haberes') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='renta_imponible') | sum) }}</td>
+        <td class="text-end bdr-desc">{{ num(liqs | map(attribute='afp') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='salud') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='cesantia_trab') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='impuesto_renta') | sum) }}</td>
+        <td class="text-end bdr-liq">{{ num(liqs | map(attribute='total_descuentos') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='liquido') | sum) }}</td>
+        <td class="text-end bdr-emp">{{ num(liqs | map(attribute='sis') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='cesantia_emp') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='mutual') | sum) }}</td>
+        <td class="text-end">{{ num(liqs | map(attribute='costo_empresa') | sum) }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="mt-2 text-muted small">
+  <i class="bi bi-people me-1"></i>{{ liqs | length }} trabajador{% if liqs | length != 1 %}es{% endif %} &mdash;
+  Período {{ periodo }}
+</div>
+{% endif %}
+{% endblock %}

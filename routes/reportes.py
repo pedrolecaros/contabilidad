@@ -7,24 +7,17 @@ from sqlalchemy import func, case
 bp = Blueprint('reportes', __name__)
 
 
-def _mes_anterior():
-    hoy = date.today()
-    if hoy.month == 1:
-        y, m = hoy.year - 1, 12
-    else:
-        y, m = hoy.year, hoy.month - 1
-    return date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])
-
-
 def _rango_fechas():
-    d_def, h_def = _mes_anterior()
+    hoy = date.today()
+    d_def = date(hoy.year, 1, 1)
+    h_def = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
     desde_str = request.args.get('desde', d_def.isoformat())
     hasta_str = request.args.get('hasta', h_def.isoformat())
     try:
         desde = date.fromisoformat(desde_str)
         hasta = date.fromisoformat(hasta_str)
     except ValueError:
-        desde, hasta = _mes_anterior()
+        desde, hasta = d_def, h_def
     return desde, hasta
 
 

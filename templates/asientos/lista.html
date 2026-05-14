@@ -9,9 +9,21 @@
   </a>
 </div>
 
-<!-- Filtros -->
-<form class="row g-2 mb-3" method="get" id="formFiltros">
-  <div class="col-auto">
+<!-- Filtros servidor + búsqueda global -->
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+  <!-- Búsqueda global -->
+  <div class="input-group input-group-sm" style="max-width:280px">
+    <span class="input-group-text"><i class="bi bi-search"></i></span>
+    <input type="text" id="buscarGlobal" class="form-control"
+           placeholder="Buscar en todos los campos…" autocomplete="off">
+    <button class="btn btn-outline-secondary" id="btnLimpiarBusqueda" type="button"
+            style="display:none" title="Limpiar búsqueda">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+
+  <!-- Filtros servidor -->
+  <form class="d-flex gap-2" method="get" id="formFiltros">
     <select name="origen" class="form-select form-select-sm">
       <option value="">Todos los orígenes</option>
       <option value="MANUAL"        {% if origen=='MANUAL' %}selected{% endif %}>Manual</option>
@@ -20,19 +32,19 @@
       <option value="HONORARIOS"    {% if origen=='HONORARIOS' %}selected{% endif %}>Honorarios</option>
       <option value="BANCO"         {% if origen=='BANCO' %}selected{% endif %}>Banco</option>
     </select>
-  </div>
-  <div class="col-auto">
     <select name="estado" class="form-select form-select-sm">
       <option value="">Todos los estados</option>
       <option value="BORRADOR"   {% if estado=='BORRADOR' %}selected{% endif %}>Borrador</option>
       <option value="CONFIRMADO" {% if estado=='CONFIRMADO' %}selected{% endif %}>Confirmado</option>
       <option value="ANULADO"    {% if estado=='ANULADO' %}selected{% endif %}>Anulado</option>
     </select>
-  </div>
-  <div class="col-auto">
-    <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrar</button>
-  </div>
-</form>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-funnel me-1"></i>Filtrar
+    </button>
+  </form>
+
+  <span class="text-muted small ms-auto" id="contadorFiltrado" style="display:none"></span>
+</div>
 
 <!-- Formulario principal (checkboxes + acciones) -->
 <form method="post" action="{{ url_for('asientos.confirmar_lote', eid=empresa.id) }}" id="formLote">
@@ -57,9 +69,9 @@
           <input type="checkbox" id="chkTodos" class="form-check-input"
                  title="Seleccionar todos los borradores">
         </th>
-        <th data-sort="num">N°</th>
-        <th data-sort="date">Fecha</th>
-        <th data-sort="text">Descripción</th>
+        <th class="sortable" data-col="1" data-type="num" style="cursor:pointer;white-space:nowrap">N° <span class="sort-icon text-muted">⇅</span></th>
+        <th class="sortable" data-col="2" data-type="date" style="cursor:pointer;white-space:nowrap">Fecha <span class="sort-icon text-muted">⇅</span></th>
+        <th class="sortable" data-col="3" data-type="text" style="cursor:pointer;white-space:nowrap">Descripción <span class="sort-icon text-muted">⇅</span></th>
         <th style="min-width:320px">
           <div class="d-flex align-items-baseline gap-1">
             <span>Cuentas</span>
@@ -67,8 +79,8 @@
             <span class="font-monospace fw-normal text-danger" style="min-width:72px;text-align:right;font-size:.8em">Haber</span>
           </div>
         </th>
-        <th data-sort="text">Estado</th>
-        <th>Conciliación</th>
+        <th class="sortable" data-col="5" data-type="text" style="cursor:pointer;white-space:nowrap">Estado <span class="sort-icon text-muted">⇅</span></th>
+        <th class="sortable" data-col="6" data-type="text" style="cursor:pointer;white-space:nowrap">Conciliación <span class="sort-icon text-muted">⇅</span></th>
         <th class="text-center">Acciones</th>
       </tr>
     </thead>
@@ -250,12 +262,101 @@ document.querySelectorAll('.chk-asiento').forEach(c =>
 function setOneAndConfirm(event, id, numero) {
   event.preventDefault();
   if (!confirm('¿Confirmar asiento N°' + numero + '?')) return false;
-  // Desmarcar todos, marcar solo este
   document.querySelectorAll('.chk-asiento').forEach(c => c.checked = false);
   const chk = document.querySelector(`.chk-asiento[value="${id}"]`);
   if (chk) chk.checked = true;
   document.getElementById('formLote').submit();
   return false;
 }
+
+// ── Búsqueda global + ordenamiento por columna ───────────────────────────────
+(function() {
+  const tbody       = document.querySelector('table tbody');
+  const inputGlobal = document.getElementById('buscarGlobal');
+  const btnLimpiar  = document.getElementById('btnLimpiarBusqueda');
+  const contador    = document.getElementById('contadorFiltrado');
+
+  // Normaliza texto: minúsculas, sin puntos de miles, sin espacios extra
+  function norm(s) {
+    return (s || '').toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
+  }
+  function tdText(row, col) {
+    return norm(row.cells[col] ? row.cells[col].textContent : '');
+  }
+
+  // ── Filtro global ─────────────────────────────────────────────────────────
+  function filtrar() {
+    const q = norm(inputGlobal.value);
+    btnLimpiar.style.display = q ? '' : 'none';
+    let visibles = 0, total = 0;
+
+    Array.from(tbody.querySelectorAll('tr')).forEach(row => {
+      if (row.cells.length <= 1) return;
+      total++;
+      const todo = Array.from(row.cells).map(td => norm(td.textContent)).join(' ');
+      const ok = !q || todo.includes(q);
+      row.style.display = ok ? '' : 'none';
+      if (ok) visibles++;
+    });
+
+    if (q && total > 0) {
+      contador.textContent = `${visibles} de ${total} filas`;
+      contador.style.display = '';
+    } else {
+      contador.style.display = 'none';
+    }
+  }
+
+  inputGlobal.addEventListener('input', filtrar);
+  btnLimpiar.addEventListener('click', () => { inputGlobal.value = ''; filtrar(); inputGlobal.focus(); });
+
+  // ── Ordenamiento por columna ──────────────────────────────────────────────
+  let sortCol = null, sortDir = 1;
+
+  function valorOrden(row, colIdx, tipo) {
+    const t = tdText(row, colIdx);
+    if (tipo === 'num')  return parseFloat(t.replace(/[^\d.-]/g, '')) || 0;
+    if (tipo === 'date') {
+      // formato DD/MM/YYYY → YYYYMMDD para ordenar
+      const m = t.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      return m ? parseInt(m[3] + m[2] + m[1]) : 0;
+    }
+    return t;
+  }
+
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', function() {
+      const colIdx = parseInt(this.dataset.col);
+      const tipo   = this.dataset.type;
+
+      if (sortCol === colIdx) {
+        sortDir *= -1;
+      } else {
+        sortCol = colIdx;
+        sortDir = 1;
+      }
+
+      // Actualizar iconos
+      document.querySelectorAll('th.sortable .sort-icon').forEach(i => {
+        i.textContent = '⇅'; i.className = 'sort-icon text-muted';
+      });
+      const icon = this.querySelector('.sort-icon');
+      icon.textContent = sortDir === 1 ? '↑' : '↓';
+      icon.className = 'sort-icon text-white';
+
+      // Ordenar filas visibles
+      const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.cells.length > 1);
+      rows.sort((a, b) => {
+        const va = valorOrden(a, colIdx, tipo);
+        const vb = valorOrden(b, colIdx, tipo);
+        if (va < vb) return -1 * sortDir;
+        if (va > vb) return  1 * sortDir;
+        return 0;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+
 </script>
 {% endblock %}

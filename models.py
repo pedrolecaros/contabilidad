@@ -13,7 +13,9 @@ class Empresa(db.Model):
     giro = db.Column(db.String(300))
     activa = db.Column(db.Boolean, default=True)
 
-    clave_sii = db.Column(db.String(200))   # clave portal SII (opcional)
+    clave_sii = db.Column(db.String(200))
+    participacion_ecox = db.Column(db.Float)          # % participación Ecox (ej: 50.0)
+    tipo_participacion  = db.Column(db.String(10))    # DIRECTA / INDIRECTA
 
     cuentas = db.relationship('Cuenta', backref='empresa', lazy='dynamic')
     asientos = db.relationship('Asiento', backref='empresa', lazy='dynamic')
@@ -63,6 +65,7 @@ class Asiento(db.Model):
     fecha = db.Column(db.Date, nullable=False)
     numero = db.Column(db.Integer)
     descripcion = db.Column(db.String(500))
+    respaldo_url = db.Column(db.String(500))
     origen = db.Column(db.String(20), default='MANUAL')
     # MANUAL, LIBRO_COMPRAS, LIBRO_VENTAS, HONORARIOS, BANCO
     estado = db.Column(db.String(15), default='BORRADOR')
@@ -192,7 +195,9 @@ class Empleado(db.Model):
     tasa_afp_comision = db.Column(db.Float, default=0.0127)   # solo la comisión AFP (no los 10%)
     tipo_salud = db.Column(db.String(10), default='FONASA')   # FONASA | ISAPRE
     isapre = db.Column(db.String(100))
-    monto_isapre = db.Column(db.Float, default=0.0)           # adicional sobre 7% si isapre
+    monto_isapre = db.Column(db.Float, default=0.0)           # adicional sobre 7% si isapre (legacy pesos)
+    tipo_sueldo = db.Column(db.String(10), default='BRUTO')   # BRUTO | LIQUIDO
+    monto_isapre_uf = db.Column(db.Float, default=0.0)        # Plan isapre en UF (not pesos)
     # Haberes fijos mensuales
     bono_colacion = db.Column(db.Float, default=0.0)
     bono_movilizacion = db.Column(db.Float, default=0.0)
@@ -239,6 +244,18 @@ class Liquidacion(db.Model):
     creado_en = db.Column(db.DateTime, default=datetime.now)
 
     empresa = db.relationship('Empresa', backref=db.backref('liquidaciones', lazy='dynamic'))
+
+
+class VariablesMensuales(db.Model):
+    __tablename__ = 'variables_mensuales'
+    id = db.Column(db.Integer, primary_key=True)
+    periodo = db.Column(db.String(7), nullable=False, unique=True)  # YYYY-MM
+    uf = db.Column(db.Float)               # UF del último día hábil del mes
+    utm = db.Column(db.Float)              # UTM del mes
+    tope_imponible = db.Column(db.Float)   # 81 UF en pesos (tope remuneración imponible)
+    tope_gratificacion = db.Column(db.Float)  # 4.75 * IMM / 12 en pesos
+    imm = db.Column(db.Float)             # Ingreso Mínimo Mensual
+    fecha_actualizacion = db.Column(db.DateTime, default=datetime.now)
 
 
 class ReglaClasificacion(db.Model):

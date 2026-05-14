@@ -163,6 +163,70 @@
     </div>
   </div>
 
+  <!-- Sin respaldo -->
+  {% set total_sin_respaldo = (conc_sin_respaldo|length) + (asientos_sin_respaldo|length) %}
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center
+                  {% if total_sin_respaldo %}bg-warning text-dark{% else %}bg-success text-white{% endif %}">
+        <span>
+          <i class="bi bi-{% if total_sin_respaldo %}exclamation-triangle{% else %}check-circle{% endif %} me-1"></i>
+          Gastos manuales sin respaldo
+        </span>
+        <span class="badge {% if total_sin_respaldo %}bg-dark{% else %}bg-white text-dark{% endif %}">
+          {{ total_sin_respaldo }}
+        </span>
+      </div>
+      {% if total_sin_respaldo %}
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.85rem">
+          <thead class="table-secondary">
+            <tr>
+              <th>Fecha</th>
+              <th>Descripción</th>
+              <th>Tipo</th>
+              <th>Agregar respaldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in conc_sin_respaldo %}
+            <tr>
+              <td class="text-nowrap">{{ c.fecha|fecha_cl }}</td>
+              <td>{{ (c.descripcion or '—')[:60] }}</td>
+              <td><span class="badge bg-dark" style="font-size:.7rem">Manual (conciliación)</span></td>
+              <td>
+                <a href="{{ url_for('conciliacion.index', eid=empresa.id,
+                           desde=c.fecha.strftime('%Y-%m'), hasta=c.fecha.strftime('%Y-%m')) }}"
+                   class="btn btn-xs btn-sm btn-outline-warning py-0 px-2">
+                  <i class="bi bi-link-45deg me-1"></i>Ir a conciliación
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+            {% for a in asientos_sin_respaldo %}
+            <tr>
+              <td class="text-nowrap">{{ a.fecha|fecha_cl }}</td>
+              <td>{{ (a.descripcion or '—')[:60] }}</td>
+              <td><span class="badge bg-secondary" style="font-size:.7rem">Asiento manual</span></td>
+              <td>
+                <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+                   class="btn btn-xs btn-sm btn-outline-warning py-0 px-2">
+                  <i class="bi bi-pencil me-1"></i>Editar y agregar link
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body py-2 small text-muted">
+        Todos los gastos manuales del período tienen respaldo.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- Resultado del período -->
   <div class="col-12">
     <div class="card shadow-sm">

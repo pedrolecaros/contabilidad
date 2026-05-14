@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request
 from datetime import date
-from models import Empresa, Asiento, LineaAsiento, DocumentoSII, MovimientoBanco, Cuenta
+from models import Empresa, Asiento, LineaAsiento, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion
 from sqlalchemy import func
 
 bp = Blueprint('validacion', __name__)
@@ -57,6 +57,22 @@ def index(eid):
         for c in Cuenta.query.filter_by(empresa_id=eid, tipo='GASTO', es_titulo=False, activa=True).all()
     )
 
+    # ── Sin respaldo: conciliaciones MANUAL y asientos manuales sin respaldo_url ─
+    conc_sin_respaldo = (Conciliacion.query
+                         .filter_by(empresa_id=eid)
+                         .filter(Conciliacion.tipo != 'SII')
+                         .filter(Conciliacion.respaldo_url == None)
+                         .filter(Conciliacion.fecha >= desde, Conciliacion.fecha <= hasta)
+                         .order_by(Conciliacion.fecha)
+                         .all())
+    asientos_sin_respaldo = (Asiento.query
+                             .filter_by(empresa_id=eid, origen='MANUAL')
+                             .filter(Asiento.estado != 'ANULADO')
+                             .filter(Asiento.respaldo_url == None)
+                             .filter(Asiento.fecha >= desde, Asiento.fecha <= hasta)
+                             .order_by(Asiento.fecha)
+                             .all())
+
     return render_template('validacion/index.html',
         empresa=empresa,
         ano=ano, mes=mes, desde=desde, hasta=hasta,
@@ -71,6 +87,8 @@ def index(eid):
         ingresos=ingresos,
         gastos=gastos,
         resultado=ingresos - gastos,
+        conc_sin_respaldo=conc_sin_respaldo,
+        asientos_sin_respaldo=asientos_sin_respaldo,
     )
 
 

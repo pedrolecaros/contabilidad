@@ -13,6 +13,13 @@ def _migrar(app):
         'ALTER TABLE conciliaciones ADD COLUMN contraparte_id INTEGER REFERENCES contrapartes(id)',
         'ALTER TABLE empresas ADD COLUMN clave_sii VARCHAR(200)',
         'ALTER TABLE movimientos_banco ADD COLUMN respaldo_url VARCHAR(500)',
+        'ALTER TABLE asientos ADD COLUMN respaldo_url VARCHAR(500)',
+        'ALTER TABLE empresas ADD COLUMN participacion_ecox REAL',
+        "ALTER TABLE empresas ADD COLUMN tipo_participacion VARCHAR(10)",
+        "ALTER TABLE liquidaciones ADD COLUMN estado VARCHAR(15) DEFAULT 'BORRADOR'",
+        "CREATE TABLE IF NOT EXISTS variables_mensuales (id INTEGER PRIMARY KEY, periodo VARCHAR(7) UNIQUE, uf REAL, utm REAL, tope_imponible REAL, tope_gratificacion REAL, imm REAL, fecha_actualizacion DATETIME)",
+        "ALTER TABLE empleados ADD COLUMN tipo_sueldo VARCHAR(10) DEFAULT 'BRUTO'",
+        "ALTER TABLE empleados ADD COLUMN monto_isapre_uf REAL DEFAULT 0.0",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

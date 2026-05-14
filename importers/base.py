@@ -19,7 +19,17 @@ def leer_archivo(file_storage):
     if nombre.endswith('.xlsx'):
         return pd.read_excel(io.BytesIO(contenido), engine='openpyxl', dtype=str)
     if nombre.endswith('.xls'):
-        return pd.read_excel(io.BytesIO(contenido), engine='xlrd', dtype=str)
+        try:
+            return pd.read_excel(io.BytesIO(contenido), engine='xlrd', dtype=str)
+        except Exception:
+            # Many Chilean banks export HTML files with .xls extension
+            try:
+                tables = pd.read_html(io.BytesIO(contenido), dtype=str)
+                if tables:
+                    return tables[0]
+            except Exception:
+                pass
+            raise ValueError("No se pudo leer el archivo XLS. Intente exportarlo como CSV o XLSX.")
 
     # CSV: probar encodings y separadores
     for enc in ENCODINGS:

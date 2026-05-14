@@ -2,41 +2,38 @@
 {% block title %}{{ cp.razon_social }} – {{ empresa.razon_social }}{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-3">
   <div>
-    <h5 class="mb-0">
+    <div class="d-flex align-items-center gap-2 mb-1">
       {% if cp.tipo == 'PROVEEDOR' %}
-        <span class="badge bg-primary me-2">Proveedor</span>
+        <span class="badge bg-primary">Proveedor</span>
       {% elif cp.tipo == 'CLIENTE' %}
-        <span class="badge bg-success me-2">Cliente</span>
+        <span class="badge bg-success">Cliente</span>
       {% elif cp.tipo == 'HONORARIOS' %}
-        <span class="badge bg-warning text-dark me-2">Honorarios</span>
+        <span class="badge bg-warning text-dark">Honorarios</span>
       {% else %}
-        <span class="badge bg-secondary me-2">Ambos</span>
+        <span class="badge bg-secondary">Ambos</span>
       {% endif %}
-      {{ cp.razon_social }}
-    </h5>
-    <small class="text-muted font-monospace">{{ cp.rut }}</small>
-    {% if cp.email %} · <small class="text-muted">{{ cp.email }}</small>{% endif %}
-    {% if cp.telefono %} · <small class="text-muted">{{ cp.telefono }}</small>{% endif %}
+      {% if not cp.activo %}<span class="badge bg-danger">Inactivo</span>{% endif %}
+      <h5 class="mb-0">{{ cp.razon_social }}</h5>
+    </div>
+    <div class="text-muted small d-flex gap-3 flex-wrap">
+      <span class="font-monospace">{{ cp.rut }}</span>
+      {% if cp.email %}<span><i class="bi bi-envelope me-1"></i>{{ cp.email }}</span>{% endif %}
+      {% if cp.telefono %}<span><i class="bi bi-telephone me-1"></i>{{ cp.telefono }}</span>{% endif %}
+    </div>
+    {% if cp.notas %}
+    <div class="text-muted small mt-1"><i class="bi bi-sticky me-1"></i>{{ cp.notas }}</div>
+    {% endif %}
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('contrapartes.editar', eid=empresa.id, cid=cp.id) }}"
-       class="btn btn-sm btn-outline-primary">
-      <i class="bi bi-pencil me-1"></i>Editar
-    </a>
+       class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Editar</a>
     <a href="{{ url_for('contrapartes.index', eid=empresa.id) }}"
-       class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-arrow-left me-1"></i>Volver
-    </a>
+       class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Volver</a>
   </div>
 </div>
-
-{% if cp.notas %}
-<div class="alert alert-light border py-2 mb-3">
-  <i class="bi bi-sticky me-1"></i>{{ cp.notas }}
-</div>
-{% endif %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% for cat, msg in messages %}
@@ -46,122 +43,269 @@
   {% endfor %}
 {% endwith %}
 
-<!-- Filtro período -->
-<form class="row g-2 mb-3 align-items-center" method="get">
-  <div class="col-auto">
-    <input type="month" name="mes" value="{{ mes }}" class="form-control form-control-sm">
-  </div>
-  <div class="col-auto">
-    <button class="btn btn-sm btn-outline-secondary">Filtrar</button>
-  </div>
-  <div class="col-auto text-muted small">
-    {{ desde|fecha_cl }} — {{ hasta|fecha_cl }}
-  </div>
-</form>
-
-<!-- Resumen período -->
-{% if docs %}
-<div class="row g-2 mb-3">
-  <div class="col-auto">
-    <div class="card border-0 bg-light px-3 py-2 text-center">
-      <div class="small text-muted">Documentos</div>
-      <div class="fw-bold">{{ docs|length }}</div>
+<!-- KPI bar -->
+<div class="row g-2 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 bg-light text-center px-2 py-2 h-100">
+      <div class="small text-muted">Total histórico</div>
+      <div class="fw-bold fs-6">{{ total_historico|clp }}</div>
+      <div class="text-muted" style="font-size:.75rem">{{ ndocs_historico }} doc(s)</div>
     </div>
   </div>
-  <div class="col-auto">
-    <div class="card border-0 bg-light px-3 py-2 text-center">
-      <div class="small text-muted">Neto</div>
-      <div class="fw-bold">{{ total_neto|clp }}</div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 h-100 text-center px-2 py-2
+      {% if saldo_pendiente > 0 %}bg-warning-subtle border-warning{% else %}bg-success-subtle{% endif %}">
+      <div class="small text-muted">
+        {% if cp.tipo == 'CLIENTE' %}Por cobrar{% else %}Por pagar{% endif %}
+      </div>
+      <div class="fw-bold fs-6 {% if saldo_pendiente > 0 %}text-warning{% else %}text-success{% endif %}">
+        {{ saldo_pendiente|clp }}
+      </div>
+      <div class="text-muted" style="font-size:.75rem">{{ docs_pendientes|length }} doc(s) sin conciliar</div>
     </div>
   </div>
-  <div class="col-auto">
-    <div class="card border-0 bg-light px-3 py-2 text-center">
-      <div class="small text-muted">IVA</div>
-      <div class="fw-bold">{{ total_iva|clp }}</div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 bg-light text-center px-2 py-2 h-100">
+      <div class="small text-muted">Pagado / cobrado</div>
+      <div class="fw-bold fs-6 text-success">{{ total_movs|clp }}</div>
+      <div class="text-muted" style="font-size:.75rem">{{ conciliaciones|length }} conciliación(es)</div>
     </div>
   </div>
-  <div class="col-auto">
-    <div class="card border-0 bg-light px-3 py-2 text-center">
-      <div class="small text-muted">Total</div>
-      <div class="fw-bold text-primary">{{ total_bruto|clp }}</div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 bg-light text-center px-2 py-2 h-100">
+      <div class="small text-muted">En el período</div>
+      <div class="fw-bold fs-6">{{ total_bruto|clp }}</div>
+      <div class="text-muted" style="font-size:.75rem">{{ docs|length }} doc(s)</div>
     </div>
   </div>
 </div>
 
-<div class="table-responsive mb-4">
-  <table class="table table-sm table-hover align-middle" style="font-size:.9rem">
-    <thead class="table-dark">
-      <tr>
-        <th>Fecha</th>
-        <th>Tipo</th>
-        <th>Folio</th>
-        <th class="text-end">Neto</th>
-        <th class="text-end">IVA</th>
-        <th class="text-end">Total</th>
-        <th>Estado</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for d in docs %}
-      <tr>
-        <td>{{ d.fecha|fecha_cl }}</td>
-        <td>
-          {% if d.tipo_libro == 'COMPRAS' %}
-            <span class="badge bg-primary-subtle text-primary">Compra</span>
-          {% elif d.tipo_libro == 'VENTAS' %}
-            <span class="badge bg-success-subtle text-success">Venta</span>
-          {% else %}
-            <span class="badge bg-warning-subtle text-warning">Honorario</span>
-          {% endif %}
-          {% if d.tipo_dte %}
-            <span class="text-muted small">DTE {{ d.tipo_dte }}</span>
-          {% endif %}
-        </td>
-        <td class="font-monospace">{{ d.folio or '—' }}</td>
-        <td class="text-end">{{ d.monto_neto|clp if d.monto_neto else '—' }}</td>
-        <td class="text-end">{{ d.iva|clp if d.iva else '—' }}</td>
-        <td class="text-end fw-semibold">{{ d.total|clp }}</td>
-        <td>
-          {% if d.procesado %}
-            <span class="badge bg-success-subtle text-success">Contabilizado</span>
-          {% else %}
-            <span class="badge bg-warning-subtle text-warning">Pendiente</span>
-          {% endif %}
-          {% if d.conciliacion_id %}
-            <span class="badge bg-info-subtle text-info">Conciliado</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-    <tfoot class="fw-bold">
-      <tr class="table-light">
-        <td colspan="3">TOTAL</td>
-        <td class="text-end">{{ total_neto|clp }}</td>
-        <td class="text-end">{{ total_iva|clp }}</td>
-        <td class="text-end text-primary">{{ total_bruto|clp }}</td>
-        <td></td>
-      </tr>
-    </tfoot>
-  </table>
-</div>
-{% else %}
-<div class="text-muted text-center py-4">
-  <i class="bi bi-file-earmark-x fs-3 d-block mb-2"></i>
-  Sin documentos para {{ mes }}
+<!-- Saldo pendiente -->
+{% if docs_pendientes %}
+<div class="card mb-4 border-warning">
+  <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center py-2">
+    <span class="fw-semibold">
+      <i class="bi bi-clock-history me-1"></i>
+      {% if cp.tipo == 'CLIENTE' %}Facturas por cobrar{% else %}Facturas por pagar{% endif %}
+      <span class="badge bg-warning text-dark ms-1">{{ docs_pendientes|length }}</span>
+    </span>
+    <span class="fw-bold">{{ saldo_pendiente|clp }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0" style="font-size:.875rem">
+      <thead class="table-secondary">
+        <tr>
+          <th data-sort="date">Fecha</th>
+          <th data-sort="text">Tipo</th>
+          <th class="font-monospace" data-sort="text">Folio</th>
+          <th class="text-end" data-sort="clp">Neto</th>
+          <th class="text-end" data-sort="clp">IVA</th>
+          <th class="text-end" data-sort="clp">Total</th>
+          <th>Comprobante</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in docs_pendientes %}
+        {% set mes_doc = d.fecha.strftime('%Y-%m') if d.fecha else '' %}
+        <tr>
+          <td class="text-nowrap">{{ d.fecha|fecha_cl }}</td>
+          <td>
+            {% if d.tipo_libro == 'COMPRAS' %}
+              <span class="badge bg-primary-subtle text-primary" style="font-size:.7rem">Compra</span>
+            {% elif d.tipo_libro == 'VENTAS' %}
+              <span class="badge bg-success-subtle text-success" style="font-size:.7rem">Venta</span>
+            {% else %}
+              <span class="badge bg-warning-subtle text-warning" style="font-size:.7rem">Hon.</span>
+            {% endif %}
+          </td>
+          <td class="font-monospace">{{ d.folio or '—' }}</td>
+          <td class="text-end">{{ d.monto_neto|clp if d.monto_neto else '—' }}</td>
+          <td class="text-end">{{ d.iva|clp if d.iva else '—' }}</td>
+          <td class="text-end fw-semibold">{{ d.total|clp }}</td>
+          <td>
+            {% if d.procesado %}
+              <span class="badge bg-success-subtle text-success" style="font-size:.7rem">Contabilizado</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary" style="font-size:.7rem">Sin contabilizar</span>
+            {% endif %}
+          </td>
+          <td class="text-nowrap">
+            {% if mes_doc %}
+            <a href="{{ url_for('conciliacion.index', eid=empresa.id, desde=mes_doc, hasta=mes_doc) }}"
+               class="btn btn-sm btn-outline-warning py-0 px-2"
+               title="Ir a conciliación del {{ mes_doc }}">
+              <i class="bi bi-arrow-left-right me-1"></i>Conciliar
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endif %}
 
+<!-- Conciliaciones / pagos -->
+{% if conciliaciones %}
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <span class="fw-semibold"><i class="bi bi-arrow-left-right me-1"></i>Pagos / Cobros registrados</span>
+    <span class="badge bg-secondary">{{ conciliaciones|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0" style="font-size:.875rem">
+      <thead class="table-secondary">
+        <tr>
+          <th data-sort="date">Fecha</th>
+          <th>Descripción</th>
+          <th>Documentos</th>
+          <th>Banco</th>
+          <th class="text-end" data-sort="clp">Monto banco</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in conciliaciones %}
+        {% set cdocs = c.documentos|list %}
+        {% set cmovs = c.movimientos|list %}
+        {% set monto_banco = (cmovs|map(attribute='cargo')|sum) + (cmovs|map(attribute='abono')|sum) %}
+        <tr>
+          <td class="text-nowrap">{{ c.fecha|fecha_cl }}</td>
+          <td class="text-truncate" style="max-width:200px" title="{{ c.descripcion }}">
+            {{ (c.descripcion or '')[:40] }}{% if c.descripcion and c.descripcion|length > 40 %}…{% endif %}
+          </td>
+          <td class="small">
+            {% for d in cdocs %}
+              <span class="badge
+                {% if d.tipo_libro=='COMPRAS' %}bg-primary-subtle text-primary
+                {% elif d.tipo_libro=='VENTAS' %}bg-success-subtle text-success
+                {% else %}bg-warning-subtle text-warning{% endif %}"
+                style="font-size:.65rem">{{ d.folio }}</span>
+            {% endfor %}
+            {% if not cdocs %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="small text-truncate" style="max-width:160px">
+            {% for m in cmovs %}
+              <div>{{ (m.descripcion or '')[:30] }}</div>
+            {% endfor %}
+            {% if not cmovs %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="text-end fw-semibold">
+            {% if monto_banco %}{{ monto_banco|clp }}{% else %}—{% endif %}
+          </td>
+          <td>
+            {% set total_doc = cdocs|map(attribute='total')|sum %}
+            {% set dif = (total_doc - monto_banco)|abs %}
+            {% if not cmovs %}
+              <span class="badge bg-secondary-subtle text-secondary" style="font-size:.7rem">Sin banco</span>
+            {% elif dif < 1 %}
+              <span class="badge bg-success-subtle text-success" style="font-size:.7rem">Cuadra</span>
+            {% else %}
+              <span class="badge bg-danger-subtle text-danger" style="font-size:.7rem">Dif {{ dif|clp }}</span>
+            {% endif %}
+            {% if c.respaldo_url %}
+              <a href="{{ c.respaldo_url }}" target="_blank" class="ms-1 text-info" title="Ver respaldo">
+                <i class="bi bi-link-45deg"></i>
+              </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Documentos del período -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-file-earmark-text me-1"></i>Documentos del período</span>
+    <form class="d-flex gap-2 align-items-center" method="get">
+      <input type="month" name="desde" value="{{ desde_mes }}" class="form-control form-control-sm" style="width:140px">
+      <span class="text-muted small">al</span>
+      <input type="month" name="hasta" value="{{ hasta_mes }}" class="form-control form-control-sm" style="width:140px">
+      <button class="btn btn-outline-secondary btn-sm"><i class="bi bi-funnel"></i></button>
+    </form>
+  </div>
+  {% if docs %}
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0" style="font-size:.875rem">
+      <thead class="table-secondary">
+        <tr>
+          <th data-sort="date">Fecha</th>
+          <th data-sort="text">Tipo</th>
+          <th class="font-monospace" data-sort="text">Folio</th>
+          <th class="text-end" data-sort="clp">Neto</th>
+          <th class="text-end" data-sort="clp">IVA</th>
+          <th class="text-end" data-sort="clp">Total</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in docs %}
+        <tr>
+          <td class="text-nowrap">{{ d.fecha|fecha_cl }}</td>
+          <td>
+            {% if d.tipo_libro == 'COMPRAS' %}
+              <span class="badge bg-primary-subtle text-primary" style="font-size:.7rem">Compra</span>
+            {% elif d.tipo_libro == 'VENTAS' %}
+              <span class="badge bg-success-subtle text-success" style="font-size:.7rem">Venta</span>
+            {% else %}
+              <span class="badge bg-warning-subtle text-warning" style="font-size:.7rem">Hon.</span>
+            {% endif %}
+            {% if d.tipo_dte %}<span class="text-muted" style="font-size:.75rem">DTE {{ d.tipo_dte }}</span>{% endif %}
+          </td>
+          <td class="font-monospace">{{ d.folio or '—' }}</td>
+          <td class="text-end">{{ d.monto_neto|clp if d.monto_neto else '—' }}</td>
+          <td class="text-end">{{ d.iva|clp if d.iva else '—' }}</td>
+          <td class="text-end fw-semibold">{{ d.total|clp }}</td>
+          <td>
+            {% if d.procesado %}
+              <span class="badge bg-success-subtle text-success" style="font-size:.7rem">Contabilizado</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary" style="font-size:.7rem">Sin contabilizar</span>
+            {% endif %}
+            {% if d.conciliacion_id %}
+              <span class="badge bg-info-subtle text-info" style="font-size:.7rem">Conciliado</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="fw-semibold">
+        <tr class="table-light">
+          <td colspan="3">Total período</td>
+          <td class="text-end">{{ total_neto|clp }}</td>
+          <td class="text-end">{{ total_iva|clp }}</td>
+          <td class="text-end text-primary">{{ total_bruto|clp }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted text-center py-4 small">
+    <i class="bi bi-file-earmark-x fs-4 d-block mb-1"></i>
+    Sin documentos en este período
+  </div>
+  {% endif %}
+</div>
+
 <!-- Historial mensual -->
 {% if rows_hist %}
-<h6 class="text-muted mb-2">Historial mensual</h6>
-<div class="d-flex flex-wrap gap-2">
-  {% for r in rows_hist %}
-  <a href="?mes={{ r.mes }}"
-     class="btn btn-sm {% if r.mes == mes %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-    {{ r.mes }} <span class="ms-1 fw-bold">{{ r.total|clp }}</span>
-  </a>
-  {% endfor %}
+<div class="card mb-3">
+  <div class="card-header py-2 fw-semibold"><i class="bi bi-calendar3 me-1"></i>Historial mensual</div>
+  <div class="card-body py-2 d-flex flex-wrap gap-2">
+    {% for r in rows_hist %}
+    <a href="?desde={{ r.mes }}&hasta={{ r.mes }}"
+       class="btn btn-sm {% if r.mes >= desde_mes and r.mes <= hasta_mes %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+      {{ r.mes }} <span class="ms-1 fw-bold">{{ r.total|clp }}</span>
+    </a>
+    {% endfor %}
+  </div>
 </div>
 {% endif %}
 

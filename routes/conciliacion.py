@@ -1,7 +1,7 @@
 import calendar
 from datetime import date
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from models import db, Empresa, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte, Cuenta
+from models import db, Empresa, Asiento, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte, Cuenta
 from engine import asientos as motor
 from engine.asientos import (confirmar_asiento, generar_asiento_pago_proveedor,
                              generar_asiento_cobro_cliente,
@@ -12,12 +12,7 @@ bp = Blueprint('conciliacion', __name__)
 
 def _default_rango():
     hoy = date.today()
-    hasta = f'{hoy.year}-{hoy.month:02d}'
-    y, m = hoy.year, hoy.month - 3
-    while m <= 0:
-        m += 12
-        y -= 1
-    return f'{y}-{m:02d}', hasta
+    return f'{hoy.year}-01', f'{hoy.year}-{hoy.month:02d}'
 
 
 def _mes_a_rango(mes_str):
@@ -93,15 +88,13 @@ def index(eid):
 
 
 TIPOS_LABEL = {
-    'SII':       'Documento SII',
-    'SUELDO':    'Sueldo / Remuneraciones',
-    'RETIRO':    'Retiro socio',
-    'IMPUESTO':  'Impuesto (IVA / PPM / Renta)',
-    'F29':       'Pago F29 (IVA + Retenciones + PPM)',
-    'BANCO':     'Gasto bancario / comisión',
-    'PRESTAMO':  'Préstamo / amortización',
-    'INTERNO':   'Transferencia interna',
-    'OTRO':      'Otro',
+    'SII':    'Documento SII',
+    'MANUAL': 'Manual',
+    # valores legacy — se muestran si existen en la BD
+    'SUELDO':   'Manual', 'RETIRO':   'Manual',
+    'IMPUESTO': 'Manual', 'F29':      'Manual',
+    'BANCO':    'Manual', 'PRESTAMO': 'Manual',
+    'INTERNO':  'Manual', 'OTRO':     'Manual',
 }
 
 
@@ -123,9 +116,10 @@ def crear(eid):
     if not desde_mes:
         desde_mes = hasta_mes = request.form.get('mes', date.today().strftime('%Y-%m'))
     tiene_cuentas = bool(cuenta_ids and not doc_ids)
-    tipo = 'BANCO' if tiene_cuentas else request.form.get('tipo', 'SII')
-    nota = request.form.get('nota', '').strip()
-    respaldo_url = request.form.get('respaldo_url', '').strip() or None
+    tipo = request.form.get('tipo', 'BANCO') if tiene_cuentas else request.form.get('tipo', 'SII')
+    nota = next((n.strip() for n in request.form.getlist('nota') if n.strip()), '')
+    respaldo_url = next((r.strip() for r in request.form.getlist('respaldo_url') if r.strip()), None)
+    accion_asiento = request.form.get('accion_asiento', 'confirmar')
 
     if not doc_ids and not mov_ids:
         flash('Seleccione al menos un documento o movimiento', 'warning')
@@ -187,10 +181,11 @@ def crear(eid):
         for m in movs:
             try:
                 asiento = motor.generar_asiento_banco_compuesto(m, cuenta_ids, cuenta_montos)
-                try:
-                    confirmar_asiento(asiento)
-                except ValueError:
-                    pass
+                if accion_asiento == 'confirmar':
+                    try:
+                        confirmar_asiento(asiento)
+                    except ValueError:
+                        pass
                 m.procesado = True
                 m.asiento_id = asiento.id
                 asientos_creados += 1
@@ -212,10 +207,11 @@ def crear(eid):
                 asiento = motor.generar_asiento_honorario(d)
             else:
                 continue
-            try:
-                confirmar_asiento(asiento)
-            except ValueError:
-                pass  # queda en borrador si no cuadra
+            if accion_asiento == 'confirmar':
+                try:
+                    confirmar_asiento(asiento)
+                except ValueError:
+                    pass
             d.procesado = True
             d.asiento_id = asiento.id
             asientos_creados += 1
@@ -235,10 +231,11 @@ def crear(eid):
                     asiento = generar_asiento_cobro_cliente(m)
                 else:
                     asiento = generar_asiento_pago_proveedor(m)
-                try:
-                    confirmar_asiento(asiento)
-                except ValueError:
-                    pass
+                if accion_asiento == 'confirmar':
+                    try:
+                        confirmar_asiento(asiento)
+                    except ValueError:
+                        pass
                 m.procesado = True
                 m.asiento_id = asiento.id
                 asientos_creados += 1
@@ -275,9 +272,25 @@ def deshacer(eid, cid):
     hasta_mes  = request.form.get('hasta', request.form.get('mes', date.today().strftime('%Y-%m')))
     if not desde_mes:
         desde_mes = hasta_mes
+
+    # Recopilar asientos a eliminar antes de borrar las referencias
+    asiento_ids = set()
+    for m in MovimientoBanco.query.filter_by(conciliacion_id=cid).all():
+        if m.asiento_id:
+            asiento_ids.add(m.asiento_id)
+    for d in DocumentoSII.query.filter_by(conciliacion_id=cid).all():
+        if d.asiento_id:
+            asiento_ids.add(d.asiento_id)
+
     DocumentoSII.query.filter_by(conciliacion_id=cid).update({'conciliacion_id': None, 'procesado': False, 'asiento_id': None})
     MovimientoBanco.query.filter_by(conciliacion_id=cid).update({'conciliacion_id': None, 'procesado': False, 'asiento_id': None})
     db.session.delete(conc)
+
+    for aid in asiento_ids:
+        a = Asiento.query.get(aid)
+        if a:
+            db.session.delete(a)
+
     db.session.commit()
-    flash('Conciliación deshecha', 'warning')
+    flash('Conciliación deshecha y comprobante(s) eliminado(s)', 'warning')
     return redirect(url_for('conciliacion.index', eid=eid, desde=desde_mes, hasta=hasta_mes))

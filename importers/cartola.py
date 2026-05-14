@@ -275,6 +275,9 @@ def importar(file_storage, empresa_id, banco='', cuenta_bancaria='') -> dict:
         return _importar_generico(file_storage, empresa_id, banco, cuenta_bancaria)
 
     if nombre.endswith('.xls'):
+        if _es_banco_chile_csv(contenido):
+            return _importar_banco_chile_csv(contenido, empresa_id, banco, cuenta_bancaria,
+                                             file_storage.filename)
         file_storage.seek(0)
         return _importar_generico(file_storage, empresa_id, banco, cuenta_bancaria)
 

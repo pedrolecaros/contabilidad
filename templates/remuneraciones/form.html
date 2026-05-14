@@ -51,23 +51,31 @@
 
   <div class="col-md-3">
     <label class="form-label">Sueldo base ($)</label>
-    <input type="number" name="sueldo_base" class="form-control" min="0" step="1"
-           value="{{ emp.sueldo_base | int if emp else 0 }}">
+    <input type="text" name="sueldo_base" class="form-control num-fmt" inputmode="numeric"
+           value="{{ emp.sueldo_base | int | clp if emp else '0' }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Tipo sueldo pactado</label>
+    <select name="tipo_sueldo" class="form-select" id="tipo_sueldo_sel" onchange="actualizarHelpTipo()">
+      <option value="BRUTO" {{ 'selected' if not emp or emp.tipo_sueldo == 'BRUTO' or not emp.tipo_sueldo }}>Bruto (acordado bruto)</option>
+      <option value="LIQUIDO" {{ 'selected' if emp and emp.tipo_sueldo == 'LIQUIDO' }}>Líquido (acordado líquido)</option>
+    </select>
+    <div class="form-text" id="tipo_sueldo_help">El monto ingresado es el sueldo <strong>bruto</strong>.</div>
   </div>
   <div class="col-md-3">
     <label class="form-label">Bono colación ($)</label>
-    <input type="number" name="bono_colacion" class="form-control" min="0" step="1"
-           value="{{ emp.bono_colacion | int if emp else 0 }}">
+    <input type="text" name="bono_colacion" class="form-control num-fmt" inputmode="numeric"
+           value="{{ emp.bono_colacion | int | clp if emp else '0' }}">
   </div>
   <div class="col-md-3">
     <label class="form-label">Bono movilización ($)</label>
-    <input type="number" name="bono_movilizacion" class="form-control" min="0" step="1"
-           value="{{ emp.bono_movilizacion | int if emp else 0 }}">
+    <input type="text" name="bono_movilizacion" class="form-control num-fmt" inputmode="numeric"
+           value="{{ emp.bono_movilizacion | int | clp if emp else '0' }}">
   </div>
   <div class="col-md-3">
     <label class="form-label">Otros haberes fijos ($)</label>
-    <input type="number" name="otros_haberes" class="form-control" min="0" step="1"
-           value="{{ emp.otros_haberes | int if emp else 0 }}">
+    <input type="text" name="otros_haberes" class="form-control num-fmt" inputmode="numeric"
+           value="{{ emp.otros_haberes | int | clp if emp else '0' }}">
   </div>
 
   <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1">Previsión</h6></div>
@@ -97,9 +105,9 @@
     <label class="form-label">ISAPRE</label>
     <input type="text" name="isapre" class="form-control" value="{{ emp.isapre if emp and emp.isapre else '' }}"
            placeholder="Nombre isapre">
-    <label class="form-label mt-1">Monto ISAPRE ($ / mes)</label>
-    <input type="number" name="monto_isapre" class="form-control" min="0" step="1"
-           value="{{ emp.monto_isapre | int if emp else 0 }}">
+    <label class="form-label mt-1">Monto ISAPRE (UF / mes)</label>
+    <input type="number" name="monto_isapre_uf" class="form-control" min="0" step="0.01"
+           value="{{ emp.monto_isapre_uf if emp else 0 }}">
   </div>
 
   <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1">Mutual de Seguridad (empleador)</h6></div>
@@ -142,5 +150,40 @@ function autoTasaAfp(afp) {
 function toggleIsapre(val) {
   document.getElementById('grp_isapre').style.display = val === 'ISAPRE' ? 'block' : 'none';
 }
+
+function actualizarHelpTipo() {
+  const sel = document.getElementById('tipo_sueldo_sel').value;
+  const help = document.getElementById('tipo_sueldo_help');
+  if (sel === 'LIQUIDO') {
+    help.innerHTML = 'El monto ingresado es el sueldo <strong>líquido</strong> objetivo. El bruto se calculará al liquidar.';
+  } else {
+    help.innerHTML = 'El monto ingresado es el sueldo <strong>bruto</strong>.';
+  }
+}
+
+// Initialize on load
+actualizarHelpTipo();
+
+// Thousands separator for CLP fields
+document.querySelectorAll('input.num-fmt').forEach(inp => {
+  inp.addEventListener('focus', () => {
+    // Strip dots when focused for editing
+    inp.value = inp.value.replace(/\./g, '');
+  });
+  inp.addEventListener('blur', () => {
+    const raw = inp.value.replace(/\./g, '').replace(/,/g, '');
+    const v = parseInt(raw, 10);
+    if (!isNaN(v)) {
+      inp.value = v.toLocaleString('es-CL');
+    }
+  });
+});
+
+// Before form submit, strip dots from num-fmt inputs so server gets plain numbers
+document.querySelector('form').addEventListener('submit', function() {
+  document.querySelectorAll('input.num-fmt').forEach(inp => {
+    inp.value = inp.value.replace(/\./g, '').replace(/,/g, '');
+  });
+});
 </script>
 {% endblock %}

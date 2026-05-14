@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Libro de Remuneraciones – {{ empresa.razon_social }} – {{ periodo }}</title>
+<style>
+  @page { size: A4 landscape; margin: 10mm; }
+  @media print { .no-print { display: none !important; } }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 7pt; color: #111; }
+
+  /* ── Company header ── */
+  .empresa-header { margin-bottom: 6pt; }
+  .empresa-header h1 { font-size: 10pt; font-weight: bold; }
+  .empresa-header p  { font-size: 7.5pt; color: #444; }
+
+  /* ── Document title ── */
+  .doc-title { text-align: center; margin-bottom: 5pt; }
+  .doc-title h2 { font-size: 9pt; font-weight: bold; letter-spacing: 0.5pt; text-transform: uppercase; }
+  .doc-title p  { font-size: 7.5pt; color: #444; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; table-layout: auto; }
+  th, td { border: 0.5pt solid #aaa; padding: 1.5pt 2pt; vertical-align: middle; }
+  th { background: #1f2937; color: #fff; font-size: 6.5pt; text-align: center; }
+
+  /* Group header row */
+  tr.group-row th { font-size: 6pt; padding: 1pt 2pt; }
+  th.gh-id   { background: #1f2937; }
+  th.gh-imp  { background: #1e40af; }
+  th.gh-noimp{ background: #6b7280; }
+  th.gh-tot  { background: #374151; }
+  th.gh-desc { background: #991b1b; }
+  th.gh-liq  { background: #4b5563; }
+  th.gh-emp  { background: #5b21b6; }
+
+  /* Data rows */
+  tbody tr:nth-child(even) td { background: #f3f4f6; }
+  td { font-size: 6.8pt; }
+  td.num { text-align: right; }
+  td.ctr { text-align: center; }
+  td.lft { text-align: left; }
+
+  /* Totals row */
+  tr.row-total td { background: #1f2937 !important; color: #fff; font-weight: bold; text-align: right; font-size: 7pt; }
+  tr.row-total td:first-child { text-align: center; }
+
+  /* Border accents */
+  .bdr-imp  { border-left: 1.5pt solid #3b82f6 !important; }
+  .bdr-noimp{ border-left: 1.5pt solid #9ca3af !important; }
+  .bdr-tot  { border-left: 1.5pt solid #6b7280 !important; }
+  .bdr-desc { border-left: 1.5pt solid #ef4444 !important; }
+  .bdr-liq  { border-left: 1.5pt solid #6b7280 !important; }
+  .bdr-emp  { border-left: 1.5pt solid #8b5cf6 !important; }
+
+  /* Footer */
+  .footer { margin-top: 8pt; font-size: 6.5pt; color: #555; display: flex; justify-content: space-between; }
+
+  /* Print button */
+  .no-print { margin-bottom: 8pt; }
+  .btn-print { padding: 4pt 10pt; font-size: 9pt; cursor: pointer; border: 1pt solid #374151;
+               background: #1f2937; color: #fff; border-radius: 3pt; }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button class="btn-print" onclick="window.print()">&#128438; Imprimir / Guardar PDF</button>
+</div>
+
+{# ── Macro for number formatting ── #}
+{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+
+{# ── Company header ── #}
+<div class="empresa-header">
+  <h1>{{ empresa.razon_social }}</h1>
+  <p>RUT: {{ empresa.rut }}{% if empresa.giro %} &nbsp;&mdash;&nbsp; Giro: {{ empresa.giro }}{% endif %}</p>
+</div>
+
+{# ── Document title ── #}
+<div class="doc-title">
+  <h2>Libro de Remuneraciones</h2>
+  <p>Período: <strong>{{ periodo }}</strong></p>
+</div>
+
+{# ── Table ── #}
+<table>
+  <thead>
+    {# Group row #}
+    <tr class="group-row">
+      <th colspan="5" class="gh-id">Identificación</th>
+      <th colspan="4" class="gh-imp bdr-imp">Haberes Imponibles</th>
+      <th colspan="2" class="gh-noimp bdr-noimp">No Imponibles</th>
+      <th colspan="2" class="gh-tot bdr-tot">Totales</th>
+      <th colspan="4" class="gh-desc bdr-desc">Descuentos Legales</th>
+      <th colspan="2" class="gh-liq bdr-liq">Desc. / Líquido</th>
+      <th colspan="4" class="gh-emp bdr-emp">Aportes Empleador</th>
+    </tr>
+    {# Individual columns #}
+    <tr>
+      <th>N°</th>
+      <th>RUT</th>
+      <th>Nombre</th>
+      <th>AFP</th>
+      <th>Salud</th>
+      <th class="bdr-imp">Sueldo Base</th>
+      <th>HH.EE.</th>
+      <th>Gratif.</th>
+      <th>Otros Imp.</th>
+      <th class="bdr-noimp">Colación</th>
+      <th>Moviliz.</th>
+      <th class="bdr-tot">Total Hab.</th>
+      <th>Renta Imp.</th>
+      <th class="bdr-desc">AFP $</th>
+      <th>Salud $</th>
+      <th>Ces.Trab</th>
+      <th>Imp.2aCat</th>
+      <th class="bdr-liq">Total Desc.</th>
+      <th>Líquido</th>
+      <th class="bdr-emp">SIS</th>
+      <th>Ces.Emp</th>
+      <th>Mutual</th>
+      <th>Costo Emp.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for liq in liqs %}
+    {% set emp = liq.empleado %}
+    <tr>
+      <td class="ctr">{{ loop.index }}</td>
+      <td class="ctr">{{ emp.rut }}</td>
+      <td class="lft">{{ emp.nombre }}</td>
+      <td class="ctr">{{ emp.afp }}</td>
+      <td class="ctr">{{ emp.tipo_salud }}{% if emp.isapre %}/{{ emp.isapre }}{% endif %}</td>
+      <td class="num bdr-imp">{{ num(liq.sueldo_base) }}</td>
+      <td class="num">{{ num(liq.horas_extra) }}</td>
+      <td class="num">{{ num(liq.gratificacion) }}</td>
+      <td class="num">{{ num(liq.otros_haberes) }}</td>
+      <td class="num bdr-noimp">{{ num(liq.bono_colacion) }}</td>
+      <td class="num">{{ num(liq.bono_movilizacion) }}</td>
+      <td class="num bdr-tot">{{ num(liq.total_haberes) }}</td>
+      <td class="num">{{ num(liq.renta_imponible) }}</td>
+      <td class="num bdr-desc">{{ num(liq.afp) }}</td>
+      <td class="num">{{ num(liq.salud) }}</td>
+      <td class="num">{{ num(liq.cesantia_trab) }}</td>
+      <td class="num">{{ num(liq.impuesto_renta) }}</td>
+      <td class="num bdr-liq">{{ num(liq.total_descuentos) }}</td>
+      <td class="num">{{ num(liq.liquido) }}</td>
+      <td class="num bdr-emp">{{ num(liq.sis) }}</td>
+      <td class="num">{{ num(liq.cesantia_emp) }}</td>
+      <td class="num">{{ num(liq.mutual) }}</td>
+      <td class="num">{{ num(liq.costo_empresa) }}</td>
+    </tr>
+    {% endfor %}
+    {# Totals row #}
+    <tr class="row-total">
+      <td colspan="5">TOTAL ({{ liqs | length }} trabajador{% if liqs | length != 1 %}es{% endif %})</td>
+      <td class="bdr-imp">{{ num(liqs | map(attribute='sueldo_base') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='horas_extra') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='gratificacion') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='otros_haberes') | sum) }}</td>
+      <td class="bdr-noimp">{{ num(liqs | map(attribute='bono_colacion') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='bono_movilizacion') | sum) }}</td>
+      <td class="bdr-tot">{{ num(liqs | map(attribute='total_haberes') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='renta_imponible') | sum) }}</td>
+      <td class="bdr-desc">{{ num(liqs | map(attribute='afp') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='salud') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='cesantia_trab') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='impuesto_renta') | sum) }}</td>
+      <td class="bdr-liq">{{ num(liqs | map(attribute='total_descuentos') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='liquido') | sum) }}</td>
+      <td class="bdr-emp">{{ num(liqs | map(attribute='sis') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='cesantia_emp') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='mutual') | sum) }}</td>
+      <td>{{ num(liqs | map(attribute='costo_empresa') | sum) }}</td>
+    </tr>
+  </tbody>
+</table>
+
+{# ── Footer ── #}
+<div class="footer">
+  <span>Generado el {{ hoy.strftime('%d/%m/%Y') }}</span>
+  <span>Conforme art. 62 C&oacute;digo del Trabajo</span>
+</div>
+
+</body>
+</html>

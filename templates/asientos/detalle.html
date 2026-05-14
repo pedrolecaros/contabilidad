@@ -119,8 +119,19 @@
 </div>
 
 <div class="card shadow-sm mb-3">
-  <div class="card-header bg-dark text-white">
-    {{ asiento.descripcion or '(sin descripción)' }}
+  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+    <span>{{ asiento.descripcion or '(sin descripción)' }}</span>
+    {% if asiento.respaldo_url %}
+      <a href="{{ asiento.respaldo_url }}" target="_blank"
+         class="badge bg-info text-dark text-decoration-none ms-2"
+         title="Ver respaldo">
+        <i class="bi bi-link-45deg me-1"></i>Respaldo
+      </a>
+    {% elif asiento.origen == 'MANUAL' %}
+      <span class="badge bg-warning text-dark ms-2" title="Sin link de respaldo">
+        <i class="bi bi-exclamation-triangle me-1"></i>Sin respaldo
+      </span>
+    {% endif %}
   </div>
   <div class="card-body p-0">
     <table class="table table-sm mb-0">

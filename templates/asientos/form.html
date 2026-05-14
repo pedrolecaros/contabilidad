@@ -22,11 +22,19 @@
               <input type="date" name="fecha" id="campoFecha" class="form-control"
                      value="{{ asiento.fecha.isoformat() if asiento else '' }}" required>
             </div>
-            <div class="col-md-9">
-              <label class="form-label fw-semibold">Descripción</label>
-              <input type="text" name="descripcion" class="form-control"
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Descripción <span class="text-danger">*</span></label>
+              <input type="text" name="descripcion" class="form-control" required
                      value="{{ asiento.descripcion if asiento else '' }}"
                      placeholder="Descripción del asiento">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold text-muted">
+                <i class="bi bi-link-45deg me-1"></i>Link respaldo
+              </label>
+              <input type="url" name="respaldo_url" class="form-control"
+                     value="{{ asiento.respaldo_url if asiento else '' }}"
+                     placeholder="https://drive.google.com/…">
             </div>
           </div>
 
@@ -62,13 +70,15 @@
             <div class="ms-auto" id="alertaCuadre"></div>
           </div>
 
-          <div class="d-flex gap-2 mt-4">
-            <button type="submit" class="btn btn-primary">
-              <i class="bi bi-check-circle me-1"></i>
-              {% if asiento %}Guardar cambios{% else %}Crear asiento{% endif %}
+          <div class="d-flex gap-2 mt-4 align-items-center">
+            <button type="submit" name="accion" value="confirmar" class="btn btn-primary">
+              <i class="bi bi-check-circle me-1"></i>Confirmar
+            </button>
+            <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
+              <i class="bi bi-file-earmark me-1"></i>Borrador
             </button>
             <a href="{{ url_for('asientos.lista', eid=empresa.id) }}"
-               class="btn btn-outline-secondary" title="Cancelar y volver a la lista">
+               class="btn btn-link text-secondary ms-2">
               Cancelar
             </a>
           </div>
@@ -85,10 +95,19 @@ const cuentas = {{ cuentas_json|safe }};
 const lineasIniciales = {{ lineas_json|safe }};
 let tomSelects = [];
 
+function descGlobal() {
+  return document.querySelector('input[name="descripcion"]').value.trim();
+}
+
 function agregarLinea(datos) {
   const tbody = document.getElementById('lineas');
   const idx   = tbody.children.length;
   const tr    = document.createElement('tr');
+
+  // Si no hay datos previos, heredar descripción global; si hay datos, usarla tal cual
+  const lineaDesc = datos ? (datos.descripcion || '') : descGlobal();
+  // Marcar como auto-sincronizada si coincide con la descripción global (o si es nueva)
+  const esAuto = !datos || lineaDesc === descGlobal();
 
   tr.innerHTML = `
     <td>
@@ -101,8 +120,9 @@ function agregarLinea(datos) {
         ).join('')}
       </select>
     </td>
-    <td><input type="text" name="linea_desc[]" class="form-control form-control-sm"
-               value="${datos ? (datos.descripcion||'') : ''}"
+    <td><input type="text" name="linea_desc[]" class="form-control form-control-sm linea-desc"
+               value="${lineaDesc}"
+               data-auto="${esAuto}"
                placeholder="Detalle"></td>
     <td><input type="number" name="debe[]" class="form-control form-control-sm text-end monto"
                min="0" step="1" value="${datos ? (datos.debe||0) : 0}"></td>
@@ -118,6 +138,12 @@ function agregarLinea(datos) {
 
   tbody.appendChild(tr);
 
+  // Desmarcar auto-sync si el usuario escribe algo distinto
+  const inpDesc = tr.querySelector('.linea-desc');
+  inpDesc.addEventListener('input', function() {
+    this.dataset.auto = (this.value.trim() === descGlobal()) ? 'true' : 'false';
+  });
+
   // Tom Select en el select de esta fila
   const sel = tr.querySelector(`#ts-${idx}`);
   new TomSelect(sel, {
@@ -129,6 +155,14 @@ function agregarLinea(datos) {
   tr.querySelectorAll('.monto').forEach(i => i.addEventListener('input', actualizarTotales));
   actualizarTotales();
 }
+
+// Cuando cambia la descripción global, actualizar las líneas que siguen sincronizadas
+document.querySelector('input[name="descripcion"]').addEventListener('input', function() {
+  const val = this.value.trim();
+  document.querySelectorAll('.linea-desc[data-auto="true"]').forEach(inp => {
+    inp.value = val;
+  });
+});
 
 function fmt(n) {
   return Math.round(n).toLocaleString('es-CL');

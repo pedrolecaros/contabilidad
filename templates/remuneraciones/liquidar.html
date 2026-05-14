@@ -8,47 +8,124 @@
   </a>
 </div>
 
-<div class="card shadow-sm" style="max-width:600px">
+<div class="card shadow-sm" style="max-width:700px">
   <div class="card-body">
     <form method="post">
       <div class="row g-3">
+
+        <!-- Period selector -->
         <div class="col-md-4">
           <label class="form-label">Período <span class="text-danger">*</span></label>
-          <input type="month" name="periodo" class="form-control" required>
+          <input type="month" name="periodo" id="liquidar_periodo" class="form-control"
+                 value="{{ periodo_default }}" required onchange="cargarVariables(this.value)">
         </div>
-        <div class="col-md-4">
-          <label class="form-label">UTM del mes <span class="text-danger">*</span></label>
-          <input type="number" name="utm" class="form-control" min="1" step="1"
-                 placeholder="Ej: 68306" required>
+
+        <!-- Variables info display -->
+        <div id="vars_info" class="col-12">
+          {% if vars_mes %}
+          <div class="alert alert-info py-2 small mb-0">
+            <strong>Variables {{ vars_mes.periodo }}:</strong>
+            UF ${{ vars_mes.uf | clp if vars_mes.uf else '—' }}
+            &nbsp;|&nbsp;
+            UTM ${{ vars_mes.utm | int | clp if vars_mes.utm else '—' }}
+            &nbsp;|&nbsp;
+            Tope grat. ${{ vars_mes.tope_gratificacion | int | clp if vars_mes.tope_gratificacion else '—' }}
+          </div>
+          {% else %}
+          <div class="alert alert-warning py-2 small mb-0">
+            No hay variables para este período.
+            <a href="{{ url_for('remuneraciones.variables', eid=empresa.id) }}">Cargar variables →</a>
+          </div>
+          {% endif %}
         </div>
+
+        <!-- Employee info -->
+        <div class="col-12">
+          <div class="alert alert-secondary py-2 small mb-0">
+            <strong>Sueldo {{ emp.tipo_sueldo | lower if emp.tipo_sueldo else 'bruto' }}:</strong>
+            ${{ emp.sueldo_base | clp }}
+            {% if emp.tipo_sueldo == 'LIQUIDO' %}
+            <span class="text-muted">(el bruto se calcula al generar)</span>
+            {% endif %}
+            &nbsp;|&nbsp;<strong>AFP:</strong> {{ emp.afp }}
+            &nbsp;|&nbsp;<strong>Salud:</strong> {{ emp.tipo_salud }}{% if emp.isapre %} – {{ emp.isapre }}{% endif %}
+            {% if emp.monto_isapre_uf and emp.monto_isapre_uf > 0 %}
+            &nbsp;|&nbsp;<strong>ISAPRE:</strong> {{ emp.monto_isapre_uf }} UF
+            {% endif %}
+          </div>
+        </div>
+
         <div class="col-12"><hr class="my-1"></div>
+
+        <!-- Variable monthly fields -->
         <div class="col-md-4">
           <label class="form-label">Horas extra ($)</label>
           <input type="number" name="horas_extra" class="form-control" min="0" step="1" value="0">
         </div>
         <div class="col-md-4">
-          <label class="form-label">Gratificación ($)</label>
-          <input type="number" name="gratificacion" class="form-control" min="0" step="1" value="0">
-        </div>
-        <div class="col-md-4">
           <label class="form-label">Otros haberes variables ($)</label>
           <input type="number" name="otros" class="form-control" min="0" step="1" value="0">
         </div>
+
         <div class="col-12">
-          <div class="alert alert-info py-2 small mb-0">
-            <strong>Sueldo base:</strong> ${{ emp.sueldo_base | clp }} &nbsp;|&nbsp;
-            <strong>AFP:</strong> {{ emp.afp }} ({{ (emp.tasa_afp_comision * 100) | round(2) }}% comisión) &nbsp;|&nbsp;
-            <strong>Salud:</strong> {{ emp.tipo_salud }}{% if emp.isapre %} – {{ emp.isapre }}{% endif %}
+          <div class="alert alert-light py-2 small mb-0 border">
+            <i class="bi bi-info-circle me-1"></i>
+            La gratificación se calcula automáticamente: <strong>mín(25% bruto, tope gratificación del mes)</strong>.
           </div>
         </div>
+
         <div class="col-12">
-          <button type="submit" class="btn btn-primary">
-            <i class="bi bi-calculator me-1"></i>Calcular y emitir
+          <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
+            <i class="bi bi-pencil me-1"></i>Guardar Borrador
           </button>
-          <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="btn btn-outline-secondary ms-2">Cancelar</a>
+          <button type="submit" name="accion" value="emitir" class="btn btn-primary ms-2">
+            <i class="bi bi-check2-circle me-1"></i>Calcular y Emitir
+          </button>
+          <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="btn btn-link ms-2 text-secondary">Cancelar</a>
         </div>
       </div>
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function cargarVariables(periodo) {
+  if (!periodo) return;
+  const varsInfo = document.getElementById('vars_info');
+  try {
+    const url = '{{ url_for("remuneraciones.variables_get", eid=empresa.id, periodo="PERIODO") }}'.replace('PERIODO', periodo);
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.ok) {
+      const uf = data.uf ? '$' + formatClp(data.uf) : '—';
+      const utm = data.utm ? '$' + formatClp(Math.round(data.utm)) : '—';
+      const tope = data.tope_gratificacion ? '$' + formatClp(Math.round(data.tope_gratificacion)) : '—';
+      varsInfo.innerHTML = `
+        <div class="alert alert-info py-2 small mb-0">
+          <strong>Variables ${periodo}:</strong>
+          UF ${uf}
+          &nbsp;|&nbsp;
+          UTM ${utm}
+          &nbsp;|&nbsp;
+          Tope grat. ${tope}
+        </div>`;
+    } else {
+      const varUrl = '{{ url_for("remuneraciones.variables", eid=empresa.id) }}';
+      varsInfo.innerHTML = `
+        <div class="alert alert-warning py-2 small mb-0">
+          No hay variables para este período.
+          <a href="${varUrl}">Cargar variables →</a>
+        </div>`;
+    }
+  } catch (e) {
+    varsInfo.innerHTML = '<div class="alert alert-danger py-2 small mb-0">Error al consultar variables.</div>';
+  }
+}
+
+function formatClp(n) {
+  return Math.round(n).toLocaleString('es-CL');
+}
+</script>
 {% endblock %}

@@ -9,7 +9,7 @@
 </div>
 <table class="table table-sm table-hover">
   <thead class="table-dark">
-    <tr><th>RUT</th><th>Razón Social</th><th>Giro</th><th></th></tr>
+    <tr><th>RUT</th><th>Razón Social</th><th>Giro</th><th>Ecox</th><th></th></tr>
   </thead>
   <tbody>
     {% for e in empresas %}
@@ -17,6 +17,16 @@
       <td>{{ e.rut }}</td>
       <td>{{ e.razon_social }}</td>
       <td class="text-muted small">{{ (e.giro or '')[:50] }}</td>
+      <td class="text-nowrap small">
+        {% if e.participacion_ecox is not none %}
+          <span class="badge {% if e.tipo_participacion == 'DIRECTA' %}bg-primary{% else %}bg-secondary{% endif %}">
+            {{ e.tipo_participacion or '' }}
+          </span>
+          {{ e.participacion_ecox|int if e.participacion_ecox == e.participacion_ecox|int else e.participacion_ecox }}%
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
       <td>
         <a href="{{ url_for('asientos.lista', eid=e.id) }}" class="btn btn-xs btn-sm btn-dark py-0">Abrir</a>
         <a href="{{ url_for('empresas.editar', eid=e.id) }}" class="btn btn-xs btn-sm btn-outline-secondary py-0">Editar</a>

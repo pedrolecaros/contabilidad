@@ -60,9 +60,21 @@
 
 <!-- Formulario principal -->
 <form method="post" action="{{ url_for('conciliacion.crear', eid=empresa.id) }}" id="formConc"
-      data-crear-url="{{ url_for('conciliacion.crear', eid=empresa.id) }}">
+      data-crear-url="{{ url_for('conciliacion.crear', eid=empresa.id) }}"
+      data-eid="{{ empresa.id }}"
+      data-buscar-liq-url="{{ url_for('remuneraciones.buscar_liquidacion', eid=empresa.id) }}">
   <input type="hidden" name="desde" value="{{ desde_mes }}">
   <input type="hidden" name="hasta" value="{{ hasta_mes }}">
+
+  <!-- Búsqueda global para ambas tablas -->
+  <div class="input-group input-group-sm mb-3" style="max-width:360px">
+    <span class="input-group-text"><i class="bi bi-search"></i></span>
+    <input type="text" id="buscarGlobalConc" class="form-control"
+           placeholder="Buscar en banco y SII… (monto, fecha, nombre)" autocomplete="off">
+    <button type="button" class="btn btn-outline-secondary" id="btnLimpiarGlobalConc">
+      <i class="bi bi-x"></i>
+    </button>
+  </div>
 
   <!-- Sugerencias por monto -->
   <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
@@ -78,34 +90,7 @@
   <!-- Barra de acción (visible al seleccionar) -->
   <div id="barraConc" class="alert mb-3 py-2 d-none">
     <div class="d-flex flex-wrap align-items-center gap-2">
-      <span id="labelConc"></span>
-
-      <!-- Líneas cuenta+monto: visible solo cuando no hay docs seleccionados -->
-      <div id="grupoCuenta" class="d-none w-100 mt-1">
-        <table class="table table-sm table-bordered mb-1 w-auto" style="min-width:520px">
-          <thead class="table-secondary">
-            <tr>
-              <th style="min-width:300px">Cuenta</th>
-              <th style="width:130px">Monto</th>
-              <th style="width:36px"></th>
-            </tr>
-          </thead>
-          <tbody id="tbodyLineas"></tbody>
-        </table>
-        <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
-          <button type="button" id="btnAddLinea" class="btn btn-outline-secondary btn-sm py-0 px-2">
-            <i class="bi bi-plus-lg me-1"></i>Línea
-          </button>
-          <span id="lblRestante" class="small fw-semibold"></span>
-          <input type="text" name="nota" id="inpNota" class="form-control form-control-sm"
-                 placeholder="Descripción (opcional)" style="width:180px">
-          <div class="input-group input-group-sm" style="width:220px">
-            <span class="input-group-text" title="Link respaldo"><i class="bi bi-link-45deg"></i></span>
-            <input type="url" name="respaldo_url" id="inpRespaldo"
-                   class="form-control form-control-sm" placeholder="Link respaldo…">
-          </div>
-        </div>
-      </div>
+      <span id="labelConc" class="flex-grow-1"></span>
 
       <!-- Select plantilla (hidden) para clonar en cada fila dinámica -->
       <select id="tplCuentaSel" class="d-none">
@@ -116,9 +101,46 @@
       </select>
       <input type="hidden" name="tipo" id="hidTipo" value="SII">
 
-      <button type="submit" class="btn btn-success btn-sm" id="btnConciliar">
-        <i class="bi bi-arrow-left-right me-1"></i><span id="lblBtn">Conciliar</span>
-      </button>
+      <div class="btn-group btn-group-sm" id="btnGroupOuter">
+        <button type="submit" name="accion_asiento" value="confirmar" class="btn btn-success" id="btnConciliar">
+          <i class="bi bi-arrow-left-right me-1"></i><span id="lblBtn">Conciliar</span>
+        </button>
+        <button type="submit" name="accion_asiento" value="borrador" class="btn btn-outline-secondary" title="Guardar comprobante como borrador">
+          <i class="bi bi-file-earmark me-1"></i>Borrador
+        </button>
+      </div>
+
+      <!-- Líneas cuenta+monto: visible solo cuando no hay docs seleccionados -->
+      <div id="grupoCuenta" class="d-none w-100 mt-1">
+        <div class="border rounded p-2 bg-white">
+          <table class="table table-sm table-bordered mb-2">
+            <thead class="table-secondary">
+              <tr>
+                <th style="width:28%">Cuenta contable</th>
+                <th style="width:110px">Monto ($)</th>
+                <th style="width:180px">Descripción</th>
+                <th style="width:160px" title="Link respaldo"><i class="bi bi-link-45deg me-1"></i>Respaldo</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody id="tbodyLineas"></tbody>
+          </table>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" id="btnAddLinea" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-plus-lg me-1"></i>Agregar línea
+            </button>
+            <span id="lblRestante" class="small fw-semibold"></span>
+            <div class="btn-group btn-group-sm ms-auto">
+              <button type="submit" name="accion_asiento" value="confirmar" class="btn btn-success">
+                <i class="bi bi-arrow-left-right me-1"></i>Contabilizar
+              </button>
+              <button type="submit" name="accion_asiento" value="borrador" class="btn btn-outline-secondary">
+                <i class="bi bi-file-earmark me-1"></i>Borrador
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -127,21 +149,9 @@
     <!-- Movimientos banco -->
     <div class="col-lg-6">
       <div class="card h-100">
-        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center gap-2">
-          <span class="text-nowrap"><i class="bi bi-bank me-2"></i>Banco sin conciliar</span>
-          <div class="input-group input-group-sm flex-grow-1" style="max-width:230px">
-            <span class="input-group-text" style="background:#444;border-color:#666">
-              <i class="bi bi-search text-white"></i>
-            </span>
-            <input type="text" id="buscarMovs" class="form-control form-control-sm buscar-conc"
-                   style="background:#333;border-color:#666;color:#fff"
-                   placeholder="monto, fecha, nombre…" autocomplete="off">
-            <button type="button" class="btn btn-sm limpiar-buscar" data-target="buscarMovs"
-                    style="background:#444;border-color:#666;color:#aaa" tabindex="-1">
-              <i class="bi bi-x"></i>
-            </button>
-          </div>
-          <span class="badge bg-secondary text-nowrap" id="cntMovs">{{ movs_sin|length }}</span>
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-bank me-2"></i>Banco sin conciliar</span>
+          <span class="badge bg-secondary" id="cntMovs">{{ movs_sin|length }}</span>
         </div>
         {% if movs_sin %}
         <div class="card-body p-0" style="max-height:420px;overflow-y:auto">
@@ -191,21 +201,9 @@
     <!-- Documentos SII -->
     <div class="col-lg-6">
       <div class="card h-100">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center gap-2">
-          <span class="text-nowrap"><i class="bi bi-file-earmark-text me-2"></i>Documentos SII sin conciliar</span>
-          <div class="input-group input-group-sm flex-grow-1" style="max-width:230px">
-            <span class="input-group-text" style="background:#1a58c0;border-color:#3a78e0">
-              <i class="bi bi-search text-white"></i>
-            </span>
-            <input type="text" id="buscarDocs" class="form-control form-control-sm buscar-conc"
-                   style="background:#1565c0;border-color:#3a78e0;color:#fff"
-                   placeholder="monto, fecha, nombre…" autocomplete="off">
-            <button type="button" class="btn btn-sm limpiar-buscar" data-target="buscarDocs"
-                    style="background:#1a58c0;border-color:#3a78e0;color:#aad4ff" tabindex="-1">
-              <i class="bi bi-x"></i>
-            </button>
-          </div>
-          <span class="badge bg-light text-dark text-nowrap" id="cntDocs">{{ docs_sin|length }}</span>
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-file-earmark-text me-2"></i>Documentos SII sin conciliar</span>
+          <span class="badge bg-light text-dark" id="cntDocs">{{ docs_sin|length }}</span>
         </div>
         {% if docs_sin %}
         <div class="card-body p-0" style="max-height:420px;overflow-y:auto">
@@ -288,12 +286,7 @@
   <tr>
     <td class="small text-nowrap">{{ c.fecha|fecha_cl }}</td>
     <td>
-      <span class="badge
-        {% if c.tipo=='SII' %}bg-primary
-        {% elif c.tipo in ('SUELDO','RETIRO') %}bg-warning text-dark
-        {% elif c.tipo in ('F29','IMPUESTO') %}bg-danger
-        {% elif c.tipo=='BANCO' %}bg-secondary
-        {% else %}bg-secondary{% endif %}"
+      <span class="badge {% if c.tipo=='SII' %}bg-primary{% else %}bg-dark{% endif %}"
         style="font-size:.7rem">{{ tipos_label.get(c.tipo, c.tipo) }}</span>
     </td>
 
@@ -355,8 +348,13 @@
       <br>
       <a href="{{ c.respaldo_url }}" target="_blank" class="badge bg-info text-dark text-decoration-none mt-1"
          title="Ver respaldo">
-        <i class="bi bi-link-45deg"></i>
+        <i class="bi bi-link-45deg me-1"></i>Respaldo
       </a>
+      {% elif c.tipo != 'SII' %}
+      <br>
+      <span class="badge bg-warning text-dark mt-1" title="Sin link de respaldo">
+        <i class="bi bi-exclamation-triangle me-1"></i>Sin respaldo
+      </span>
       {% endif %}
     </td>
 
@@ -394,12 +392,12 @@
         <table class="table table-sm mb-0" id="tablaSugerencias">
           <thead class="sticky-top">
             <tr>
-              <th class="table-secondary" style="width:32px">
+              <th class="table-secondary" style="width:32px" data-no-resize>
                 <input type="checkbox" id="chkTodosSug" class="form-check-input" title="Marcar todos">
               </th>
-              <th class="table-secondary" style="width:80px">Coincide</th>
+              <th class="table-secondary" style="width:80px" data-no-resize>Coincide</th>
               <th class="bg-dark text-white">Movimiento(s) banco</th>
-              <th class="table-secondary text-center" style="width:24px">↔</th>
+              <th class="table-secondary text-center" style="width:24px" data-no-resize>↔</th>
               <th class="bg-primary text-white">Documento(s) SII</th>
             </tr>
           </thead>
@@ -437,43 +435,34 @@ document.querySelectorAll('.chk-mov, .chk-doc').forEach(c =>
   c.addEventListener('change', actualizarBarra)
 );
 
-// Buscador en tiempo real
+// Buscador global (filtra ambas tablas simultáneamente)
 function normalizar(s) {
-  // elimina puntos de miles para que "1286550" y "1.286.550" sean equivalentes
   return s.replace(/\./g, '').toLowerCase();
 }
 
-function activarBuscador(inputId, tbodyId, cntId, chkTodosId) {
-  const inp = document.getElementById(inputId);
-  if (!inp) return;
-  inp.addEventListener('input', function() {
-    const q = normalizar(this.value.trim());
-    const rows = document.querySelectorAll('#' + tbodyId + ' tr');
+function aplicarBusquedaGlobal(q) {
+  q = normalizar(q.trim());
+  [['tbodyMovs','cntMovs','chkTodosMovs'], ['tbodyDocs','cntDocs','chkTodosDocs']].forEach(([tbodyId, cntId, chkId]) => {
     let n = 0;
-    rows.forEach(tr => {
-      const txt = normalizar(tr.dataset.search || '');
-      const ok = !q || txt.includes(q);
+    document.querySelectorAll('#' + tbodyId + ' tr').forEach(tr => {
+      const ok = !q || normalizar(tr.dataset.search || '').includes(q);
       tr.style.display = ok ? '' : 'none';
       if (ok) n++;
     });
     const cnt = document.getElementById(cntId);
     if (cnt) cnt.textContent = n;
-    const chkTodos = document.getElementById(chkTodosId);
-    if (chkTodos) chkTodos.checked = false;
-    actualizarBarra();
+    const chk = document.getElementById(chkId);
+    if (chk) chk.checked = false;
   });
+  actualizarBarra();
 }
-activarBuscador('buscarMovs', 'tbodyMovs', 'cntMovs', 'chkTodosMovs');
-activarBuscador('buscarDocs', 'tbodyDocs', 'cntDocs', 'chkTodosDocs');
 
-document.querySelectorAll('.limpiar-buscar').forEach(btn => {
-  btn.addEventListener('click', function() {
-    const inp = document.getElementById(this.dataset.target);
-    if (!inp) return;
-    inp.value = '';
-    inp.dispatchEvent(new Event('input'));
-    inp.focus();
-  });
+const inpGlobalConc = document.getElementById('buscarGlobalConc');
+inpGlobalConc.addEventListener('input', () => aplicarBusquedaGlobal(inpGlobalConc.value));
+document.getElementById('btnLimpiarGlobalConc').addEventListener('click', () => {
+  inpGlobalConc.value = '';
+  aplicarBusquedaGlobal('');
+  inpGlobalConc.focus();
 });
 
 // ── Sugerencias: grupos N:M ────────────────────────────────────────────────
@@ -610,9 +599,16 @@ function _recolectarGrupos() {
   });
 
   // 2. 1 mov ↔ N docs (suma de montoMatch de docs = monto del mov)
+  // Agrupar docs por tipo de libro para no mezclar COMPRAS / VENTAS / HONORARIOS
+  const docsByLibro = {};
+  docItems.forEach(d => {
+    (docsByLibro[d.libro] = docsByLibro[d.libro] || []).push(d);
+  });
   movItems.forEach(mov => {
-    const subs = _subconjuntos(docItems, mov.monto, 6, d => d.montoMatch);
-    subs.forEach(docs => addGrupo([mov], docs, 'MONTO', getColor(mov.monto)));
+    Object.values(docsByLibro).forEach(docsDelLibro => {
+      const subs = _subconjuntos(docsDelLibro, mov.monto, 6, d => d.montoMatch);
+      subs.forEach(docs => addGrupo([mov], docs, 'MONTO', getColor(mov.monto)));
+    });
   });
 
   // 3. N movs ↔ 1 doc (suma de movs = montoMatch del doc)
@@ -789,6 +785,8 @@ function actualizarBarra() {
 
   if (movsSel.length === 0 && docsSel.length === 0) {
     barra.classList.add('d-none');
+    document.getElementById('tbodyLineas').innerHTML = '';
+    _totalBanco = 0;
     return;
   }
 
@@ -800,10 +798,12 @@ function actualizarBarra() {
 
   const soloMovs = docsSel.length === 0;
 
+  const btnGroupOuter = document.getElementById('btnGroupOuter');
   if (soloMovs) {
     // Sin docs → mostrar tabla de líneas cuenta+monto
     grupoCuenta.classList.remove('d-none');
-    hidTipo.disabled = true;
+    btnGroupOuter.classList.add('d-none');
+    hidTipo.value = 'MANUAL';
     lblBtn.textContent = 'Contabilizar';
     barra.className = 'alert alert-secondary mb-3 py-2';
     const totalBanco = sumCargo + sumAbono;
@@ -816,7 +816,7 @@ function actualizarBarra() {
   } else {
     // Con docs → comparar montos
     grupoCuenta.classList.add('d-none');
-    hidTipo.disabled = false;
+    btnGroupOuter.classList.remove('d-none');
     hidTipo.value = 'SII';
     lblBtn.textContent = 'Conciliar seleccionados';
 
@@ -858,12 +858,24 @@ function _tsRender(d) {
   return `<div><span class="font-monospace text-muted me-1" style="font-size:.85em">${parts[0]}</span>${parts.slice(1).join(' – ')}</div>`;
 }
 
-function _initTsLinea(sel) {
-  new TomSelect(sel, {
+function _esCuentaSueldo(texto) {
+  const t = (texto || '').toLowerCase();
+  return t.includes('5.2.01') || t.includes('2.1.05') ||
+         t.includes('remunerac') || t.includes('sueldo') || t.includes('salario');
+}
+
+function _initTsLinea(sel, btnSueldo) {
+  const ts = new TomSelect(sel, {
     create: false, placeholder: '— buscar cuenta —',
     maxOptions: 300, searchField: ['text'],
     render: { option: _tsRender },
-    onChange: _actualizarRestante,
+    onChange: function(val) {
+      _actualizarRestante();
+      if (btnSueldo) {
+        const texto = ts.options[val]?.text || '';
+        btnSueldo.classList.toggle('d-none', !_esCuentaSueldo(texto));
+      }
+    },
   });
 }
 
@@ -871,13 +883,12 @@ function _addLinea(monto) {
   const tbody = document.getElementById('tbodyLineas');
   const tr = document.createElement('tr');
 
-  // Clone select options from template
   const tplSel = document.getElementById('tplCuentaSel');
   const sel = tplSel.cloneNode(true);
   sel.removeAttribute('id');
   sel.name = 'cuenta_ids';
+  sel.classList.remove('d-none');
   sel.classList.add('linea-cuenta');
-  sel.style.display = '';
 
   const inpMonto = document.createElement('input');
   inpMonto.type = 'number'; inpMonto.name = 'cuenta_montos';
@@ -885,6 +896,29 @@ function _addLinea(monto) {
   inpMonto.min = '1'; inpMonto.step = '1';
   inpMonto.value = monto > 0 ? Math.round(monto) : '';
   inpMonto.addEventListener('input', _actualizarRestante);
+
+  const inpNota = document.createElement('input');
+  inpNota.type = 'text'; inpNota.name = 'nota';
+  inpNota.className = 'form-control form-control-sm';
+  inpNota.placeholder = 'Descripción';
+
+  const btnBuscarSueldo = document.createElement('button');
+  btnBuscarSueldo.type = 'button';
+  btnBuscarSueldo.className = 'btn btn-sm btn-outline-info py-0 px-1 d-none';
+  btnBuscarSueldo.title = 'Buscar liquidación de sueldo por monto';
+  btnBuscarSueldo.innerHTML = '<i class="bi bi-person-check"></i>';
+  btnBuscarSueldo.addEventListener('click', () => _buscarSueldo(btnBuscarSueldo, inpNota, inpRespaldo));
+
+  const igNota = document.createElement('div');
+  igNota.className = 'input-group input-group-sm';
+  igNota.appendChild(inpNota);
+  igNota.appendChild(btnBuscarSueldo);
+
+  const inpRespaldo = document.createElement('input');
+  inpRespaldo.type = 'url'; inpRespaldo.name = 'respaldo_url';
+  inpRespaldo.className = 'form-control form-control-sm';
+  inpRespaldo.placeholder = 'https://…';
+  inpRespaldo.style.fontSize = '.8rem';
 
   const btnDel = document.createElement('button');
   btnDel.type = 'button';
@@ -896,10 +930,12 @@ function _addLinea(monto) {
 
   const td1 = document.createElement('td'); td1.appendChild(sel);
   const td2 = document.createElement('td'); td2.appendChild(inpMonto);
-  const td3 = document.createElement('td'); td3.appendChild(btnDel);
-  tr.append(td1, td2, td3);
+  const td3 = document.createElement('td'); td3.appendChild(igNota);
+  const td4 = document.createElement('td'); td4.appendChild(inpRespaldo);
+  const td5 = document.createElement('td'); td5.appendChild(btnDel);
+  tr.append(td1, td2, td3, td4, td5);
   tbody.appendChild(tr);
-  _initTsLinea(sel);
+  _initTsLinea(sel, btnBuscarSueldo);
 }
 
 function _actualizarRestante() {
@@ -924,6 +960,87 @@ document.getElementById('btnAddLinea').addEventListener('click', function() {
   const suma = montos.reduce((s, v) => s + v, 0);
   _addLinea(Math.max(0, _totalBanco - suma));
 });
+
+// Validar descripción obligatoria en banco-solo antes de enviar
+document.getElementById('formConc').addEventListener('submit', function(e) {
+  const soloMovs = document.querySelectorAll('.chk-doc:checked').length === 0 &&
+                   document.querySelectorAll('.chk-mov:checked').length > 0;
+  if (!soloMovs) return;
+  const notas = [...document.querySelectorAll('#tbodyLineas input[name="nota"]')];
+  const alguna = notas.some(i => i.value.trim() !== '');
+  if (!alguna) {
+    e.preventDefault();
+    notas[0] && notas[0].focus();
+    notas[0] && (notas[0].style.outline = '2px solid red');
+    alert('Agrega una descripción para identificar este gasto (ej: "Helado", "Taxi cliente")');
+  }
+});
+
+// ── Búsqueda de liquidaciones de sueldo por monto ───────────────────────────
+function _buscarSueldo(btn, inpNota, inpRespaldo) {
+  document.querySelectorAll('.dropdown-sueldo').forEach(d => d.remove());
+  const form = document.getElementById('formConc');
+  const baseUrl = form.dataset.buscarLiqUrl;
+  const monto = parseFloat(btn.closest('tr').querySelector('.linea-monto')?.value) || 0;
+  if (!monto) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+  fetch(`${baseUrl}?monto=${monto}`)
+    .then(r => r.json())
+    .then(liqs => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-person-check"></i>';
+      _mostrarDropdownSueldo(btn, liqs, inpNota, inpRespaldo);
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-person-check"></i>';
+    });
+}
+
+function _mostrarDropdownSueldo(btn, liqs, inpNota, inpRespaldo) {
+  const wrapper = btn.closest('.input-group');
+  wrapper.style.position = 'relative';
+
+  const ul = document.createElement('ul');
+  ul.className = 'dropdown-sueldo list-group position-absolute shadow border';
+  ul.style.cssText = 'z-index:9999;min-width:300px;top:100%;left:0;font-size:.82rem';
+
+  if (!liqs.length) {
+    const li = document.createElement('li');
+    li.className = 'list-group-item text-muted py-1';
+    li.textContent = 'Sin liquidaciones con ese monto exacto';
+    ul.appendChild(li);
+  } else {
+    liqs.forEach(liq => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item list-group-item-action py-1';
+      li.style.cursor = 'pointer';
+      li.innerHTML =
+        `<span class="fw-semibold">${liq.nombre}</span> ` +
+        `<span class="text-muted">${liq.periodo}</span> · ` +
+        `<span class="text-success">$${Math.round(liq.liquido).toLocaleString('es-CL')}</span>`;
+      li.addEventListener('click', () => {
+        inpNota.value = `Sueldo ${liq.nombre} ${liq.periodo}`;
+        inpRespaldo.value = window.location.origin + liq.url;
+        ul.remove();
+      });
+      ul.appendChild(li);
+    });
+  }
+
+  wrapper.appendChild(ul);
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!ul.contains(e.target) && e.target !== btn) {
+        ul.remove();
+        document.removeEventListener('click', handler);
+      }
+    });
+  }, 0);
+}
 
 // Limpiar líneas cuando se cierra el panel banco-solo
 const _origActBarra = actualizarBarra;

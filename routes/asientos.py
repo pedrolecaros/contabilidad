@@ -33,14 +33,13 @@ def _guardar_lineas(asiento_id, form):
 ORIGENES_CONC    = {'LIBRO_COMPRAS', 'LIBRO_VENTAS', 'HONORARIOS', 'BANCO'}
 ORIGENES_SII     = {'LIBRO_COMPRAS', 'LIBRO_VENTAS', 'HONORARIOS'}  # siempre requieren conciliación
 TIPOS_CONC_LABEL = {
-    'SII':      'Conciliado',
-    'SUELDO':   'Sueldo',
-    'RETIRO':   'Retiro socio',
-    'IMPUESTO': 'Impuesto',
-    'BANCO':    'Gasto bancario',
-    'PRESTAMO': 'Préstamo',
-    'INTERNO':  'Transf. interna',
-    'OTRO':     'Otro',
+    'SII':    'Conciliado SII',
+    'MANUAL': 'Manual',
+    # legacy
+    'SUELDO': 'Manual', 'RETIRO':   'Manual',
+    'IMPUESTO':'Manual', 'F29':     'Manual',
+    'BANCO':  'Manual', 'PRESTAMO': 'Manual',
+    'INTERNO':'Manual', 'OTRO':     'Manual',
 }
 
 
@@ -137,18 +136,24 @@ def nuevo(eid):
         ultimo = Asiento.query.filter_by(empresa_id=eid).order_by(Asiento.numero.desc()).first()
         numero = (ultimo.numero or 0) + 1 if ultimo else 1
 
+        accion = request.form.get('accion', 'confirmar')
+        respaldo_url = request.form.get('respaldo_url', '').strip() or None
         asiento = Asiento(empresa_id=eid, fecha=fecha, numero=numero,
-                          descripcion=descripcion, origen='MANUAL', estado='BORRADOR')
+                          descripcion=descripcion, respaldo_url=respaldo_url,
+                          origen='MANUAL', estado='BORRADOR')
         db.session.add(asiento)
         db.session.flush()
         _guardar_lineas(asiento.id, request.form)
-        if asiento.cuadrado:
+        if accion == 'borrador':
+            db.session.commit()
+            flash(f'Asiento N°{numero} guardado como borrador', 'info')
+        elif asiento.cuadrado:
             asiento.estado = 'CONFIRMADO'
             db.session.commit()
             flash(f'Asiento N°{numero} creado y confirmado', 'success')
         else:
             db.session.commit()
-            flash(f'Asiento N°{numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f}).', 'warning')
+            flash(f'Asiento N°{numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f})', 'warning')
         return redirect(url_for('asientos.detalle', eid=eid, aid=asiento.id))
 
     return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
@@ -171,17 +176,21 @@ def editar(eid, aid):
         except ValueError:
             flash('Fecha inválida', 'danger')
             return redirect(url_for('asientos.editar', eid=eid, aid=aid))
+        accion = request.form.get('accion', 'confirmar')
         asiento.descripcion = request.form['descripcion'].strip()
+        asiento.respaldo_url = request.form.get('respaldo_url', '').strip() or None
         asiento.estado = 'BORRADOR'
         _guardar_lineas(asiento.id, request.form)
-        # Confirmar automáticamente si cuadra
-        if asiento.cuadrado:
+        if accion == 'borrador':
+            db.session.commit()
+            flash(f'Asiento N°{asiento.numero} guardado como borrador', 'info')
+        elif asiento.cuadrado:
             asiento.estado = 'CONFIRMADO'
             db.session.commit()
-            flash(f'Asiento N°{asiento.numero} actualizado y confirmado.', 'success')
+            flash(f'Asiento N°{asiento.numero} actualizado y confirmado', 'success')
         else:
             db.session.commit()
-            flash(f'Asiento N°{asiento.numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f}).', 'warning')
+            flash(f'Asiento N°{asiento.numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f})', 'warning')
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
     lineas_json = json.dumps([{
@@ -202,13 +211,13 @@ def eliminar(eid, aid):
     if asiento.estado == 'CONFIRMADO':
         flash('No se puede eliminar un asiento confirmado. Primero anúlalo.', 'danger')
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
-    # Desligar documentos asociados
+    # Desligar documentos asociados y anular
     DocumentoSII.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
     MovimientoBanco.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
-    db.session.delete(asiento)
+    asiento.estado = 'ANULADO'
     db.session.commit()
-    flash('Asiento eliminado', 'success')
-    return redirect(url_for('asientos.lista', eid=eid))
+    flash('Asiento anulado', 'success')
+    return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>')

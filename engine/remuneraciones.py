@@ -33,54 +33,72 @@ AFP_COMISIONES = {
     'Uno':       0.0049,
 }
 
+TOPE_GRATIFICACION_DEFAULT = 209395.0
 
-def calcular(emp, utm: float, horas_extra: float = 0.0, otros: float = 0.0,
-             gratificacion: float = 0.0) -> dict:
+
+def calcular(emp, utm: float, uf: float = None,
+             tope_gratificacion: float = None,
+             tope_imponible: float = None,
+             horas_extra: float = 0.0,
+             otros: float = 0.0) -> dict:
     """
-    Calcula la liquidación de sueldo para un Empleado dado.
-    utm: valor de la UTM del mes.
-    Retorna dict con todos los campos necesarios para Liquidacion y la liquidación impresa.
+    Calcula liquidación. Si tipo_sueldo=='LIQUIDO', emp.sueldo_base es el objetivo líquido.
+    Gratificación se auto-calcula: min(25% bruto, tope_gratificacion).
+    Si isapre > 7% imponible, el exceso descuenta del líquido.
     """
-    # ── Haberes ───────────────────────────────────────────────────────────────
-    sueldo_base      = round(emp.sueldo_base)
-    bono_colacion    = round(emp.bono_colacion)
-    bono_movil       = round(emp.bono_movilizacion)
-    otros_haberes    = round(emp.otros_haberes + otros)
-    he_monto         = round(horas_extra)
-    grat             = round(gratificacion)
-    total_haberes    = sueldo_base + he_monto + bono_colacion + bono_movil + otros_haberes + grat
+    tope_grat = tope_gratificacion or TOPE_GRATIFICACION_DEFAULT
 
-    # Renta imponible: excluye colación y movilización (no son imponibles si son razonables)
-    renta_imponible  = sueldo_base + he_monto + otros_haberes + grat
-
-    # ── Descuentos previsionales ──────────────────────────────────────────────
-    tasa_afp_total   = TASA_AFP_OBLIGATORIO + AFP_COMISIONES.get(emp.afp, emp.tasa_afp_comision)
-    afp_desc         = round(renta_imponible * tasa_afp_total)
-
-    if emp.tipo_salud == 'FONASA':
-        salud_desc   = round(renta_imponible * TASA_SALUD_FONASA)
+    uf_val = uf or 0.0
+    monto_isapre_uf = getattr(emp, 'monto_isapre_uf', 0.0) or 0.0
+    if uf_val and monto_isapre_uf:
+        monto_isapre = round(monto_isapre_uf * uf_val)
     else:
-        salud_base   = round(renta_imponible * TASA_SALUD_FONASA)
-        salud_desc   = round(max(salud_base, emp.monto_isapre or 0))
+        monto_isapre = round(getattr(emp, 'monto_isapre', 0.0) or 0.0)
 
-    cesantia_trab    = round(renta_imponible * TASA_CESANTIA_TRAB)
+    tipo_sueldo = getattr(emp, 'tipo_sueldo', 'BRUTO') or 'BRUTO'
+    if tipo_sueldo == 'LIQUIDO':
+        sueldo_bruto = _encontrar_bruto(emp, utm, tope_grat, monto_isapre, horas_extra, otros)
+    else:
+        sueldo_bruto = round(emp.sueldo_base)
 
-    # ── Base imponible renta ──────────────────────────────────────────────────
-    base_renta       = renta_imponible - afp_desc - salud_desc - cesantia_trab
-    impuesto         = _calcular_impuesto(base_renta, utm)
+    grat = round(min(sueldo_bruto * 0.25, tope_grat))
+    return _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra, otros)
 
-    # ── Sueldo líquido ────────────────────────────────────────────────────────
-    total_descuentos = afp_desc + salud_desc + cesantia_trab + impuesto
+
+def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra, otros):
+    bono_colacion   = round(getattr(emp, 'bono_colacion', 0) or 0)
+    bono_movil      = round(getattr(emp, 'bono_movilizacion', 0) or 0)
+    otros_haberes   = round((getattr(emp, 'otros_haberes', 0) or 0) + otros)
+    he_monto        = round(horas_extra)
+
+    total_haberes   = sueldo_bruto + grat + he_monto + bono_colacion + bono_movil + otros_haberes
+    renta_imponible = sueldo_bruto + grat + he_monto + otros_haberes
+
+    tasa_afp_total  = TASA_AFP_OBLIGATORIO + AFP_COMISIONES.get(emp.afp, getattr(emp, 'tasa_afp_comision', 0.0127))
+    afp_desc        = round(renta_imponible * tasa_afp_total)
+    salud_legal     = round(renta_imponible * TASA_SALUD_FONASA)
+
+    if getattr(emp, 'tipo_salud', 'FONASA') == 'FONASA':
+        salud_desc    = salud_legal
+        extra_isapre  = 0
+    else:
+        salud_desc    = salud_legal   # 7% siempre se descuenta previscionalmente
+        extra_isapre  = max(0, monto_isapre - salud_legal)  # exceso del plan sale del líquido
+
+    cesantia_trab   = round(renta_imponible * TASA_CESANTIA_TRAB)
+    base_renta      = renta_imponible - afp_desc - salud_desc - cesantia_trab
+    impuesto        = _calcular_impuesto(base_renta, utm)
+
+    total_descuentos = afp_desc + salud_desc + cesantia_trab + impuesto + extra_isapre
     liquido          = total_haberes - total_descuentos
 
-    # ── Aportes empleador ─────────────────────────────────────────────────────
-    sis_emp          = round(renta_imponible * TASA_SIS)
-    cesantia_emp     = round(renta_imponible * TASA_CESANTIA_EMP)
-    mutual_emp       = round(renta_imponible * (emp.tasa_mutual or 0))
-    costo_empresa    = total_haberes + sis_emp + cesantia_emp + mutual_emp
+    sis_emp         = round(renta_imponible * TASA_SIS)
+    cesantia_emp    = round(renta_imponible * TASA_CESANTIA_EMP)
+    mutual_emp      = round(renta_imponible * (getattr(emp, 'tasa_mutual', 0) or 0))
+    costo_empresa   = total_haberes + sis_emp + cesantia_emp + mutual_emp
 
     return {
-        'sueldo_base':       sueldo_base,
+        'sueldo_base':       sueldo_bruto,
         'horas_extra':       he_monto,
         'bono_colacion':     bono_colacion,
         'bono_movilizacion': bono_movil,
@@ -99,12 +117,47 @@ def calcular(emp, utm: float, horas_extra: float = 0.0, otros: float = 0.0,
         'mutual':            mutual_emp,
         'costo_empresa':     costo_empresa,
         'utm':               utm,
-        # Detalle para previred
-        'afp_nombre':        emp.afp,
+        'extra_isapre':      extra_isapre,
+        'afp_nombre':        getattr(emp, 'afp', ''),
         'tasa_afp':          round(tasa_afp_total * 100, 4),
-        'tipo_salud':        emp.tipo_salud,
-        'isapre':            emp.isapre or '',
+        'tipo_salud':        getattr(emp, 'tipo_salud', 'FONASA'),
+        'isapre':            getattr(emp, 'isapre', '') or '',
     }
+
+
+def _encontrar_bruto(emp, utm, tope_grat, monto_isapre, horas_extra, otros):
+    """Binary search: find gross salary whose net == emp.sueldo_base."""
+    from types import SimpleNamespace
+    objetivo = emp.sueldo_base
+    emp_tmp = SimpleNamespace(
+        afp=getattr(emp, 'afp', 'Habitat'),
+        tasa_afp_comision=getattr(emp, 'tasa_afp_comision', 0.0127),
+        tipo_salud=getattr(emp, 'tipo_salud', 'FONASA'),
+        isapre=getattr(emp, 'isapre', None),
+        bono_colacion=getattr(emp, 'bono_colacion', 0.0),
+        bono_movilizacion=getattr(emp, 'bono_movilizacion', 0.0),
+        otros_haberes=getattr(emp, 'otros_haberes', 0.0),
+        tasa_mutual=getattr(emp, 'tasa_mutual', 0.0093),
+        tipo_sueldo='BRUTO',
+        monto_isapre=0,
+        monto_isapre_uf=0,
+        sueldo_base=0,
+    )
+    lo, hi = max(objetivo * 0.7, 100), objetivo * 2.5
+    bruto = (lo + hi) / 2
+    for _ in range(80):
+        bruto = (lo + hi) / 2
+        grat = round(min(bruto * 0.25, tope_grat))
+        emp_tmp.sueldo_base = round(bruto)
+        res = _calcular_con_bruto(emp_tmp, utm, round(bruto), grat, monto_isapre, horas_extra, otros)
+        diff = res['liquido'] - objetivo
+        if diff < -0.5:
+            lo = bruto
+        else:
+            hi = bruto
+        if abs(diff) < 1:
+            break
+    return round(bruto)
 
 
 def _calcular_impuesto(base_pesos: float, utm: float) -> int:

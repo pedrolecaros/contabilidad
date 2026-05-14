@@ -16,6 +16,57 @@
   </div>
 </div>
 
+<!-- KPI: totales por cobrar / por pagar -->
+<div class="row g-2 mb-3">
+  {% set pend_prov = pend_por_libro.get('COMPRAS', 0) %}
+  {% set pend_cli  = pend_por_libro.get('VENTAS', 0) %}
+  {% set pend_hon  = pend_por_libro.get('HONORARIOS', 0) %}
+
+  <div class="col-12 col-md-4">
+    <div class="card border-0 bg-light px-3 py-2">
+      <div class="d-flex justify-content-between align-items-baseline">
+        <span class="small text-muted"><i class="bi bi-arrow-up-circle me-1 text-danger"></i>Por pagar (Proveedores)</span>
+        {% if saldo_cta_prov is not none %}
+          <span class="text-muted" style="font-size:.72rem" title="{{ nom_prov }}">cta {{ saldo_cta_prov|clp }}</span>
+        {% endif %}
+      </div>
+      <div class="fw-bold fs-5 {% if pend_prov > 0 %}text-danger{% else %}text-success{% endif %}">
+        {{ pend_prov|clp }}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-4">
+    <div class="card border-0 bg-light px-3 py-2">
+      <div class="d-flex justify-content-between align-items-baseline">
+        <span class="small text-muted"><i class="bi bi-arrow-down-circle me-1 text-success"></i>Por cobrar (Clientes)</span>
+        {% if saldo_cta_cli is not none %}
+          <span class="text-muted" style="font-size:.72rem" title="{{ nom_cli }}">cta {{ saldo_cta_cli|clp }}</span>
+        {% endif %}
+      </div>
+      <div class="fw-bold fs-5 {% if pend_cli > 0 %}text-success{% else %}text-muted{% endif %}">
+        {{ pend_cli|clp }}
+      </div>
+    </div>
+  </div>
+
+  {% if pend_hon or saldo_cta_hon is not none %}
+  <div class="col-12 col-md-4">
+    <div class="card border-0 bg-light px-3 py-2">
+      <div class="d-flex justify-content-between align-items-baseline">
+        <span class="small text-muted"><i class="bi bi-arrow-up-circle me-1 text-warning"></i>Por pagar (Honorarios)</span>
+        {% if saldo_cta_hon is not none %}
+          <span class="text-muted" style="font-size:.72rem" title="{{ nom_hon }}">cta {{ saldo_cta_hon|clp }}</span>
+        {% endif %}
+      </div>
+      <div class="fw-bold fs-5 {% if pend_hon > 0 %}text-warning{% else %}text-muted{% endif %}">
+        {{ pend_hon|clp }}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
 <!-- Filtros -->
 <form class="row g-2 mb-3" method="get">
   <div class="col-auto">
@@ -51,14 +102,15 @@
         <th>RUT</th>
         <th>Razón Social</th>
         <th>Tipo</th>
+        <th class="text-end" data-sort="clp">Saldo pendiente</th>
         <th>Email</th>
-        <th>Teléfono</th>
         <th>Estado</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {% for cp in contrapartes %}
+      {% set saldo = saldos.get(cp.rut) %}
       <tr>
         <td class="font-monospace">{{ cp.rut }}</td>
         <td>
@@ -77,8 +129,15 @@
             <span class="badge bg-secondary">Ambos</span>
           {% endif %}
         </td>
+        <td class="text-end">
+          {% if saldo and saldo.total > 0 %}
+            <span class="fw-semibold text-warning">{{ saldo.total|clp }}</span>
+            <span class="text-muted ms-1" style="font-size:.75rem">({{ saldo.ndocs }})</span>
+          {% else %}
+            <span class="text-success"><i class="bi bi-check-circle"></i></span>
+          {% endif %}
+        </td>
         <td>{{ cp.email or '—' }}</td>
-        <td>{{ cp.telefono or '—' }}</td>
         <td>
           {% if cp.activo %}
             <span class="badge bg-success-subtle text-success">Activo</span>
@@ -113,8 +172,9 @@
 <div class="text-muted text-center py-5">
   <i class="bi bi-people fs-2 d-block mb-2"></i>
   No hay contrapartes registradas.
-  <a href="{{ url_for('contrapartes.importar_desde_docs', eid=empresa.id) }}"
-     class="ms-2">Importar desde SII</a>
+  <form method="post" action="{{ url_for('contrapartes.importar_desde_docs', eid=empresa.id) }}" class="d-inline">
+    <button class="btn btn-link p-0 ms-2">Importar desde SII</button>
+  </form>
 </div>
 {% endif %}
 {% endblock %}

@@ -5,49 +5,43 @@
   <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Documentos Pendientes de Contabilizar</h5>
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <!-- Filtro período -->
-    <form method="get" class="d-flex gap-1 align-items-center flex-wrap">
+    <form method="get" id="formPeriodo" class="d-flex gap-1 align-items-center flex-wrap">
       <label class="small text-muted mb-0">Desde:</label>
       <input type="month" name="desde" value="{{ desde_mes }}"
-             class="form-control form-control-sm" style="width:140px">
+             class="form-control form-control-sm filtro-auto" style="width:140px">
       <label class="small text-muted mb-0">Hasta:</label>
       <input type="month" name="hasta" value="{{ hasta_mes }}"
-             class="form-control form-control-sm" style="width:140px">
-      <button class="btn btn-sm btn-outline-secondary py-0 px-2">
-        <i class="bi bi-funnel"></i>
-      </button>
+             class="form-control form-control-sm filtro-auto" style="width:140px">
       <a href="{{ url_for('pendientes.index', eid=empresa.id, desde='', hasta='') }}"
          class="btn btn-sm btn-outline-secondary py-0" title="Ver todos">
         <i class="bi bi-x"></i>
       </a>
     </form>
   </div>
-  {% if docs %}
-  <div class="d-flex gap-2">
-    <form method="post" action="{{ url_for('pendientes.contabilizar_lote', eid=empresa.id) }}">
-      <input type="hidden" name="confirmar" value="1">
-      <input type="hidden" name="desde" value="{{ desde_mes }}">
-      <input type="hidden" name="hasta" value="{{ hasta_mes }}">
-      <button class="btn btn-success btn-sm"
-              onclick="return confirm('¿Generar y confirmar los {{ docs|length }} documentos SII del período?')">
-        <i class="bi bi-lightning-charge me-1"></i>Generar y Confirmar Todo
-      </button>
-    </form>
-    <form method="post" action="{{ url_for('pendientes.contabilizar_lote', eid=empresa.id) }}">
-      <input type="hidden" name="desde" value="{{ desde_mes }}">
-      <input type="hidden" name="hasta" value="{{ hasta_mes }}">
-      <button class="btn btn-outline-secondary btn-sm"
-              onclick="return confirm('¿Contabilizar los {{ docs|length }} documentos SII del período como borrador?')"
-              title="Generar como borrador sin confirmar">
-        <i class="bi bi-journal-plus me-1"></i>Todo Borrador
-      </button>
-    </form>
-  </div>
-  {% endif %}
 </div>
 
 <!-- Documentos SII -->
 {% if docs %}
-<h6 class="text-muted mt-2">Documentos SII ({{ docs|length }})</h6>
+<div class="d-flex align-items-center gap-2 mt-2 mb-1 flex-wrap">
+  <h6 class="text-muted mb-0">Documentos SII ({{ docs|length }})</h6>
+  <form method="post" action="{{ url_for('pendientes.contabilizar_lote', eid=empresa.id) }}">
+    <input type="hidden" name="confirmar" value="1">
+    <input type="hidden" name="desde" value="{{ desde_mes }}">
+    <input type="hidden" name="hasta" value="{{ hasta_mes }}">
+    <button class="btn btn-success btn-sm"
+            onclick="return confirm('¿Generar y confirmar los {{ docs|length }} documentos SII?')">
+      <i class="bi bi-lightning-charge me-1"></i>Generar y confirmar todo SII
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('pendientes.contabilizar_lote', eid=empresa.id) }}">
+    <input type="hidden" name="desde" value="{{ desde_mes }}">
+    <input type="hidden" name="hasta" value="{{ hasta_mes }}">
+    <button class="btn btn-outline-secondary btn-sm"
+            onclick="return confirm('¿Generar los {{ docs|length }} documentos SII como borrador?')">
+      <i class="bi bi-journal-plus me-1"></i>Todo borrador
+    </button>
+  </form>
+</div>
 <div class="table-responsive mb-4">
   <table class="table table-sm table-hover">
     <thead class="table-dark">

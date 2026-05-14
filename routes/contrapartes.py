@@ -1,7 +1,7 @@
 import calendar
 from datetime import date
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from models import db, Empresa, Contraparte, DocumentoSII
+from models import db, Empresa, Contraparte, DocumentoSII, Conciliacion, MovimientoBanco, Cuenta
 from sqlalchemy import func
 
 bp = Blueprint('contrapartes', __name__)
@@ -37,9 +37,51 @@ def index(eid):
         )
     contrapartes = q.order_by(Contraparte.razon_social).all()
 
+    # Saldos pendientes por RUT (docs sin conciliar)
+    rows_saldo = (db.session.query(
+                      DocumentoSII.rut_contraparte,
+                      func.count(DocumentoSII.id).label('ndocs'),
+                      func.sum(DocumentoSII.total).label('total'),
+                  )
+                  .filter(
+                      DocumentoSII.empresa_id == eid,
+                      DocumentoSII.conciliacion_id == None,
+                  )
+                  .group_by(DocumentoSII.rut_contraparte)
+                  .all())
+    saldos = {r.rut_contraparte: {'ndocs': r.ndocs, 'total': r.total or 0}
+              for r in rows_saldo}
+
+    # Totales globales por tipo_libro (para la barra KPI)
+    tot_rows = (db.session.query(
+                    DocumentoSII.tipo_libro,
+                    func.sum(DocumentoSII.total).label('total'),
+                )
+                .filter(
+                    DocumentoSII.empresa_id == eid,
+                    DocumentoSII.conciliacion_id == None,
+                )
+                .group_by(DocumentoSII.tipo_libro)
+                .all())
+    pend_por_libro = {r.tipo_libro: (r.total or 0) for r in tot_rows}
+
+    # Saldos contables de las cuentas de control AP/AR
+    def _saldo_cta(codigo):
+        c = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo).first()
+        return (c.nombre, round(c.saldo())) if c else (None, None)
+
+    nom_prov, saldo_cta_prov = _saldo_cta('2.1.01')
+    nom_cli,  saldo_cta_cli  = _saldo_cta('1.1.03')
+    nom_hon,  saldo_cta_hon  = _saldo_cta('2.1.04')
+
     return render_template('contrapartes/index.html',
                            empresa=empresa, contrapartes=contrapartes,
-                           tipo_filtro=tipo_filtro, buscar=buscar)
+                           tipo_filtro=tipo_filtro, buscar=buscar,
+                           saldos=saldos,
+                           pend_por_libro=pend_por_libro,
+                           saldo_cta_prov=saldo_cta_prov, nom_prov=nom_prov,
+                           saldo_cta_cli=saldo_cta_cli,   nom_cli=nom_cli,
+                           saldo_cta_hon=saldo_cta_hon,   nom_hon=nom_hon)
 
 
 @bp.route('/empresa/<int:eid>/contrapartes/nueva', methods=['GET', 'POST'])
@@ -118,27 +160,60 @@ def detalle(eid, cid):
         return redirect(url_for('contrapartes.index', eid=eid))
 
     hoy = date.today()
-    mes = request.args.get('mes', hoy.strftime('%Y-%m'))
+    desde_mes = request.args.get('desde', f'{hoy.year}-01')
+    hasta_mes  = request.args.get('hasta', f'{hoy.year}-{hoy.month:02d}')
     try:
-        desde, hasta = _periodo(mes)
+        desde, _ = _periodo(desde_mes)
+        _, hasta  = _periodo(hasta_mes)
     except ValueError:
-        mes = hoy.strftime('%Y-%m')
-        desde, hasta = _periodo(mes)
+        desde_mes, hasta_mes = f'{hoy.year}-01', f'{hoy.year}-{hoy.month:02d}'
+        desde, _ = _periodo(desde_mes)
+        _, hasta  = _periodo(hasta_mes)
 
     libros = TIPO_LIBRO_MAP.get(cp.tipo, ['COMPRAS', 'VENTAS', 'HONORARIOS'])
-    docs = (DocumentoSII.query
-            .filter_by(empresa_id=eid, rut_contraparte=cp.rut)
-            .filter(DocumentoSII.tipo_libro.in_(libros))
-            .filter(DocumentoSII.fecha >= desde, DocumentoSII.fecha <= hasta)
-            .order_by(DocumentoSII.fecha)
-            .all())
+
+    # Todos los docs históricos de esta contraparte
+    todos_docs = (DocumentoSII.query
+                  .filter_by(empresa_id=eid, rut_contraparte=cp.rut)
+                  .filter(DocumentoSII.tipo_libro.in_(libros))
+                  .order_by(DocumentoSII.fecha.desc())
+                  .all())
+
+    # Docs del período seleccionado
+    docs = [d for d in todos_docs if desde <= (d.fecha or date.min) <= hasta]
 
     # Totales del período
-    total_neto = sum(d.monto_neto or 0 for d in docs)
-    total_iva  = sum(d.iva or 0 for d in docs)
+    total_neto  = sum(d.monto_neto or 0 for d in docs)
+    total_iva   = sum(d.iva or 0 for d in docs)
     total_bruto = sum(d.total or 0 for d in docs)
 
-    # Historial anual: sumas por mes
+    # Resumen histórico
+    total_historico = sum(d.total or 0 for d in todos_docs)
+    ndocs_historico = len(todos_docs)
+
+    # Saldo pendiente: docs sin conciliar (no tienen movimiento de pago asociado)
+    docs_pendientes = [d for d in todos_docs if not d.conciliacion_id]
+    saldo_pendiente = sum(d.total or 0 for d in docs_pendientes)
+
+    # Conciliaciones: directas (contraparte_id) + indirectas (vía documentos)
+    concs_directas = (Conciliacion.query
+                      .filter_by(empresa_id=eid, contraparte_id=cp.id)
+                      .all())
+    conc_ids_directas = {c.id for c in concs_directas}
+    conc_ids_via_docs = {d.conciliacion_id for d in todos_docs if d.conciliacion_id}
+    ids_extra = conc_ids_via_docs - conc_ids_directas
+    concs_extra = (Conciliacion.query.filter(Conciliacion.id.in_(ids_extra)).all()
+                   if ids_extra else [])
+    conciliaciones = sorted(concs_directas + concs_extra,
+                            key=lambda c: c.fecha, reverse=True)
+
+    # Total pagado / cobrado (suma de movimientos de banco en esas conciliaciones)
+    total_movs = 0
+    for c in conciliaciones:
+        for m in c.movimientos:
+            total_movs += (m.cargo or 0) + (m.abono or 0)
+
+    # Historial mensual (para los chips de navegación)
     rows_hist = (db.session.query(
                      func.strftime('%Y-%m', DocumentoSII.fecha).label('mes'),
                      func.sum(DocumentoSII.total).label('total'),
@@ -151,9 +226,17 @@ def detalle(eid, cid):
 
     return render_template('contrapartes/detalle.html',
                            empresa=empresa, cp=cp,
-                           docs=docs, mes=mes, desde=desde, hasta=hasta,
+                           docs=docs, desde_mes=desde_mes, hasta_mes=hasta_mes,
+                           desde=desde, hasta=hasta,
                            total_neto=total_neto, total_iva=total_iva,
-                           total_bruto=total_bruto, rows_hist=rows_hist)
+                           total_bruto=total_bruto,
+                           total_historico=total_historico,
+                           ndocs_historico=ndocs_historico,
+                           docs_pendientes=docs_pendientes,
+                           saldo_pendiente=saldo_pendiente,
+                           conciliaciones=conciliaciones,
+                           total_movs=total_movs,
+                           rows_hist=rows_hist)
 
 
 @bp.route('/empresa/<int:eid>/contrapartes/importar', methods=['POST'])

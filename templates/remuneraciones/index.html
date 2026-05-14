@@ -3,13 +3,21 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="mb-0"><i class="bi bi-person-vcard me-2"></i>Remuneraciones</h4>
-  <a href="{{ url_for('remuneraciones.nuevo', eid=empresa.id) }}" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-circle me-1"></i>Nuevo Empleado
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('remuneraciones.variables', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-calculator me-1"></i>Variables
+    </a>
+    <a href="{{ url_for('remuneraciones.libro', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-journal-text me-1"></i>Libro
+    </a>
+    <a href="{{ url_for('remuneraciones.nuevo', eid=empresa.id) }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-circle me-1"></i>Nuevo Empleado
+    </a>
+  </div>
 </div>
 
 {% if empleados %}
-<div class="card shadow-sm">
+<div class="card shadow-sm mb-4">
   <div class="table-responsive">
     <table class="table table-hover table-sm mb-0">
       <thead class="table-dark">
@@ -19,9 +27,9 @@
           <th>Cargo</th>
           <th>Contrato</th>
           <th class="text-end">Sueldo Base</th>
+          <th>Tipo</th>
           <th>AFP</th>
           <th>Salud</th>
-          <th>Estado</th>
           <th></th>
         </tr>
       </thead>
@@ -33,15 +41,13 @@
           <td>{{ e.cargo or '—' }}</td>
           <td><span class="badge bg-secondary">{{ e.tipo_contrato }}</span></td>
           <td class="text-end">$ {{ e.sueldo_base | clp }}</td>
+          <td>
+            <span class="badge {% if e.tipo_sueldo == 'LIQUIDO' %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}">
+              {{ e.tipo_sueldo or 'BRUTO' }}
+            </span>
+          </td>
           <td>{{ e.afp }}</td>
           <td>{{ e.tipo_salud }}{% if e.isapre %} – {{ e.isapre }}{% endif %}</td>
-          <td>
-            {% if e.activo %}
-              <span class="badge bg-success">Activo</span>
-            {% else %}
-              <span class="badge bg-secondary">Inactivo</span>
-            {% endif %}
-          </td>
           <td class="text-end text-nowrap">
             <a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=e.id) }}"
                class="btn btn-outline-secondary btn-sm" title="Historial"><i class="bi bi-clock-history"></i></a>
@@ -51,8 +57,8 @@
                class="btn btn-outline-secondary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
             <form method="post" action="{{ url_for('remuneraciones.eliminar', eid=empresa.id, emp_id=e.id) }}"
                   style="display:inline"
-                  onsubmit="return confirm('¿Eliminar empleado {{ e.nombre }} y todas sus liquidaciones?')">
-              <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+                  onsubmit="return confirm('¿Marcar como inactivo a {{ e.nombre }}? Sus liquidaciones se conservarán.')">
+              <button class="btn btn-outline-warning btn-sm" title="Desactivar"><i class="bi bi-person-dash"></i></button>
             </form>
           </td>
         </tr>
@@ -62,6 +68,52 @@
   </div>
 </div>
 {% else %}
-<div class="alert alert-info">No hay empleados registrados. <a href="{{ url_for('remuneraciones.nuevo', eid=empresa.id) }}">Agregar primero.</a></div>
+<div class="alert alert-info">No hay empleados activos. <a href="{{ url_for('remuneraciones.nuevo', eid=empresa.id) }}">Agregar primero.</a></div>
 {% endif %}
+
+{% if empleados_inactivos %}
+<div class="mb-2">
+  <button class="btn btn-outline-secondary btn-sm" type="button"
+          data-bs-toggle="collapse" data-bs-target="#seccionInactivos" aria-expanded="false">
+    <i class="bi bi-chevron-down me-1"></i>Empleados Inactivos ({{ empleados_inactivos | length }})
+  </button>
+</div>
+<div class="collapse" id="seccionInactivos">
+  <div class="card shadow-sm border-warning">
+    <div class="card-header bg-warning bg-opacity-10 text-warning-emphasis fw-semibold py-2">
+      <i class="bi bi-person-slash me-1"></i>Empleados Inactivos
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-secondary">
+          <tr>
+            <th>RUT</th>
+            <th>Nombre</th>
+            <th>Cargo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in empleados_inactivos %}
+          <tr class="text-muted">
+            <td>{{ e.rut }}</td>
+            <td>{{ e.nombre }}</td>
+            <td>{{ e.cargo or '—' }}</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('remuneraciones.reactivar', eid=empresa.id, emp_id=e.id) }}"
+                    style="display:inline">
+                <button class="btn btn-outline-success btn-sm" title="Reactivar">
+                  <i class="bi bi-person-check me-1"></i>Reactivar
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}

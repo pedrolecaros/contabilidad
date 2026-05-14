@@ -1,5 +1,7 @@
+import concurrent.futures
 import hashlib
 import io
+import time
 import threading
 import uuid
 from datetime import datetime
@@ -474,3 +476,170 @@ def sii_status(eid, job_id):
 @bp.route('/empresa/<int:eid>/importar/sii-auto', methods=['POST'])
 def sii_auto(eid):
     return sii_start(eid)
+
+
+# ── Descarga masiva desde consolidado ────────────────────────────────────────
+
+def _run_sii_bulk_job(app, job_id, empresas_data, periodo):
+    """Descarga compras+ventas+honorarios de todas las empresas, una a una."""
+    from werkzeug.datastructures import FileStorage
+    from importers.sii_scraper import descargar_lote
+
+    n = len(empresas_data)
+
+    def set_state(i, msg, pct=None):
+        _job_set(job_id,
+                 pct=pct if pct is not None else int(i / n * 100),
+                 empresa_idx=i + 1,
+                 empresa_nombre=empresas_data[i][1],
+                 message=msg)
+
+    all_results = {}
+
+    for i, (eid, nombre, rut, clave_sii) in enumerate(empresas_data):
+        set_state(i, f'{nombre} — conectando…')
+        tipos = ['compras', 'ventas', 'honorarios']
+
+        try:
+            with app.app_context():
+                tipos_a_bajar, ya_importados = [], {}
+                for tipo in tipos:
+                    ya = (ArchivoImportado.query
+                          .filter_by(empresa_id=eid, tipo=tipo.upper())
+                          .filter(ArchivoImportado.periodo == periodo).first())
+                    if ya:
+                        ya_importados[tipo] = ya
+                    else:
+                        tipos_a_bajar.append(tipo)
+
+            tipo_results = {
+                t: {'ok': True, 'importados': 0,
+                    'aviso': f'Ya importado ({ya.fecha_importacion.strftime("%d/%m/%Y")})'}
+                for t, ya in ya_importados.items()
+            }
+
+            if tipos_a_bajar:
+                def _cb(pct_inner, msg, _i=i, _n=n, _nom=nombre):
+                    outer = int(_i / _n * 100 + pct_inner / _n)
+                    _job_set(job_id, pct=outer, empresa_idx=_i + 1,
+                             empresa_nombre=_nom, message=f'{_nom} — {msg}')
+
+                ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                fut = ex.submit(descargar_lote, rut, clave_sii, periodo,
+                                tipos_a_bajar, _cb)
+                try:
+                    contenidos = fut.result(timeout=240)  # 4 min máx por empresa
+                except concurrent.futures.TimeoutError:
+                    raise Exception('Tiempo de espera agotado (4 min) — sin respuesta del SII')
+                finally:
+                    ex.shutdown(wait=False)
+
+                with app.app_context():
+                    for tipo in tipos_a_bajar:
+                        contenido = contenidos.get(tipo)
+                        if isinstance(contenido, Exception):
+                            tipo_results[tipo] = {'ok': False, 'error': str(contenido)}
+                            continue
+
+                        sha = hashlib.sha256(contenido).hexdigest()
+                        if tipo == 'honorarios':
+                            ext = 'xls'
+                        elif contenido[:3] == b'PK\x03':
+                            ext = 'xlsx'
+                        else:
+                            ext = 'csv'
+                        nombre_arch = f'sii_{tipo}_{periodo}.{ext}'
+
+                        existente = ArchivoImportado.query.filter_by(
+                            empresa_id=eid, sha256=sha, tipo=tipo.upper()).first()
+                        if existente:
+                            tipo_results[tipo] = {
+                                'ok': True, 'importados': 0,
+                                'aviso': f'Ya importado ({existente.fecha_importacion.strftime("%d/%m/%Y")})',
+                            }
+                            continue
+
+                        try:
+                            fs = FileStorage(stream=io.BytesIO(contenido),
+                                             filename=nombre_arch,
+                                             content_type='application/octet-stream')
+                            if tipo == 'compras':
+                                resultado = libro_compras.importar(fs, eid)
+                            elif tipo == 'ventas':
+                                resultado = libro_ventas.importar(fs, eid)
+                            else:
+                                resultado = libro_honorarios.importar(fs, eid)
+
+                            db.session.add(ArchivoImportado(
+                                empresa_id=eid, tipo=tipo.upper(),
+                                nombre_archivo=nombre_arch, sha256=sha,
+                                ndocs=resultado.get('importados', 0),
+                                periodo=periodo,
+                            ))
+                            db.session.commit()
+                            tipo_results[tipo] = {
+                                'ok': True,
+                                'importados': resultado.get('importados', 0),
+                                'errores': resultado.get('errores', []),
+                            }
+                        except Exception as e:
+                            tipo_results[tipo] = {'ok': False, 'error': str(e)}
+
+            all_results[eid] = {'nombre': nombre, 'tipos': tipo_results}
+
+        except Exception as e:
+            all_results[eid] = {'nombre': nombre, 'error': str(e)}
+
+        if i < n - 1:
+            set_state(i, f'{nombre} lista. Pausa breve antes de la siguiente…',
+                      pct=int((i + 1) / n * 100))
+            time.sleep(4)
+
+    _job_set(job_id, status='done', pct=100,
+             message='Descarga completada', results=all_results)
+
+
+@bp.route('/consolidado/sii-bajar-todos', methods=['POST'])
+def sii_bulk_start():
+    periodo = request.form.get('periodo', '')
+    if not periodo:
+        return jsonify({'ok': False, 'error': 'Falta el período'})
+
+    empresas = (Empresa.query
+                .filter(Empresa.activa == True,
+                        Empresa.clave_sii.isnot(None),
+                        Empresa.clave_sii != '')
+                .order_by(Empresa.razon_social).all())
+    if not empresas:
+        return jsonify({'ok': False, 'error': 'No hay empresas con clave SII configurada'})
+
+    empresas_data = [
+        (e.id, e.nombre_fantasia or e.razon_social, e.rut, e.clave_sii)
+        for e in empresas
+    ]
+    job_id = str(uuid.uuid4())
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {
+            'status': 'running', 'pct': 0, 'message': 'Iniciando…',
+            'empresa_idx': 0, 'empresa_total': len(empresas_data),
+            'empresa_nombre': '', 'results': None,
+        }
+
+    app = current_app._get_current_object()
+    threading.Thread(
+        target=_run_sii_bulk_job,
+        args=(app, job_id, empresas_data, periodo),
+        daemon=True,
+    ).start()
+    return jsonify({'ok': True, 'job_id': job_id,
+                    'n_empresas': len(empresas_data), 'periodo': periodo})
+
+
+@bp.route('/consolidado/sii-bulk-status/<job_id>')
+def sii_bulk_status(job_id):
+    with _JOBS_LOCK:
+        job = dict(_JOBS.get(job_id, {'status': 'unknown'}))
+    if job.get('status') in ('done', 'error'):
+        with _JOBS_LOCK:
+            _JOBS.pop(job_id, None)
+    return jsonify(job)

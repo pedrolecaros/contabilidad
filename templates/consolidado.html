@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Consolidado – Contabilidad Chile{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0"><i class="bi bi-grid-3x3-gap me-2"></i>Consolidado de Empresas</h5>
@@ -8,148 +9,428 @@
   </a>
 </div>
 
-<!-- ── Leyenda ──────────────────────────────────────────────────────────── -->
-<div class="d-flex gap-3 mb-3 small">
-  <span><span class="badge bg-success">✓</span> Cerrado</span>
-  <span><span class="badge bg-warning text-dark">~</span> Parcial (tiene borradores o pendientes)</span>
-  <span><span class="badge bg-secondary">B</span> Solo borradores</span>
-  <span><span class="badge" style="background:#e9ecef;color:#999">—</span> Sin actividad</span>
-</div>
+<!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
+<ul class="nav nav-tabs mb-3" id="consolidadoTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-contable" data-bs-toggle="tab"
+            data-bs-target="#pane-contable" type="button" role="tab"
+            aria-controls="pane-contable" aria-selected="true">
+      <i class="bi bi-journal-text me-1"></i>Contable
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-financiero" data-bs-toggle="tab"
+            data-bs-target="#pane-financiero" type="button" role="tab"
+            aria-controls="pane-financiero" aria-selected="false">
+      <i class="bi bi-graph-up me-1"></i>Financiero
+    </button>
+  </li>
+</ul>
 
-<!-- ── Tabla 12 meses ───────────────────────────────────────────────────── -->
-<div class="table-responsive mb-4">
-  <table class="table table-sm table-bordered align-middle" id="tablaEstados">
-    <thead class="table-dark">
-      <tr>
-        <th style="min-width:160px">Empresa</th>
-        {% for mes in meses %}
-        <th class="text-center" style="min-width:52px; font-size:.75rem">
-          {{ mes[5:] }}/{{ mes[2:4] }}
-        </th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for fila in grilla %}
-      {% set e = fila.empresa %}
-      <tr>
-        <td>
-          <a href="{{ url_for('asientos.lista', eid=e.id) }}"
-             class="text-decoration-none fw-semibold text-dark">
-            {{ e.nombre_fantasia or e.razon_social }}
-          </a>
-          <div class="text-muted" style="font-size:.7rem">{{ e.rut }}</div>
-        </td>
-        {% for mes in meses %}
-        {% set estado = fila.celdas[mes] %}
-        <td class="text-center p-1">
-          {% if estado == 'ok' %}
-            <span class="badge bg-success" style="font-size:.8rem" title="Cerrado">✓</span>
-          {% elif estado == 'parcial' %}
-            <span class="badge bg-warning text-dark" style="font-size:.8rem"
-                  title="Tiene borradores o documentos pendientes">~</span>
-          {% elif estado == 'borrador' %}
-            <span class="badge bg-secondary" style="font-size:.8rem"
-                  title="Solo borradores, sin confirmar">B</span>
-          {% else %}
-            <span style="color:#ccc; font-size:.85rem">—</span>
-          {% endif %}
-        </td>
-        {% endfor %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<div class="tab-content">
 
-<!-- ── Acordeón detalle ─────────────────────────────────────────────────── -->
-<h6 class="text-muted mb-2"><i class="bi bi-chevron-down me-1"></i>Detalle por empresa</h6>
-<div class="accordion" id="acordeonEmpresas">
-  {% for d in datos %}
-  {% set e = d.empresa %}
-  {% set eid = e.id %}
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB CONTABLE
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade show active" id="pane-contable" role="tabpanel">
 
-  <div class="accordion-item">
-    <h2 class="accordion-header">
-      <button class="accordion-button collapsed py-2" type="button"
-              data-bs-toggle="collapse" data-bs-target="#empresa-{{ eid }}">
-        <div class="d-flex align-items-center gap-3 w-100 me-3">
-          <div style="min-width:200px">
-            <span class="fw-semibold">{{ e.nombre_fantasia or e.razon_social }}</span>
-            <span class="text-muted small ms-2 font-monospace">{{ e.rut }}</span>
-          </div>
-          <div class="d-flex gap-1 flex-wrap">
-            {% for tipo, color in [('COMPRAS','primary'),('VENTAS','success'),('HONORARIOS','warning'),('BANCO','dark')] %}
-              {% set n = d.archivos | selectattr('tipo','equalto',tipo) | list | length %}
-              {% if n %}
-                <span class="badge bg-{{ color }} {% if color=='warning' %}text-dark{% endif %}"
-                      title="{{ tipo }}: {{ n }} archivo(s)">
-                  {{ tipo[:3] }} {{ n }}
-                </span>
-              {% endif %}
+    <!-- Top bar: filtro + backup -->
+    <div class="d-flex justify-content-between flex-wrap gap-2 mb-3 align-items-center">
+
+      <!-- Filtro de rango -->
+      <form method="get" id="formFiltroMes" class="d-flex align-items-center gap-2 flex-wrap">
+        <label class="form-label mb-0 small text-muted fw-semibold">Desde</label>
+        <input type="month" name="desde" id="filtroDesde" class="form-control form-control-sm"
+               style="width:140px" value="{{ desde_mes }}">
+        <label class="form-label mb-0 small text-muted fw-semibold">Hasta</label>
+        <input type="month" name="hasta" id="filtroHasta" class="form-control form-control-sm"
+               style="width:140px" value="{{ hasta_mes }}">
+        <button type="submit" class="btn btn-sm btn-primary">
+          <i class="bi bi-funnel me-1"></i>Filtrar
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-primary"
+                onclick="abrirModalBajarSII()"
+                title="Descargar libros SII para el mes seleccionado">
+          <i class="bi bi-cloud-download me-1"></i>Bajar SII
+        </button>
+      </form>
+
+      <!-- Backup info -->
+      <div class="d-flex align-items-center gap-3">
+        {% if db_modified and db_size_mb is not none %}
+        <span class="small text-muted">
+          <i class="bi bi-database me-1"></i>BD: {{ db_size_mb }} MB &middot; {{ db_modified }}
+        </span>
+        {% endif %}
+        <a href="{{ url_for('main.backup') }}" class="btn btn-sm btn-outline-secondary"
+           title="Descargar backup de la base de datos">
+          <i class="bi bi-download me-1"></i>Backup
+        </a>
+      </div>
+    </div>
+
+    <!-- Leyenda -->
+    <div class="d-flex gap-3 flex-wrap mb-3 small align-items-center">
+      <span class="text-muted">Libros:</span>
+      <span><span class="badge bg-success" style="font-size:.7rem">C✓</span> cargado y ok</span>
+      <span><span class="badge text-dark" style="font-size:.7rem;background:#fd7e14">C<sup>2</sup></span> con pendientes</span>
+      <span><span class="badge bg-light text-muted border" style="font-size:.7rem">C</span> no cargado</span>
+    </div>
+
+    <!-- Grid table -->
+    <div class="table-responsive">
+      <table class="table table-sm align-top"
+             style="min-width: calc(160px + {{ meses|length }} * 90px);
+                    border-collapse: separate; border-spacing: 0;">
+        <thead class="table-dark">
+          <tr>
+            <th style="position:sticky;left:0;background:#212529;z-index:2;min-width:160px;">
+              Empresa
+            </th>
+            {% for mes in meses|reverse %}
+            <th class="text-center"
+                style="min-width:90px; font-size:.72rem; white-space:nowrap;">
+              {{ mes[5:] }}/{{ mes[2:4] }}
+            </th>
             {% endfor %}
-          </div>
-        </div>
-      </button>
-    </h2>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in empresas %}
+          {% set eid = e.id %}
+          <tr style="border-top: 1px solid #dee2e6;">
+            <!-- Empresa column -->
+            <td style="position:sticky;left:0;z-index:1;background:white;
+                       border-right:2px solid #dee2e6;
+                       box-shadow:2px 0 4px rgba(0,0,0,.08);
+                       vertical-align:middle; padding:.4rem .5rem;">
+              <a href="{{ url_for('asientos.lista', eid=eid) }}"
+                 class="text-decoration-none fw-semibold text-dark d-block"
+                 style="font-size:.82rem; line-height:1.2;">
+                {{ e.nombre_fantasia or e.razon_social }}
+              </a>
+              <div class="text-muted" style="font-size:.68rem;">{{ e.rut }}</div>
+            </td>
 
-    <div id="empresa-{{ eid }}" class="accordion-collapse collapse"
-         data-bs-parent="#acordeonEmpresas">
-      <div class="accordion-body pt-2 pb-3">
-        <div class="d-flex gap-2 mb-3">
-          <a href="{{ url_for('asientos.lista', eid=eid) }}"
-             class="btn btn-sm btn-dark"><i class="bi bi-box-arrow-in-right me-1"></i>Abrir</a>
-          <a href="{{ url_for('importar.index', eid=eid) }}"
-             class="btn btn-sm btn-outline-secondary"><i class="bi bi-upload me-1"></i>Importar</a>
-          <a href="{{ url_for('reportes.balance', eid=eid) }}"
-             class="btn btn-sm btn-outline-secondary"><i class="bi bi-table me-1"></i>Balance</a>
-          <a href="{{ url_for('reportes.ap_ar', eid=eid) }}"
-             class="btn btn-sm btn-outline-secondary"><i class="bi bi-people me-1"></i>Prov/Cli</a>
-          <a href="{{ url_for('validacion.index', eid=eid) }}"
-             class="btn btn-sm btn-outline-secondary"><i class="bi bi-shield-check me-1"></i>Validar</a>
-        </div>
+            <!-- Month cells -->
+            {% for mes in meses|reverse %}
+            {% set c = celda_data[eid][mes] %}
+            <td class="p-1 align-top" style="font-size:.72rem; vertical-align:top;">
 
-        <div class="row g-3">
-          {% for tipo, color, label in [
-              ('COMPRAS','primary','Compras'),
-              ('VENTAS','success','Ventas'),
-              ('HONORARIOS','warning','Honorarios'),
-              ('BANCO','dark','Banco'),
-          ] %}
-          {% set archivos_tipo = d.archivos | selectattr('tipo','equalto',tipo) | list %}
-          <div class="col-md-6">
-            <div class="card card-body p-2">
-              <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="badge bg-{{ color }} {% if color=='warning' %}text-dark{% endif %}">{{ label }}</span>
-                <span class="text-muted small">{{ archivos_tipo|length }} archivo(s)</span>
-              </div>
-              {% if archivos_tipo %}
-              <table class="table table-sm mb-0" style="font-size:.8rem">
-                <thead class="table-light">
-                  <tr><th>Período</th><th>Archivo</th><th class="text-center">Docs</th><th>Fecha</th></tr>
-                </thead>
-                <tbody>
-                  {% for a in archivos_tipo | sort(attribute='periodo') %}
-                  <tr>
-                    <td class="font-monospace">{{ a.periodo or '—' }}{% if a.banco %}<br><small class="text-muted">{{ a.banco }}</small>{% endif %}</td>
-                    <td class="text-muted" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                        title="{{ a.nombre_archivo }}">{{ a.nombre_archivo }}</td>
-                    <td class="text-center">{{ a.ndocs }}</td>
-                    <td class="text-muted">{{ a.fecha_importacion.strftime('%d/%m/%y') }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+              {% if c['estado'] == 'vacio' %}
+                <span style="color:#ddd;">—</span>
+
               {% else %}
-              <div class="text-muted small">Sin archivos importados</div>
+
+                {# Libros row #}
+                <div class="d-flex gap-1 flex-wrap mt-1">
+                  {% for tipo, short in [('COMPRAS','C'),('VENTAS','V'),('HONORARIOS','H'),('BANCO','B')] %}
+                  {% set lib = c['libros'][tipo] %}
+                  {% if lib['loaded'] and lib['pending'] > 0 %}
+                    {# Loaded with pending docs #}
+                    {% if tipo == 'BANCO' %}
+                    <a href="{{ url_for('conciliacion.index', eid=eid, desde=mes, hasta=mes) }}"
+                       class="badge text-decoration-none text-dark"
+                       style="background:#fd7e14; font-size:.65rem;"
+                       title="{{ tipo }}: {{ lib['n_docs'] }} docs · {{ lib['pending'] }} por conciliar">
+                      {{ short }}<sup>{{ lib['pending'] }}</sup>
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('pendientes.index', eid=eid) }}"
+                       class="badge text-decoration-none text-dark"
+                       style="background:#fd7e14; font-size:.65rem;"
+                       title="{{ tipo }}: {{ lib['n_docs'] }} docs · {{ lib['pending'] }} por procesar">
+                      {{ short }}<sup>{{ lib['pending'] }}</sup>
+                    </a>
+                    {% endif %}
+                  {% elif lib['loaded'] and lib['pending'] == 0 %}
+                    {# Loaded, all clear #}
+                    <span class="badge bg-success" style="font-size:.65rem;"
+                          title="{{ tipo }}: {{ lib['n_docs'] }} docs · Ok">
+                      {{ short }}&#10003;
+                    </span>
+                  {% else %}
+                    {# Not loaded #}
+                    <span class="badge bg-light text-muted border" style="font-size:.65rem;"
+                          title="{{ tipo }}: no cargado">
+                      {{ short }}
+                    </span>
+                  {% endif %}
+                  {% endfor %}
+                </div>
+
+                {# 3. Asientos row #}
+                {% set conf = c['asientos']['conf'] %}
+                {% set borr = c['asientos']['borr'] %}
+                {% if conf > 0 or borr > 0 %}
+                <div class="mt-1 d-flex gap-1 flex-wrap" style="font-size:.68rem;">
+                  {% if conf > 0 %}
+                  <a href="{{ url_for('asientos.lista', eid=eid, estado='CONFIRMADO') }}"
+                     class="text-success text-decoration-none"
+                     title="{{ conf }} asientos confirmados">
+                    <i class="bi bi-check2"></i>{{ conf }}
+                  </a>
+                  {% endif %}
+                  {% if borr > 0 %}
+                  <a href="{{ url_for('asientos.lista', eid=eid, estado='BORRADOR') }}"
+                     class="text-warning text-decoration-none"
+                     title="{{ borr }} asientos en borrador">
+                    <i class="bi bi-pencil"></i>{{ borr }}
+                  </a>
+                  {% endif %}
+                </div>
+                {% endif %}
+
+                {# 4. Liquidaciones #}
+                {% if c['liqs'] > 0 %}
+                <div class="mt-1" style="font-size:.68rem;">
+                  <a href="{{ url_for('remuneraciones.libro', eid=eid, periodo=mes) }}"
+                     class="text-info text-decoration-none"
+                     title="{{ c['liqs'] }} liquidaciones">
+                    <i class="bi bi-people"></i>{{ c['liqs'] }}
+                  </a>
+                </div>
+                {% endif %}
+
+                {# 5. F29 placeholder #}
+                <div style="font-size:.65rem; color:#bbb;" class="mt-1">F29?</div>
+
               {% endif %}
-            </div>
-          </div>
+
+            </td>
+            {% endfor %}
+          </tr>
           {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div><!-- /pane-contable -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB FINANCIERO
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade" id="pane-financiero" role="tabpanel">
+    <div class="text-center py-5">
+      <a href="{{ url_for('main.consolidado_financiero') }}" class="btn btn-primary btn-lg">
+        <i class="bi bi-graph-up me-2"></i>Abrir Vista Financiera
+      </a>
+      <div class="text-muted small mt-2">Balances y resultados consolidados ponderados por participación</div>
+    </div>
+  </div>
+
+</div><!-- /tab-content -->
+
+<!-- ── Modal: Bajar libros SII masivo ──────────────────────────────────────── -->
+<div class="modal fade" id="modalBajarSII" tabindex="-1" aria-labelledby="modalBajarSIILabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalBajarSIILabel">
+          <i class="bi bi-cloud-download me-2"></i>Bajar libros SII — todas las empresas
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Paso 1: formulario periodo -->
+        <div id="bajarForm">
+          <p class="text-muted small mb-3">
+            Descarga compras, ventas y honorarios del mes seleccionado para todas las empresas
+            con clave SII registrada. Se hace de a una empresa a la vez.
+          </p>
+          <div class="d-flex align-items-center gap-3">
+            <label class="fw-semibold text-nowrap mb-0">Período:</label>
+            <input type="month" id="bajarPeriodo" class="form-control form-control-sm" style="width:160px">
+            <button class="btn btn-primary btn-sm" onclick="iniciarBajarTodos()">
+              <i class="bi bi-play-fill me-1"></i>Iniciar descarga
+            </button>
+          </div>
         </div>
+
+        <!-- Paso 2: progreso (oculto al inicio) -->
+        <div id="bajarProgress" class="d-none">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="small fw-semibold" id="bajarEmpresaLabel">Empresa 0 de 0</span>
+            <span class="small text-muted" id="bajarPct">0%</span>
+          </div>
+          <div class="progress mb-2" style="height:18px">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                 id="bajarBar" role="progressbar" style="width:0%"></div>
+          </div>
+          <div class="small text-muted" id="bajarMsg">Iniciando…</div>
+        </div>
+
+        <!-- Paso 3: resultados (oculto al inicio) -->
+        <div id="bajarResults" class="d-none mt-3">
+          <h6 class="text-success mb-2"><i class="bi bi-check2-circle me-1"></i>Descarga completada</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover" id="bajarResultsTable">
+              <thead class="table-dark">
+                <tr>
+                  <th>Empresa</th>
+                  <th class="text-center">Compras</th>
+                  <th class="text-center">Ventas</th>
+                  <th class="text-center">Honorarios</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>
-  {% endfor %}
 </div>
+
+<script>
+(function () {
+  function _mesAnterior() {
+    const hoy = new Date();
+    const y = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+    const m = hoy.getMonth() === 0 ? 12 : hoy.getMonth();
+    return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  window.abrirModalBajarSII = function () {
+    const hasta = document.getElementById('filtroHasta');
+    document.getElementById('bajarPeriodo').value =
+      (hasta && hasta.value) ? hasta.value : _mesAnterior();
+    // Reset UI
+    document.getElementById('bajarForm').classList.remove('d-none');
+    document.getElementById('bajarProgress').classList.add('d-none');
+    document.getElementById('bajarResults').classList.add('d-none');
+    _bajarJobId = null;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalBajarSII')).show();
+  };
+
+  const modalEl = document.getElementById('modalBajarSII');
+  modalEl.addEventListener('show.bs.modal', () => {
+    if (!document.getElementById('bajarPeriodo').value) {
+      document.getElementById('bajarPeriodo').value = _mesAnterior();
+    }
+  });
+
+  let _bajarJobId = null;
+  let _bajarTimer = null;
+
+  window.iniciarBajarTodos = function () {
+    const periodo = document.getElementById('bajarPeriodo').value;
+    if (!periodo) { alert('Selecciona un período'); return; }
+
+    document.getElementById('bajarForm').classList.add('d-none');
+    document.getElementById('bajarProgress').classList.remove('d-none');
+    document.getElementById('bajarResults').classList.add('d-none');
+    _setBar(0, 'Iniciando…', 0, 0);
+
+    fetch('/consolidado/sii-bajar-todos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: `periodo=${encodeURIComponent(periodo)}`,
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) { _bajarError(data.error); return; }
+      _bajarJobId = data.job_id;
+      document.getElementById('bajarEmpresaLabel').textContent =
+        `0 de ${data.n_empresas} empresas`;
+      _bajarTimer = setInterval(_pollBajar, 2000);
+    })
+    .catch(e => _bajarError(String(e)));
+  };
+
+  function _pollBajar() {
+    if (!_bajarJobId) return;
+    fetch(`/consolidado/sii-bulk-status/${_bajarJobId}`)
+      .then(r => r.json())
+      .then(job => {
+        if (job.status === 'unknown') { clearInterval(_bajarTimer); return; }
+        _setBar(job.pct || 0, job.message || '', job.empresa_idx || 0, job.empresa_total || 0);
+        if (job.status === 'done') {
+          clearInterval(_bajarTimer);
+          _bajarJobId = null;
+          _showResults(job.results || {});
+        } else if (job.status === 'error') {
+          clearInterval(_bajarTimer);
+          _bajarError(job.message || 'Error desconocido');
+        }
+      })
+      .catch(() => {});
+  }
+
+  function _setBar(pct, msg, idx, total) {
+    document.getElementById('bajarBar').style.width = pct + '%';
+    document.getElementById('bajarPct').textContent = pct + '%';
+    document.getElementById('bajarMsg').textContent = msg;
+    if (total > 0) {
+      document.getElementById('bajarEmpresaLabel').textContent =
+        `Empresa ${idx} de ${total}`;
+    }
+  }
+
+  function _bajarError(msg) {
+    document.getElementById('bajarBar').classList.replace('bg-primary', 'bg-danger');
+    document.getElementById('bajarBar').classList.remove('progress-bar-animated');
+    document.getElementById('bajarMsg').innerHTML =
+      `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${msg}</span>`;
+  }
+
+  function _cellHtml(r) {
+    if (!r) return '<span class="text-muted">—</span>';
+    if (!r.ok) return `<span class="text-danger small" title="${r.error||''}"><i class="bi bi-x-circle"></i> Error</span>`;
+    if (r.aviso) return `<span class="text-muted small"><i class="bi bi-check2 text-success"></i> ${r.aviso}</span>`;
+    const errs = (r.errores||[]).length;
+    return `<span class="text-success small"><i class="bi bi-check2-circle"></i> ${r.importados} docs${errs ? ' ·<span class="text-warning"> '+errs+' err</span>' : ''}</span>`;
+  }
+
+  function _showResults(results) {
+    document.getElementById('bajarProgress').classList.add('d-none');
+    document.getElementById('bajarResults').classList.remove('d-none');
+
+    const tbody = document.querySelector('#bajarResultsTable tbody');
+    tbody.innerHTML = '';
+    for (const [eid, info] of Object.entries(results)) {
+      const tr = document.createElement('tr');
+      if (info.error) {
+        tr.innerHTML = `<td class="fw-semibold">${info.nombre}</td>
+          <td colspan="3" class="text-danger small"><i class="bi bi-x-circle me-1"></i>${info.error}</td>`;
+      } else {
+        const t = info.tipos || {};
+        tr.innerHTML = `<td class="fw-semibold">${info.nombre}</td>
+          <td class="text-center">${_cellHtml(t.compras)}</td>
+          <td class="text-center">${_cellHtml(t.ventas)}</td>
+          <td class="text-center">${_cellHtml(t.honorarios)}</td>`;
+      }
+      tbody.appendChild(tr);
+    }
+  }
+})();
+</script>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  /* Ensure sticky column borders render correctly with border-separate */
+  #pane-contable table thead th:first-child {
+    border-right: 2px solid #495057;
+  }
+  #pane-contable table tbody td:first-child {
+    border-right: 2px solid #dee2e6;
+  }
+  /* Prevent header from overlapping sticky col on scroll */
+  #pane-contable table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #212529;
+  }
+  #pane-contable table thead th:first-child {
+    z-index: 3;
+  }
+</style>
 {% endblock %}

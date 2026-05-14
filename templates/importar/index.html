@@ -250,15 +250,11 @@
 #siiProgresoItems span { transition: color .3s; }
 </style>
 
-<!-- ── Modal cargando ──────────────────────────────────────────────────────── -->
-<div class="modal fade" id="modalCargando" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-sm modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-body text-center py-4">
-        <div class="spinner-border text-primary mb-3" role="status"></div>
-        <div id="msgCargando" class="text-muted small">Procesando…</div>
-      </div>
-    </div>
+<!-- ── Overlay cargando (no usa Bootstrap modal para evitar conflicto de backdrops) -->
+<div id="overlayCargando" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1055;align-items:center;justify-content:center;">
+  <div class="bg-white rounded p-4 text-center shadow">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <div id="msgCargando" class="text-muted small">Procesando…</div>
   </div>
 </div>
 
@@ -275,14 +271,17 @@ const LABELS = {
 const autoUrl   = '{{ url_for("importar.sii_auto",        eid=empresa.id) }}';
 const BATCH_URL = '{{ url_for("importar.sii_start_batch", eid=empresa.id) }}';
 const modalRes = new bootstrap.Modal(document.getElementById('modalResultado'));
-const modalCar = new bootstrap.Modal(document.getElementById('modalCargando'));
+const overlayCar = document.getElementById('overlayCargando');
+const modalCar = {
+  show: (msg) => { if (msg) document.getElementById('msgCargando').textContent = msg; overlayCar.style.display = 'flex'; },
+  hide: ()    => { overlayCar.style.display = 'none'; },
+};
 
 function mostrarResultado(data) {
   const head  = document.getElementById('modalResHead');
   const title = document.getElementById('modalResTitulo');
   const body  = document.getElementById('modalResCuerpo');
   const btnP  = document.getElementById('btnIrPendientes');
-  const elCar = document.getElementById('modalCargando');
 
   if (!data.ok) {
     head.className = 'modal-header bg-danger text-white';
@@ -318,21 +317,15 @@ function mostrarResultado(data) {
     }
   }
 
-  // Esperar que modalCar termine de cerrar antes de abrir modalRes
-  if (elCar.classList.contains('show')) {
-    elCar.addEventListener('hidden.bs.modal', () => modalRes.show(), {once: true});
-    modalCar.hide();
-  } else {
-    modalRes.show();
-  }
+  modalCar.hide();
+  modalRes.show();
 }
 
 // ── Forms manuales ────────────────────────────────────────────────────────
 document.querySelectorAll('.form-import').forEach(form => {
   form.addEventListener('submit', async function(e) {
     e.preventDefault();
-    document.getElementById('msgCargando').textContent = 'Procesando archivo…';
-    modalCar.show();
+    modalCar.show('Procesando archivo…');
     try {
       const res  = await fetch(this.dataset.url, {method: 'POST', body: new FormData(this)});
       const data = await res.json();

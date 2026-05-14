@@ -31,6 +31,11 @@
     <!-- Sidebar empresa -->
     <nav class="col-md-2 sidebar d-flex flex-column py-3">
       <div class="empresa-nombre">
+        <a href="{{ url_for('main.index') }}"
+           class="d-flex align-items-center gap-1 text-secondary text-decoration-none mb-2"
+           style="font-size:.78rem;">
+          <i class="bi bi-arrow-left"></i>Empresas
+        </a>
         <i class="bi bi-building me-1"></i>{{ empresa.nombre_fantasia or empresa.razon_social }}
         <div class="text-muted" style="font-size:.75rem;font-weight:400">{{ empresa.rut }}</div>
       </div>
@@ -96,11 +101,6 @@
                href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}">
           <i class="bi bi-bar-chart-steps me-2"></i>Reporte AP/AR</a></li>
       </ul>
-      <div class="mt-auto pt-3 pb-2">
-        <a class="nav-link text-secondary" href="{{ url_for('main.index') }}">
-          <i class="bi bi-arrow-left me-1"></i>Empresas
-        </a>
-      </div>
     </nav>
     <main class="col-md-10 main-content">
     {% else %}
@@ -173,5 +173,14 @@
 })();
 </script>
 {% block scripts %}{% endblock %}
+<script>
+// ── Auto-submit en inputs con clase .filtro-auto ──────────────────────────────
+document.addEventListener('change', function(e) {
+  if (e.target.classList.contains('filtro-auto')) {
+    e.target.closest('form').submit();
+  }
+});
+
+</script>
 </body>
 </html>
