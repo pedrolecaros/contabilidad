@@ -398,22 +398,26 @@ def libro_excel(eid):
         as_attachment=True, download_name=fname)
 
 
-# ── Variables Mensuales ──────────────────────────────────────────────────────
+# ── Variables Mensuales (globales – sin empresa) ─────────────────────────────
 
-@bp.route('/empresa/<int:eid>/remuneraciones/variables')
-def variables(eid):
-    empresa = Empresa.query.get_or_404(eid)
+@bp.route('/remuneraciones/variables')
+def variables():
     vars_list = VariablesMensuales.query.order_by(VariablesMensuales.periodo.desc()).all()
-    return render_template('remuneraciones/variables.html', empresa=empresa, vars_list=vars_list)
+    return render_template('remuneraciones/variables.html', vars_list=vars_list)
 
 
-@bp.route('/empresa/<int:eid>/remuneraciones/variables/guardar', methods=['POST'])
-def variables_guardar(eid):
-    empresa = Empresa.query.get_or_404(eid)
+# Ruta legacy con eid → redirige a la global
+@bp.route('/empresa/<int:eid>/remuneraciones/variables')
+def variables_legacy(eid):
+    return redirect(url_for('remuneraciones.variables'))
+
+
+@bp.route('/remuneraciones/variables/guardar', methods=['POST'])
+def variables_guardar():
     periodo = request.form.get('periodo', '').strip()
     if not periodo:
         flash('Período obligatorio', 'danger')
-        return redirect(url_for('remuneraciones.variables', eid=eid))
+        return redirect(url_for('remuneraciones.variables'))
 
     v = VariablesMensuales.query.filter_by(periodo=periodo).first()
     if not v:
@@ -430,16 +434,16 @@ def variables_guardar(eid):
     v.fecha_actualizacion = datetime.now()
     db.session.commit()
     flash(f'Variables {periodo} guardadas.', 'success')
-    return redirect(url_for('remuneraciones.variables', eid=eid))
+    return redirect(url_for('remuneraciones.variables'))
 
 
-@bp.route('/empresa/<int:eid>/remuneraciones/variables/eliminar/<periodo>', methods=['POST'])
-def variables_eliminar(eid, periodo):
+@bp.route('/remuneraciones/variables/eliminar/<periodo>', methods=['POST'])
+def variables_eliminar(periodo):
     v = VariablesMensuales.query.filter_by(periodo=periodo).first_or_404()
     db.session.delete(v)
     db.session.commit()
     flash(f'Variables {periodo} eliminadas.', 'success')
-    return redirect(url_for('remuneraciones.variables', eid=eid))
+    return redirect(url_for('remuneraciones.variables'))
 
 
 @bp.route('/empresa/<int:eid>/remuneraciones/variables/get/<periodo>')
@@ -459,8 +463,8 @@ def variables_get(eid, periodo):
     })
 
 
-@bp.route('/empresa/<int:eid>/remuneraciones/variables/fetch-indicadores')
-def variables_fetch_previred(eid):
+@bp.route('/remuneraciones/variables/fetch-indicadores')
+def variables_fetch_previred():
     """Obtiene UF y UTM del mes desde mindicador.cl (API JSON gratuita)."""
     try:
         import requests

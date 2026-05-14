@@ -34,7 +34,7 @@
           {% else %}
           <div class="alert alert-warning py-2 small mb-0">
             No hay variables para este período.
-            <a href="{{ url_for('remuneraciones.variables', eid=empresa.id) }}">Cargar variables →</a>
+            <a href="{{ url_for('remuneraciones.variables') }}">Cargar variables →</a>
           </div>
           {% endif %}
         </div>
@@ -222,7 +222,7 @@ async function cargarVariables(periodo) {
           Tope grat. ${tope}
         </div>`;
     } else {
-      const varUrl = '{{ url_for("remuneraciones.variables", eid=empresa.id) }}';
+      const varUrl = '{{ url_for("remuneraciones.variables") }}';
       varsInfo.innerHTML = `
         <div class="alert alert-warning py-2 small mb-0">
           No hay variables para este período.
