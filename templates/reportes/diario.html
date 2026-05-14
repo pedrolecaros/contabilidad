@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Libro Diario – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Libro Diario</h5>
+  <a href="{{ url_for('reportes.diario_imprimir', eid=empresa.id, desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
+     target="_blank" class="btn btn-sm btn-dark">
+    <i class="bi bi-printer me-1"></i>Imprimir / PDF
+  </a>
+</div>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
+  <div class="col-auto">
+    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
+  </div>
+</form>
+
+{% if asientos %}
+<div class="table-responsive">
+  <table class="table table-sm table-bordered" style="font-size:.82rem">
+    <thead class="table-dark text-center" style="font-size:.78rem">
+      <tr>
+        <th style="width:40px">N°</th>
+        <th style="width:80px">Fecha</th>
+        <th style="width:60px">Código</th>
+        <th>Cuenta / Descripción</th>
+        <th class="text-end" style="width:110px">Debe</th>
+        <th class="text-end" style="width:110px">Haber</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set tot_debe  = [0] %}
+      {% set tot_haber = [0] %}
+      {% for a in asientos %}
+      {# Fila cabecera del asiento #}
+      <tr class="table-secondary">
+        <td class="fw-semibold text-center">
+          <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+             target="_blank"
+             class="link-primary fw-semibold"
+             title="Editar asiento N°{{ a.numero }}">{{ a.numero }}</a>
+        </td>
+        <td class="text-center">{{ a.fecha|fecha_cl }}</td>
+        <td colspan="4" class="fst-italic text-muted small">{{ a.descripcion or '' }}</td>
+      </tr>
+      {# Líneas del asiento #}
+      {% for l in a.lineas %}
+        {% set _ = tot_debe.append(tot_debe[-1] + (l.debe or 0)) %}
+        {% set _ = tot_haber.append(tot_haber[-1] + (l.haber or 0)) %}
+      <tr>
+        <td></td>
+        <td></td>
+        <td class="font-monospace text-muted">{{ l.cuenta.codigo }}</td>
+        <td style="padding-left:12px">
+          {{ l.cuenta.nombre }}
+          {% if l.descripcion %}<span class="text-muted ms-1 small">· {{ l.descripcion }}</span>{% endif %}
+        </td>
+        <td class="text-end">{% if l.debe %}{{ l.debe|clp }}{% endif %}</td>
+        <td class="text-end">{% if l.haber %}{{ l.haber|clp }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </tbody>
+    <tfoot class="fw-bold table-secondary">
+      <tr>
+        <td colspan="4" class="text-end">TOTALES</td>
+        <td class="text-end">{{ tot_debe[-1]|clp }}</td>
+        <td class="text-end">{{ tot_haber[-1]|clp }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% else %}
+<div class="text-muted small py-4 text-center">Sin asientos confirmados en el período.</div>
+{% endif %}
+{% endblock %}

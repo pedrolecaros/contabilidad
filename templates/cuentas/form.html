@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}{% if cuenta %}Editar Cuenta{% else %}Nueva Cuenta{% endif %}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header">
+        <h5 class="mb-0">{% if cuenta %}Editar cuenta{% else %}Nueva cuenta{% endif %}</h5>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Código <span class="text-danger">*</span></label>
+            <input type="text" name="codigo" class="form-control font-monospace"
+                   value="{{ cuenta.codigo if cuenta else '' }}" placeholder="5.2.18" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Nombre <span class="text-danger">*</span></label>
+            <input type="text" name="nombre" class="form-control"
+                   value="{{ cuenta.nombre if cuenta else '' }}" required>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col">
+              <label class="form-label fw-semibold">Tipo</label>
+              <select name="tipo" class="form-select" required>
+                {% for t in ['ACTIVO','PASIVO','PATRIMONIO','INGRESO','GASTO'] %}
+                <option value="{{ t }}" {{ 'selected' if cuenta and cuenta.tipo==t }}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col">
+              <label class="form-label fw-semibold">Naturaleza</label>
+              <select name="naturaleza" class="form-select" required>
+                <option value="DEUDORA" {{ 'selected' if cuenta and cuenta.naturaleza=='DEUDORA' }}>Deudora</option>
+                <option value="ACREEDORA" {{ 'selected' if cuenta and cuenta.naturaleza=='ACREEDORA' }}>Acreedora</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3 form-check">
+            <input type="checkbox" name="es_titulo" class="form-check-input" id="esTitulo"
+                   {{ 'checked' if cuenta and cuenta.es_titulo }}>
+            <label class="form-check-label" for="esTitulo">Es cuenta título (agrupadora)</label>
+          </div>
+          {% if cuenta %}
+          <div class="mb-3 form-check">
+            <input type="checkbox" name="activa" class="form-check-input" id="activa"
+                   {{ 'checked' if cuenta.activa }}>
+            <label class="form-check-label" for="activa">Activa</label>
+          </div>
+          {% endif %}
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="{{ url_for('cuentas.lista', eid=empresa.id) }}" class="btn btn-outline-secondary">Cancelar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

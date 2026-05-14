@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+{% block title %}Pendientes – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Documentos Pendientes de Contabilizar</h5>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <!-- Filtro período -->
+    <form method="get" class="d-flex gap-1 align-items-center flex-wrap">
+      <label class="small text-muted mb-0">Desde:</label>
+      <input type="month" name="desde" value="{{ desde_mes }}"
+             class="form-control form-control-sm" style="width:140px">
+      <label class="small text-muted mb-0">Hasta:</label>
+      <input type="month" name="hasta" value="{{ hasta_mes }}"
+             class="form-control form-control-sm" style="width:140px">
+      <button class="btn btn-sm btn-outline-secondary py-0 px-2">
+        <i class="bi bi-funnel"></i>
+      </button>
+      <a href="{{ url_for('pendientes.index', eid=empresa.id, desde='', hasta='') }}"
+         class="btn btn-sm btn-outline-secondary py-0" title="Ver todos">
+        <i class="bi bi-x"></i>
+      </a>
+    </form>
+  </div>
+  {% if docs %}
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('pendientes.contabilizar_lote', eid=empresa.id) }}">
+      <input type="hidden" name="confirmar" value="1">
+      <input type="hidden" name="desde" value="{{ desde_mes }}">
+      <input type="hidden" name="hasta" value="{{ hasta_mes }}">
+      <button class="btn btn-success btn-sm"
+              onclick="return confirm('¿Generar y confirmar los {{ docs|length }} documentos SII del período?')">
+        <i class="bi bi-lightning-charge me-1"></i>Generar y Confirmar Todo
+      </button>
+    </form>
+    <form method="post" action="{{ url_for('pendientes.contabilizar_lote', eid=empresa.id) }}">
+      <input type="hidden" name="desde" value="{{ desde_mes }}">
+      <input type="hidden" name="hasta" value="{{ hasta_mes }}">
+      <button class="btn btn-outline-secondary btn-sm"
+              onclick="return confirm('¿Contabilizar los {{ docs|length }} documentos SII del período como borrador?')"
+              title="Generar como borrador sin confirmar">
+        <i class="bi bi-journal-plus me-1"></i>Todo Borrador
+      </button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Documentos SII -->
+{% if docs %}
+<h6 class="text-muted mt-2">Documentos SII ({{ docs|length }})</h6>
+<div class="table-responsive mb-4">
+  <table class="table table-sm table-hover">
+    <thead class="table-dark">
+      <tr>
+        <th data-sort="text">Libro</th>
+        <th data-sort="text">Tipo</th>
+        <th data-sort="text">Folio</th>
+        <th data-sort="date">Fecha</th>
+        <th data-sort="text">RUT</th>
+        <th data-sort="text">Razón Social</th>
+        <th class="text-end" data-sort="clp">Neto</th>
+        <th class="text-end" data-sort="clp">IVA</th>
+        <th class="text-end" data-sort="clp">Total</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in docs %}
+      <tr>
+        <td><span class="badge
+          {% if d.tipo_libro=='COMPRAS' %}bg-primary
+          {% elif d.tipo_libro=='VENTAS' %}bg-success
+          {% else %}bg-warning text-dark{% endif %}">{{ d.tipo_libro }}</span></td>
+        <td class="small">{{ d.tipo_dte }}</td>
+        <td class="small">{{ d.folio }}</td>
+        <td class="small">{{ d.fecha|fecha_cl }}</td>
+        <td class="small">{{ d.rut_contraparte }}</td>
+        <td class="small">{{ (d.razon_social_contraparte or '')[:30] }}</td>
+        <td class="text-end small">{{ d.monto_neto|clp }}</td>
+        <td class="text-end small">{{ d.iva|clp }}</td>
+        <td class="text-end small fw-semibold">{{ d.total|clp }}</td>
+        <td class="text-nowrap">
+          <!-- Generar y confirmar (principal) -->
+          <form method="post"
+                action="{{ url_for('pendientes.contabilizar_doc', eid=empresa.id, did=d.id) }}"
+                class="d-inline">
+            <input type="hidden" name="confirmar" value="1">
+            <button class="btn btn-xs btn-sm btn-success py-0 px-1"
+                    title="Generar asiento y confirmar">
+              <i class="bi bi-check2-circle"></i>
+            </button>
+          </form>
+          <!-- Solo borrador -->
+          <form method="post"
+                action="{{ url_for('pendientes.contabilizar_doc', eid=empresa.id, did=d.id) }}"
+                class="d-inline">
+            <button class="btn btn-xs btn-sm btn-outline-primary py-0 px-1"
+                    title="Generar asiento en borrador">
+              <i class="bi bi-journal-plus"></i>
+            </button>
+          </form>
+          <!-- Eliminar -->
+          <form method="post"
+                action="{{ url_for('pendientes.eliminar_doc', eid=empresa.id, did=d.id) }}"
+                class="d-inline">
+            <button class="btn btn-xs btn-sm btn-outline-danger py-0 px-1"
+                    title="Eliminar este documento sin contabilizar"
+                    onclick="return confirm('¿Eliminar documento {{ d.tipo_dte }} folio {{ d.folio }}?')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-success small">
+  <i class="bi bi-check-circle me-1"></i>No hay documentos SII pendientes.
+</div>
+{% endif %}
+
+<!-- Movimientos Bancarios -->
+{% if movs %}
+<h6 class="text-muted">Movimientos Bancarios ({{ movs|length }})</h6>
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead class="table-dark">
+      <tr>
+        <th data-sort="date">Fecha</th>
+        <th data-sort="text">Banco</th>
+        <th data-sort="text">Descripción</th>
+        <th class="text-end" data-sort="clp">Cargo <span class="fw-normal text-muted" style="font-size:.75em">(salida)</span></th>
+        <th class="text-end" data-sort="clp">Abono <span class="fw-normal text-muted" style="font-size:.75em">(entrada)</span></th>
+        <th style="width:480px">Cuenta Contraparte</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in movs %}
+      <tr class="align-middle">
+        <td class="small py-1">{{ m.fecha|fecha_cl }}</td>
+        <td class="small py-1">{{ m.banco }}</td>
+        <td class="small py-1">{{ (m.descripcion or '')[:45] }}{% if m.descripcion and m.descripcion|length > 45 %}…{% endif %}</td>
+        <td class="text-end small py-1 {% if m.cargo %}text-danger{% endif %}">
+          {% if m.cargo %}{{ m.cargo|clp }}{% endif %}</td>
+        <td class="text-end small py-1 {% if m.abono %}text-success{% endif %}">
+          {% if m.abono %}{{ m.abono|clp }}{% endif %}</td>
+        <td class="align-top py-1">
+          <div class="d-flex gap-1 align-items-center">
+            <!-- Formulario contabilizar -->
+            <form method="post"
+                  action="{{ url_for('pendientes.contabilizar_banco', eid=empresa.id, mid=m.id) }}"
+                  class="flex-grow-1">
+              <div class="d-flex gap-1 align-items-center">
+                <select name="cuenta_id" class="ts-banco-cuenta" required
+                        data-mid="{{ m.id }}">
+                  <option value="">-- cuenta --</option>
+                  {% for c in cuentas %}
+                  <option value="{{ c.id }}">{{ c.codigo }} – {{ c.nombre }}</option>
+                  {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-success py-0 px-1"
+                        name="confirmar" value="1"
+                        title="Generar y confirmar">
+                  <i class="bi bi-check2-circle"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-primary py-0 px-1"
+                        title="Generar en borrador">
+                  <i class="bi bi-journal-plus"></i>
+                </button>
+              </div>
+              <!-- Selector doc (aparece al elegir Proveedores/Clientes/Honorarios) -->
+              <div id="docConc-{{ m.id }}" class="d-none mt-1">
+                <select name="doc_conciliar_id" id="tsDoc-{{ m.id }}"
+                        class="ts-doc-sel" style="min-width:340px">
+                  <option value="">— sin vincular a documento —</option>
+                </select>
+              </div>
+            </form>
+            <!-- Basurero al lado -->
+            <form method="post"
+                  action="{{ url_for('pendientes.eliminar_banco', eid=empresa.id, mid=m.id) }}">
+              <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                      title="Eliminar este movimiento sin contabilizar"
+                      onclick="return confirm('¿Eliminar movimiento del {{ m.fecha|fecha_cl }}?')">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-success small">
+  <i class="bi bi-check-circle me-1"></i>No hay movimientos bancarios pendientes.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .ts-banco-cuenta + .ts-wrapper { min-width: 340px; flex: 1; }
+  .ts-doc-sel + .ts-wrapper { min-width: 340px; }
+</style>
+<script>
+const cuentasMap     = {{ cuentas_map_json | safe }};       // {id: codigo}
+const docsPorTipo    = {{ docs_por_tipo_json | safe }};     // {COMPRAS:[...], VENTAS:[...], ...}
+const cuentaCodigoTipo = {{ cuenta_codigo_tipo_json | safe }}; // {codigo: [tipos]}
+
+// TomSelect instances para doc selectors (lazy init)
+const tsDocInstances = {};
+
+function fmtDoc(d) {
+  const badge = d.tipo === 'VENTAS' ? '▲' : (d.tipo === 'HONORARIOS' ? 'H' : '▼');
+  return `${badge} ${d.folio} | ${d.rs} | $${d.total.toLocaleString('es-CL')} | ${d.fecha}`;
+}
+
+function onCuentaChange(mid, value) {
+  const codigo = cuentasMap[String(value)] || '';
+  const tipos  = cuentaCodigoTipo[codigo] || null;
+  const divDoc = document.getElementById('docConc-' + mid);
+
+  if (!tipos || !divDoc) return;
+
+  // Recopilar docs de los tipos permitidos
+  let docs = [];
+  tipos.forEach(t => { docs = docs.concat(docsPorTipo[t] || []); });
+
+  if (docs.length === 0) {
+    divDoc.classList.add('d-none');
+    return;
+  }
+
+  // Inicializar TomSelect del doc selector si no existe
+  const selEl = document.getElementById('tsDoc-' + mid);
+  if (!tsDocInstances[mid]) {
+    tsDocInstances[mid] = new TomSelect(selEl, {
+      create: false, maxOptions: 300,
+      placeholder: '— buscar documento —',
+      searchField: ['text'],
+    });
+  }
+  const ts = tsDocInstances[mid];
+  ts.clear(true);
+  ts.clearOptions();
+  ts.addOption({ value: '', text: '— sin vincular —' });
+  docs.forEach(d => ts.addOption({ value: String(d.id), text: fmtDoc(d) }));
+  ts.setValue('', true);
+  ts.refreshOptions(false);
+
+  divDoc.classList.remove('d-none');
+}
+
+document.querySelectorAll('.ts-banco-cuenta').forEach(function(sel) {
+  const mid = sel.dataset.mid;
+  new TomSelect(sel, {
+    create: false,
+    placeholder: '-- buscar cuenta --',
+    maxOptions: 200,
+    onChange: function(value) { onCuentaChange(mid, value); },
+  });
+});
+</script>
+{% endblock %}

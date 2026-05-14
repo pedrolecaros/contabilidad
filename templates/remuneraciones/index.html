@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Remuneraciones – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-person-vcard me-2"></i>Remuneraciones</h4>
+  <a href="{{ url_for('remuneraciones.nuevo', eid=empresa.id) }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i>Nuevo Empleado
+  </a>
+</div>
+
+{% if empleados %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>RUT</th>
+          <th>Nombre</th>
+          <th>Cargo</th>
+          <th>Contrato</th>
+          <th class="text-end">Sueldo Base</th>
+          <th>AFP</th>
+          <th>Salud</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in empleados %}
+        <tr>
+          <td class="text-muted">{{ e.rut }}</td>
+          <td><strong>{{ e.nombre }}</strong></td>
+          <td>{{ e.cargo or '—' }}</td>
+          <td><span class="badge bg-secondary">{{ e.tipo_contrato }}</span></td>
+          <td class="text-end">$ {{ e.sueldo_base | clp }}</td>
+          <td>{{ e.afp }}</td>
+          <td>{{ e.tipo_salud }}{% if e.isapre %} – {{ e.isapre }}{% endif %}</td>
+          <td>
+            {% if e.activo %}
+              <span class="badge bg-success">Activo</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactivo</span>
+            {% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            <a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=e.id) }}"
+               class="btn btn-outline-secondary btn-sm" title="Historial"><i class="bi bi-clock-history"></i></a>
+            <a href="{{ url_for('remuneraciones.liquidar', eid=empresa.id, emp_id=e.id) }}"
+               class="btn btn-outline-primary btn-sm" title="Nueva liquidación"><i class="bi bi-file-earmark-plus"></i></a>
+            <a href="{{ url_for('remuneraciones.editar', eid=empresa.id, emp_id=e.id) }}"
+               class="btn btn-outline-secondary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
+            <form method="post" action="{{ url_for('remuneraciones.eliminar', eid=empresa.id, emp_id=e.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('¿Eliminar empleado {{ e.nombre }} y todas sus liquidaciones?')">
+              <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">No hay empleados registrados. <a href="{{ url_for('remuneraciones.nuevo', eid=empresa.id) }}">Agregar primero.</a></div>
+{% endif %}
+{% endblock %}

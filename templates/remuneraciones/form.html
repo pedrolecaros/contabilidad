@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Editar' if emp else 'Nuevo' }} Empleado{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">{{ 'Editar' if emp else 'Nuevo' }} Empleado</h4>
+  <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<form method="post">
+<div class="row g-3">
+
+  <div class="col-12"><h6 class="text-muted border-bottom pb-1">Datos personales</h6></div>
+
+  <div class="col-md-3">
+    <label class="form-label">RUT <span class="text-danger">*</span></label>
+    <input type="text" name="rut" class="form-control" value="{{ emp.rut if emp else '' }}" placeholder="12.345.678-9" required>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Nombre completo <span class="text-danger">*</span></label>
+    <input type="text" name="nombre" class="form-control" value="{{ emp.nombre if emp else '' }}" required>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Cargo</label>
+    <input type="text" name="cargo" class="form-control" value="{{ emp.cargo if emp else '' }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Fecha de ingreso</label>
+    <input type="date" name="fecha_ingreso" class="form-control"
+           value="{{ emp.fecha_ingreso.isoformat() if emp and emp.fecha_ingreso else '' }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Tipo de contrato</label>
+    <select name="tipo_contrato" class="form-select">
+      {% for t in ['INDEFINIDO','PLAZO_FIJO','HONORARIOS','PART_TIME'] %}
+      <option value="{{ t }}" {{ 'selected' if emp and emp.tipo_contrato == t }}>{{ t.replace('_',' ') }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Estado</label>
+    <div class="form-check mt-2">
+      <input class="form-check-input" type="checkbox" name="activo" id="activo"
+             {{ 'checked' if not emp or emp.activo }}>
+      <label class="form-check-label" for="activo">Activo</label>
+    </div>
+  </div>
+
+  <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1">Haberes fijos</h6></div>
+
+  <div class="col-md-3">
+    <label class="form-label">Sueldo base ($)</label>
+    <input type="number" name="sueldo_base" class="form-control" min="0" step="1"
+           value="{{ emp.sueldo_base | int if emp else 0 }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Bono colación ($)</label>
+    <input type="number" name="bono_colacion" class="form-control" min="0" step="1"
+           value="{{ emp.bono_colacion | int if emp else 0 }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Bono movilización ($)</label>
+    <input type="number" name="bono_movilizacion" class="form-control" min="0" step="1"
+           value="{{ emp.bono_movilizacion | int if emp else 0 }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Otros haberes fijos ($)</label>
+    <input type="number" name="otros_haberes" class="form-control" min="0" step="1"
+           value="{{ emp.otros_haberes | int if emp else 0 }}">
+  </div>
+
+  <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1">Previsión</h6></div>
+
+  <div class="col-md-3">
+    <label class="form-label">AFP</label>
+    <select name="afp" id="afp" class="form-select" onchange="autoTasaAfp(this.value)">
+      {% for a in afp_opciones %}
+      <option value="{{ a }}" {{ 'selected' if emp and emp.afp == a }}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Comisión AFP (%) <small class="text-muted">solo comisión, sin los 10%</small></label>
+    <input type="number" name="tasa_afp_comision" id="tasa_afp_comision" class="form-control"
+           min="0" max="5" step="0.001"
+           value="{{ (emp.tasa_afp_comision * 100) | round(3) if emp else 1.27 }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Tipo salud</label>
+    <select name="tipo_salud" id="tipo_salud" class="form-select" onchange="toggleIsapre(this.value)">
+      <option value="FONASA" {{ 'selected' if not emp or emp.tipo_salud == 'FONASA' }}>FONASA</option>
+      <option value="ISAPRE" {{ 'selected' if emp and emp.tipo_salud == 'ISAPRE' }}>ISAPRE</option>
+    </select>
+  </div>
+  <div class="col-md-3" id="grp_isapre" style="display:{{ 'block' if emp and emp.tipo_salud == 'ISAPRE' else 'none' }}">
+    <label class="form-label">ISAPRE</label>
+    <input type="text" name="isapre" class="form-control" value="{{ emp.isapre if emp and emp.isapre else '' }}"
+           placeholder="Nombre isapre">
+    <label class="form-label mt-1">Monto ISAPRE ($ / mes)</label>
+    <input type="number" name="monto_isapre" class="form-control" min="0" step="1"
+           value="{{ emp.monto_isapre | int if emp else 0 }}">
+  </div>
+
+  <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1">Mutual de Seguridad (empleador)</h6></div>
+
+  <div class="col-md-3">
+    <label class="form-label">Tasa mutual (%) <small class="text-muted">tasa empleador</small></label>
+    <input type="number" name="tasa_mutual" class="form-control" min="0" max="10" step="0.001"
+           value="{{ (emp.tasa_mutual * 100) | round(3) if emp else 0.93 }}">
+  </div>
+
+  <div class="col-12 mt-3">
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-floppy me-1"></i>Guardar
+    </button>
+    <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="btn btn-outline-secondary ms-2">Cancelar</a>
+  </div>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const AFP_TASAS = {
+  'Capital':   1.44,
+  'Cuprum':    1.44,
+  'Habitat':   1.27,
+  'Modelo':    0.58,
+  'PlanVital': 1.16,
+  'ProVida':   1.45,
+  'Uno':       0.49,
+};
+
+function autoTasaAfp(afp) {
+  const campo = document.getElementById('tasa_afp_comision');
+  if (AFP_TASAS[afp] !== undefined) {
+    campo.value = AFP_TASAS[afp];
+  }
+}
+
+function toggleIsapre(val) {
+  document.getElementById('grp_isapre').style.display = val === 'ISAPRE' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

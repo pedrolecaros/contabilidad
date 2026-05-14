@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Libro Diario – {{ empresa.razon_social }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #000; background: #fff; }
+
+    .page-header { margin-bottom: 10px; border-bottom: 2px solid #000; padding-bottom: 6px; }
+    .page-header .empresa-nombre { font-size: 12pt; font-weight: bold; text-transform: uppercase; }
+    .page-header .empresa-rut    { font-size: 9pt; margin-top: 1px; }
+    .page-header .empresa-giro   { font-size: 8pt; color: #333; margin-top: 2px; }
+    .page-header .periodo        { font-size: 9pt; font-weight: bold; margin-top: 6px; text-transform: uppercase; text-align: center; }
+
+    table { width: 100%; border-collapse: collapse; }
+    col.c-num   { width: 5%; }
+    col.c-fecha { width: 8%; }
+    col.c-cod   { width: 7%; }
+    col.c-nom   { width: 52%; }
+    col.c-monto { width: 14%; }
+
+    th, td { border: 1px solid #aaa; padding: 2px 4px; vertical-align: middle; }
+
+    thead th { background: #1a1a2e; color: #fff; text-align: center; font-size: 7.5pt; font-weight: bold; border-color: #000; padding: 3px 4px; }
+    thead th.text-left { text-align: left; }
+
+    tr.asiento-header td { background: #e8e8e8; font-size: 8pt; }
+    tr.asiento-header td.numero { text-align: center; font-weight: bold; }
+    tr.linea td { font-size: 8.5pt; }
+    td.num { text-align: right; }
+    td.cod { font-family: 'Courier New', monospace; font-size: 8pt; color: #444; text-align: center; }
+
+    tfoot td { font-weight: bold; background: #dde; border-top: 2px solid #000; font-size: 8.5pt; text-align: right; }
+    tfoot td:first-child { text-align: left; }
+
+    .page-footer { margin-top: 10px; border-top: 1px solid #aaa; padding-top: 4px; font-size: 7.5pt; color: #666; display: flex; justify-content: space-between; }
+
+    @page { size: A4 portrait; margin: 12mm 10mm; }
+    @media print {
+      .no-print { display: none !important; }
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+      tr.asiento-header { page-break-before: auto; }
+      tr { page-break-inside: avoid; }
+    }
+    .btn-print { display: inline-block; margin-bottom: 12px; padding: 6px 18px; background: #1a1a2e; color: #fff; border: none; border-radius: 4px; font-size: 10pt; cursor: pointer; }
+    @media print { .btn-print { display: none; } }
+  </style>
+</head>
+<body>
+<button class="btn-print no-print" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+
+<div class="page-header">
+  <div class="empresa-nombre">{{ empresa.razon_social }}</div>
+  <div class="empresa-rut">RUT: {{ empresa.rut }}</div>
+  {% if empresa.giro %}<div class="empresa-giro">{{ empresa.giro }}</div>{% endif %}
+  <div class="periodo">Libro Diario — {{ desde.strftime('%d/%m/%Y') }} al {{ hasta.strftime('%d/%m/%Y') }}</div>
+</div>
+
+<table>
+  <colgroup>
+    <col class="c-num"><col class="c-fecha"><col class="c-cod">
+    <col class="c-nom"><col class="c-monto"><col class="c-monto">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>N°</th><th>Fecha</th><th>Código</th>
+      <th class="text-left">Cuenta / Descripción</th>
+      <th>Debe</th><th>Haber</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% set tot_debe  = [0] %}
+    {% set tot_haber = [0] %}
+    {% for a in asientos %}
+    <tr class="asiento-header">
+      <td class="numero">{{ a.numero }}</td>
+      <td style="text-align:center">{{ a.fecha.strftime('%d/%m/%Y') }}</td>
+      <td colspan="4" style="font-style:italic;color:#555">{{ a.descripcion or '' }}</td>
+    </tr>
+    {% for l in a.lineas %}
+      {% set _ = tot_debe.append(tot_debe[-1]  + (l.debe  or 0)) %}
+      {% set _ = tot_haber.append(tot_haber[-1] + (l.haber or 0)) %}
+    <tr class="linea">
+      <td></td><td></td>
+      <td class="cod">{{ l.cuenta.codigo }}</td>
+      <td style="padding-left:10px">
+        {{ l.cuenta.nombre }}{% if l.descripcion %} <span style="color:#666;font-size:7.5pt">· {{ l.descripcion }}</span>{% endif %}
+      </td>
+      <td class="num">{% if l.debe %}{{ '{:,.0f}'.format(l.debe).replace(',','.') }}{% endif %}</td>
+      <td class="num">{% if l.haber %}{{ '{:,.0f}'.format(l.haber).replace(',','.') }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">TOTALES</td>
+      <td>{{ '{:,.0f}'.format(tot_debe[-1]).replace(',','.') }}</td>
+      <td>{{ '{:,.0f}'.format(tot_haber[-1]).replace(',','.') }}</td>
+    </tr>
+  </tfoot>
+</table>
+
+<div class="page-footer">
+  <span>Generado: {{ now.strftime('%d/%m/%Y %H:%M') }}</span>
+  <span>{{ empresa.razon_social }} — RUT {{ empresa.rut }}</span>
+</div>
+<script>window.onload = function(){ window.print(); }</script>
+</body>
+</html>

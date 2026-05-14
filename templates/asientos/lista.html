@@ -1,0 +1,261 @@
+{% extends 'base.html' %}
+{% block title %}Asientos – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Asientos Contables</h5>
+  <a href="{{ url_for('asientos.nuevo', eid=empresa.id) }}" class="btn btn-primary btn-sm"
+     title="Crear nuevo asiento manual">
+    <i class="bi bi-plus-lg me-1"></i>Nuevo Asiento
+  </a>
+</div>
+
+<!-- Filtros -->
+<form class="row g-2 mb-3" method="get" id="formFiltros">
+  <div class="col-auto">
+    <select name="origen" class="form-select form-select-sm">
+      <option value="">Todos los orígenes</option>
+      <option value="MANUAL"        {% if origen=='MANUAL' %}selected{% endif %}>Manual</option>
+      <option value="LIBRO_COMPRAS" {% if origen=='LIBRO_COMPRAS' %}selected{% endif %}>Libro Compras</option>
+      <option value="LIBRO_VENTAS"  {% if origen=='LIBRO_VENTAS' %}selected{% endif %}>Libro Ventas</option>
+      <option value="HONORARIOS"    {% if origen=='HONORARIOS' %}selected{% endif %}>Honorarios</option>
+      <option value="BANCO"         {% if origen=='BANCO' %}selected{% endif %}>Banco</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="estado" class="form-select form-select-sm">
+      <option value="">Todos los estados</option>
+      <option value="BORRADOR"   {% if estado=='BORRADOR' %}selected{% endif %}>Borrador</option>
+      <option value="CONFIRMADO" {% if estado=='CONFIRMADO' %}selected{% endif %}>Confirmado</option>
+      <option value="ANULADO"    {% if estado=='ANULADO' %}selected{% endif %}>Anulado</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrar</button>
+  </div>
+</form>
+
+<!-- Formulario principal (checkboxes + acciones) -->
+<form method="post" action="{{ url_for('asientos.confirmar_lote', eid=empresa.id) }}" id="formLote">
+  <input type="hidden" name="origen" value="{{ origen }}">
+  <input type="hidden" name="estado" value="{{ estado }}">
+  <input type="hidden" name="page"   value="{{ asientos.page }}">
+
+  <!-- Barra de acción (visible solo cuando hay selección) -->
+  <div class="d-flex align-items-center gap-2 mb-2" id="barraAccion" style="min-height:34px">
+    <span class="text-muted small" id="contadorSel">0 seleccionados</span>
+    <button type="submit" class="btn btn-success btn-sm" id="btnConfirmarLote"
+            style="display:none"
+            onclick="return confirm('¿Confirmar los asientos seleccionados?')">
+      <i class="bi bi-check2-all me-1"></i>Confirmar seleccionados
+    </button>
+  </div>
+
+  <table class="table table-sm table-hover">
+    <thead class="table-dark">
+      <tr>
+        <th style="width:36px">
+          <input type="checkbox" id="chkTodos" class="form-check-input"
+                 title="Seleccionar todos los borradores">
+        </th>
+        <th data-sort="num">N°</th>
+        <th data-sort="date">Fecha</th>
+        <th data-sort="text">Descripción</th>
+        <th style="min-width:320px">
+          <div class="d-flex align-items-baseline gap-1">
+            <span>Cuentas</span>
+            <span class="ms-auto font-monospace fw-normal text-success" style="min-width:72px;text-align:right;font-size:.8em">Debe</span>
+            <span class="font-monospace fw-normal text-danger" style="min-width:72px;text-align:right;font-size:.8em">Haber</span>
+          </div>
+        </th>
+        <th data-sort="text">Estado</th>
+        <th>Conciliación</th>
+        <th class="text-center">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in asientos.items %}
+      {% set lineas = lineas_x_asiento[a.id] %}
+      <tr class="{{ 'text-muted' if a.estado == 'ANULADO' }}">
+
+        <!-- Checkbox (solo borradores) -->
+        <td>
+          {% if a.estado == 'BORRADOR' %}
+          <input type="checkbox" name="ids" value="{{ a.id }}"
+                 class="form-check-input chk-asiento">
+          {% endif %}
+        </td>
+
+        <!-- Número -->
+        <td>
+          <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=a.id) }}"
+             class="fw-semibold text-decoration-none">{{ a.numero }}</a>
+          {% if not a.cuadrado and a.estado != 'ANULADO' %}
+            <i class="bi bi-exclamation-triangle-fill text-danger ms-1"
+               title="No cuadrado: Debe={{ a.total_debe|clp }} Haber={{ a.total_haber|clp }}"></i>
+          {% endif %}
+        </td>
+
+        <td class="small">{{ a.fecha|fecha_cl }}</td>
+        <td class="small">{{ (a.descripcion or '')[:40] }}{% if a.descripcion and a.descripcion|length > 40 %}…{% endif %}</td>
+
+        <!-- Cuentas con debe/haber por línea -->
+        <td style="min-width:320px">
+          {% for l in lineas %}
+          <div class="d-flex align-items-baseline gap-1" style="font-size:.76rem;line-height:1.5">
+            <span class="font-monospace text-muted" style="min-width:42px;flex-shrink:0">{{ l.cuenta.codigo }}</span>
+            <span class="text-truncate" style="min-width:110px;max-width:140px" title="{{ l.cuenta.nombre }}">{{ l.cuenta.nombre[:22] }}</span>
+            <span class="ms-auto font-monospace text-end" style="min-width:72px;color:#198754">
+              {% if l.debe %}{{ l.debe|clp }}{% endif %}
+            </span>
+            <span class="font-monospace text-end" style="min-width:72px;color:#dc3545">
+              {% if l.haber %}{{ l.haber|clp }}{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </td>
+
+        <!-- Estado -->
+        <td>
+          {% if a.estado == 'BORRADOR' %}
+            <span class="badge badge-borrador">Borrador</span>
+          {% elif a.estado == 'CONFIRMADO' %}
+            <span class="badge badge-confirmado">Confirmado</span>
+          {% else %}
+            <span class="badge badge-anulado">Anulado</span>
+          {% endif %}
+        </td>
+
+        <!-- Conciliación -->
+        <td>
+          {% if a.origen in origenes_conc %}
+            {% set cid = conc_x_asiento.get(a.id) %}
+            {% if cid %}
+              {% set conc = conc_objs.get(cid) %}
+              {% set label = tipos_conc_label.get(conc.tipo, 'Conc.') if conc else 'Conc.' %}
+              <a href="{{ url_for('conciliacion.index', eid=empresa.id, mes=a.fecha.strftime('%Y-%m')) }}"
+                 class="badge bg-success text-decoration-none"
+                 title="{{ label }}{% if conc and conc.descripcion %}: {{ conc.descripcion[:60] }}{% endif %}">
+                <i class="bi bi-link-45deg me-1"></i>Conciliado
+              </a>
+            {% elif a.estado == 'CONFIRMADO' %}
+              {% if a.origen in origenes_sii %}
+                <a href="{{ url_for('conciliacion.index', eid=empresa.id, mes=a.fecha.strftime('%Y-%m')) }}"
+                   class="badge bg-warning text-dark text-decoration-none"
+                   title="Sin conciliar con banco">
+                  <i class="bi bi-link me-1"></i>Sin conciliar
+                </a>
+              {% else %}
+                <a href="{{ url_for('conciliacion.index', eid=empresa.id, mes=a.fecha.strftime('%Y-%m')) }}"
+                   class="badge text-decoration-none text-white"
+                   style="background:#fd7e14"
+                   title="Sin respaldo de pago">
+                  <i class="bi bi-exclamation-circle me-1"></i>Sin respaldo
+                </a>
+              {% endif %}
+            {% else %}
+              <span class="text-muted small">—</span>
+            {% endif %}
+          {% else %}
+            <span class="text-muted small">—</span>
+          {% endif %}
+        </td>
+
+        <!-- Acciones inline -->
+        <td class="text-center text-nowrap">
+          {% if a.estado == 'BORRADOR' %}
+            <!-- Confirmar rápido individual -->
+            <button type="submit" form="formLote"
+                    class="btn btn-xs btn-sm btn-success py-0 px-1 btn-confirmar-uno"
+                    title="Confirmar este asiento"
+                    data-id="{{ a.id }}"
+                    onclick="return setOneAndConfirm(event, {{ a.id }}, {{ a.numero }})">
+              <i class="bi bi-check2"></i>
+            </button>
+            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+               class="btn btn-xs btn-sm btn-outline-primary py-0 px-1"
+               title="Editar este asiento">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form method="post" action="{{ url_for('asientos.eliminar', eid=empresa.id, aid=a.id) }}"
+                  class="d-inline">
+              <button class="btn btn-xs btn-sm btn-outline-danger py-0 px-1"
+                      title="Eliminar este asiento"
+                      onclick="return confirm('¿Eliminar asiento N°{{ a.numero }}?')">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          {% elif a.estado == 'CONFIRMADO' %}
+            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+               class="btn btn-xs btn-sm btn-outline-primary py-0 px-1"
+               title="Editar asiento (lo revierte a borrador)">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form method="post" action="{{ url_for('asientos.anular', eid=empresa.id, aid=a.id) }}"
+                  class="d-inline">
+              <button class="btn btn-xs btn-sm btn-outline-danger py-0 px-1"
+                      title="Anular este asiento confirmado"
+                      onclick="return confirm('¿Anular asiento N°{{ a.numero }}?')">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="text-center text-muted py-4">No hay asientos</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</form>
+
+{% if asientos.pages > 1 %}
+<nav>
+  <ul class="pagination pagination-sm">
+    {% for p in asientos.iter_pages() %}
+      {% if p %}
+        <li class="page-item {% if p == asientos.page %}active{% endif %}">
+          <a class="page-link" href="?page={{ p }}&origen={{ origen }}&estado={{ estado }}">{{ p }}</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Actualizar contador y botón confirmar lote
+function actualizarBarra() {
+  const checks = document.querySelectorAll('.chk-asiento:checked');
+  const n = checks.length;
+  document.getElementById('contadorSel').textContent =
+    n === 0 ? '' : `${n} seleccionado${n > 1 ? 's' : ''}`;
+  document.getElementById('btnConfirmarLote').style.display = n > 0 ? '' : 'none';
+}
+
+// Seleccionar todos los borradores
+document.getElementById('chkTodos').addEventListener('change', function() {
+  document.querySelectorAll('.chk-asiento').forEach(c => c.checked = this.checked);
+  actualizarBarra();
+});
+
+document.querySelectorAll('.chk-asiento').forEach(c =>
+  c.addEventListener('change', actualizarBarra)
+);
+
+// Confirmar uno solo con el botón ✓ de la fila
+function setOneAndConfirm(event, id, numero) {
+  event.preventDefault();
+  if (!confirm('¿Confirmar asiento N°' + numero + '?')) return false;
+  // Desmarcar todos, marcar solo este
+  document.querySelectorAll('.chk-asiento').forEach(c => c.checked = false);
+  const chk = document.querySelector(`.chk-asiento[value="${id}"]`);
+  if (chk) chk.checked = true;
+  document.getElementById('formLote').submit();
+  return false;
+}
+</script>
+{% endblock %}

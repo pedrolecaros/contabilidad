@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Plan de Cuentas – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-list-nested me-2"></i>Plan de Cuentas PCGA</h5>
+  <a href="{{ url_for('cuentas.nueva', eid=empresa.id) }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Nueva Cuenta
+  </a>
+</div>
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead class="table-dark">
+      <tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Naturaleza</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for c in cuentas %}
+      <tr class="{{ 'titulo-cuenta' if c.es_titulo }} {{ 'text-muted' if not c.activa }}">
+        <td class="font-monospace small">{{ c.codigo }}</td>
+        <td style="padding-left: {{ (c.nivel - 1) * 20 }}px">
+          {% if c.es_titulo %}<strong>{% endif %}
+          {{ c.nombre }}
+          {% if c.es_titulo %}</strong>{% endif %}
+          {% if not c.activa %}<span class="badge bg-secondary ms-1 small">Inactiva</span>{% endif %}
+        </td>
+        <td><span class="badge bg-secondary small">{{ c.tipo }}</span></td>
+        <td class="small text-muted">{{ c.naturaleza }}</td>
+        <td>
+          <a href="{{ url_for('cuentas.editar', eid=empresa.id, cid=c.id) }}"
+             class="btn btn-xs btn-sm btn-outline-secondary py-0 small">Editar</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block title %}Liquidación {{ liq.periodo }} – {{ liq.empleado.nombre }}{% endblock %}
+{% block content %}
+{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Liquidación {{ liq.periodo }} &mdash; {{ liq.empleado.nombre }}</h4>
+  <div>
+    <a href="{{ url_for('remuneraciones.imprimir', eid=empresa.id, liq_id=liq.id) }}"
+       class="btn btn-outline-secondary btn-sm" target="_blank">
+      <i class="bi bi-printer me-1"></i>Imprimir / PDF
+    </a>
+    <a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=liq.empleado_id) }}"
+       class="btn btn-outline-secondary btn-sm ms-1">
+      <i class="bi bi-arrow-left me-1"></i>Historial
+    </a>
+    <form method="post" action="{{ url_for('remuneraciones.eliminar_liq', eid=empresa.id, liq_id=liq.id) }}"
+          style="display:inline"
+          onsubmit="return confirm('¿Eliminar esta liquidación?')">
+      <button class="btn btn-outline-danger btn-sm ms-1"><i class="bi bi-trash"></i></button>
+    </form>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-lg-7">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-dark text-white"><strong>Haberes</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><td>Sueldo Base</td><td class="text-end">$ {{ num(liq.sueldo_base) }}</td></tr>
+            {% if liq.horas_extra %}<tr><td>Horas Extra</td><td class="text-end">$ {{ num(liq.horas_extra) }}</td></tr>{% endif %}
+            {% if liq.gratificacion %}<tr><td>Gratificación</td><td class="text-end">$ {{ num(liq.gratificacion) }}</td></tr>{% endif %}
+            {% if liq.bono_colacion %}<tr><td>Bono Colación</td><td class="text-end">$ {{ num(liq.bono_colacion) }}</td></tr>{% endif %}
+            {% if liq.bono_movilizacion %}<tr><td>Bono Movilización</td><td class="text-end">$ {{ num(liq.bono_movilizacion) }}</td></tr>{% endif %}
+            {% if liq.otros_haberes %}<tr><td>Otros Haberes</td><td class="text-end">$ {{ num(liq.otros_haberes) }}</td></tr>{% endif %}
+          </tbody>
+          <tfoot class="table-dark">
+            <tr><th>Total Haberes</th><th class="text-end">$ {{ num(liq.total_haberes) }}</th></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-dark text-white"><strong>Descuentos</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <td>AFP {{ liq.empleado.afp }} ({{ (liq.empleado.tasa_afp_comision * 100 + 10) | round(2) }}%)</td>
+              <td class="text-end text-danger">$ {{ num(liq.afp) }}</td>
+            </tr>
+            <tr>
+              <td>
+                {{ liq.empleado.tipo_salud }}
+                {% if liq.empleado.isapre %} – {{ liq.empleado.isapre }}{% endif %}
+                (7%)
+              </td>
+              <td class="text-end text-danger">$ {{ num(liq.salud) }}</td>
+            </tr>
+            <tr>
+              <td>Seguro Cesantía (0.6%)</td>
+              <td class="text-end text-danger">$ {{ num(liq.cesantia_trab) }}</td>
+            </tr>
+            {% if liq.impuesto_renta %}
+            <tr>
+              <td>Impuesto Único 2ª Categoría</td>
+              <td class="text-end text-danger">$ {{ num(liq.impuesto_renta) }}</td>
+            </tr>
+            {% endif %}
+          </tbody>
+          <tfoot class="table-dark">
+            <tr><th>Total Descuentos</th><th class="text-end text-danger">$ {{ num(liq.total_descuentos) }}</th></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-success mb-3">
+      <div class="card-body py-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <h5 class="mb-0 text-success">Sueldo Líquido</h5>
+          <h4 class="mb-0 text-success"><strong>$ {{ num(liq.liquido) }}</strong></h4>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-secondary text-white"><strong>Aportes Empleador (no descuentan al trabajador)</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><td>SIS (1.49%)</td><td class="text-end">$ {{ num(liq.sis) }}</td></tr>
+            <tr><td>Seguro Cesantía Empleador (2.4%)</td><td class="text-end">$ {{ num(liq.cesantia_emp) }}</td></tr>
+            <tr><td>Mutual de Seguridad</td><td class="text-end">$ {{ num(liq.mutual) }}</td></tr>
+          </tbody>
+          <tfoot class="table-secondary">
+            <tr><th>Costo Total Empresa</th><th class="text-end">$ {{ num(liq.costo_empresa) }}</th></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body small text-muted">
+        <dl class="row mb-0">
+          <dt class="col-sm-6">Renta Imponible</dt><dd class="col-sm-6 text-end">$ {{ num(liq.renta_imponible) }}</dd>
+          <dt class="col-sm-6">UTM usada</dt><dd class="col-sm-6 text-end">$ {{ num(liq.utm) }}</dd>
+          <dt class="col-sm-6">Estado</dt>
+          <dd class="col-sm-6 text-end">
+            <span class="badge {{ 'bg-success' if liq.estado == 'EMITIDA' else 'bg-warning text-dark' }}">
+              {{ liq.estado }}
+            </span>
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

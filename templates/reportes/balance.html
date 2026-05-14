@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+{% block title %}Balance 8 Columnas – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+
+<style>
+  #tablaBalance {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  #tablaBalance col.c-cod { width: 6%; }
+  #tablaBalance col.c-nom { width: 22%; }
+  #tablaBalance col.c-num { width: 9%; }
+
+  #tablaBalance th, #tablaBalance td {
+    border: 1px solid #ccc;
+    padding: 3px 5px;
+    vertical-align: middle;
+  }
+
+  /* Fila 1 del encabezado: grupos */
+  #tablaBalance thead tr.fila-grupos th {
+    background: #1a1a2e;
+    color: #fff;
+    text-align: center;
+    font-size: 8pt;
+    font-weight: bold;
+    border-color: #000;
+    padding: 4px;
+    letter-spacing: .04em;
+  }
+  /* Fila 2 del encabezado: columnas */
+  #tablaBalance thead tr.fila-cols th {
+    background: #2c3e50;
+    color: #ddd;
+    text-align: center;
+    font-size: 7pt;
+    font-weight: bold;
+    border-color: #000;
+    padding: 3px 4px;
+  }
+  #tablaBalance thead tr.fila-cols th.text-left { text-align: left; }
+
+  #tablaBalance tbody tr td { font-size: 8.5pt; }
+  #tablaBalance tbody td.num { text-align: right; }
+  #tablaBalance tbody td.cod {
+    font-family: 'Courier New', monospace;
+    font-size: 8pt;
+    color: #555;
+    text-align: center;
+  }
+  #tablaBalance tbody td.cuenta-nom {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #tablaBalance tbody td.cuenta-nom a:hover,
+  #tablaBalance tbody td.cod a:hover {
+    text-decoration: underline !important;
+    color: #0d6efd !important;
+  }
+  #tablaBalance tbody tr.titulo td {
+    font-weight: bold;
+    background: #f4f4f4;
+    font-size: 8.5pt;
+    color: #333;
+  }
+  /* Fila de subtotal por sección */
+  #tablaBalance tbody tr.subtotal td {
+    font-weight: bold;
+    font-size: 8.5pt;
+    text-align: right;
+    border-top: 2px solid #555;
+    background: #e8ecf0;
+  }
+  #tablaBalance tbody tr.subtotal td:first-child { text-align: left; }
+
+  #tablaBalance tfoot tr.totales td {
+    font-weight: bold;
+    background: #c8d4e8;
+    border-top: 3px double #000;
+    font-size: 8.5pt;
+    text-align: right;
+  }
+  #tablaBalance tfoot tr.totales td:first-child { text-align: left; }
+
+  #tablaBalance tfoot tr.resultado-util td {
+    font-weight: bold;
+    background: #d4edda;
+    font-size: 8.5pt;
+    text-align: right;
+  }
+  #tablaBalance tfoot tr.resultado-perd td {
+    font-weight: bold;
+    background: #f8d7da;
+    font-size: 8.5pt;
+    text-align: right;
+  }
+  #tablaBalance tfoot tr.resultado-util td:first-child,
+  #tablaBalance tfoot tr.resultado-perd td:first-child { text-align: left; }
+
+  .sep-l { border-left: 2px solid #555 !important; }
+
+  .balance-header {
+    text-align: center;
+    margin-bottom: 14px;
+    border-bottom: 2px solid #1a1a2e;
+    padding-bottom: 8px;
+  }
+  .balance-header .empresa-nombre {
+    font-size: 15pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .balance-header .empresa-rut { font-size: 10pt; margin-top: 2px; color: #444; }
+  .balance-header .empresa-giro { font-size: 9pt; color: #666; margin-top: 2px; }
+  .balance-header .periodo {
+    font-size: 10pt;
+    font-weight: bold;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-table me-2"></i>Balance de 8 Columnas</h5>
+  <a href="{{ url_for('reportes.balance_imprimir', eid=empresa.id, desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
+     target="_blank" class="btn btn-sm btn-dark">
+    <i class="bi bi-printer me-1"></i>Imprimir / PDF
+  </a>
+</div>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
+  <div class="col-auto">
+    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
+  </div>
+</form>
+
+<div class="balance-header">
+  <div class="empresa-nombre">{{ empresa.razon_social }}</div>
+  <div class="empresa-rut">RUT: {{ empresa.rut }}</div>
+  {% if empresa.giro %}<div class="empresa-giro">{{ empresa.giro }}</div>{% endif %}
+  <div class="periodo">
+    Balance desde {{ desde.strftime('%B del %Y')|upper }}
+    hasta {{ hasta.strftime('%B del %Y')|upper }}
+  </div>
+</div>
+
+{% macro num(v) %}{{ '{:,.0f}'.format(v).replace(',','.') if v else '' }}{% endmacro %}
+
+<div class="table-responsive">
+  <table id="tablaBalance">
+    <colgroup>
+      <col class="c-cod"><col class="c-nom">
+      <col class="c-num"><col class="c-num">
+      <col class="c-num"><col class="c-num">
+      <col class="c-num"><col class="c-num">
+      <col class="c-num"><col class="c-num">
+    </colgroup>
+    <thead>
+      <tr class="fila-grupos">
+        <th rowspan="2">CÓDIGO</th>
+        <th rowspan="2" class="text-left">CUENTA</th>
+        <th colspan="2">SUMAS</th>
+        <th colspan="2" class="sep-l">SALDOS</th>
+        <th colspan="2" class="sep-l">BALANCE GENERAL</th>
+        <th colspan="2" class="sep-l">ESTADO DE RESULTADOS</th>
+      </tr>
+      <tr class="fila-cols">
+        <th>DÉBITOS</th><th>CRÉDITOS</th>
+        <th class="sep-l">DEUDOR</th><th>ACREEDOR</th>
+        <th class="sep-l">ACTIVO</th><th>PASIVO / PATR.</th>
+        <th class="sep-l">PÉRDIDAS</th><th>GANANCIAS</th>
+      </tr>
+    </thead>
+    <tbody>
+      {# ── Iterar por sección de tipo de cuenta ── #}
+      {% set secciones = [
+        ('ACTIVO',     'ACTIVO'),
+        ('PASIVO',     'PASIVO'),
+        ('PATRIMONIO', 'PATRIMONIO'),
+        ('GASTO',      'GASTOS'),
+        ('INGRESO',    'INGRESOS'),
+      ] %}
+
+      {% for tipo, label in secciones %}
+        {% set grupo = filas | selectattr('cuenta.tipo', 'equalto', tipo) | list %}
+        {% if grupo %}
+          {% set ns = namespace(sd=0.0,sh=0.0,sald=0.0,sala=0.0,bgd=0.0,bgh=0.0,erd=0.0,erh=0.0) %}
+          {% for f in grupo %}
+            {% if not f.cuenta.es_titulo %}
+              {% set ns.sd   = ns.sd   + f.sd   %}
+              {% set ns.sh   = ns.sh   + f.sh   %}
+              {% set ns.sald = ns.sald + f.sald %}
+              {% set ns.sala = ns.sala + f.sala %}
+              {% set ns.bgd  = ns.bgd  + f.bgd  %}
+              {% set ns.bgh  = ns.bgh  + f.bgh  %}
+              {% set ns.erd  = ns.erd  + f.erd  %}
+              {% set ns.erh  = ns.erh  + f.erh  %}
+            {% endif %}
+            {% if f.cuenta.es_titulo %}
+            <tr class="titulo">
+              <td colspan="10">{{ f.cuenta.nombre }}</td>
+            </tr>
+            {% else %}
+            {% set url_mayor = url_for('reportes.mayor', eid=empresa.id,
+                                       cuenta_id=f.cuenta.id,
+                                       desde=desde.isoformat(), hasta=hasta.isoformat()) %}
+            <tr>
+              <td class="cod">
+                <a href="{{ url_mayor }}" target="_blank"
+                   class="text-decoration-none text-muted font-monospace"
+                   title="Ver Libro Mayor de {{ f.cuenta.nombre }}">{{ f.cuenta.codigo }}</a>
+              </td>
+              <td class="cuenta-nom" style="padding-left:{{ (f.cuenta.nivel-1)*8 + 4 }}px">
+                <a href="{{ url_mayor }}" target="_blank"
+                   class="text-decoration-none text-dark"
+                   title="Ver Libro Mayor de {{ f.cuenta.nombre }}">{{ f.cuenta.nombre }}</a>
+              </td>
+              <td class="num">{{ num(f.sd) }}</td>
+              <td class="num">{{ num(f.sh) }}</td>
+              <td class="num sep-l">{{ num(f.sald) }}</td>
+              <td class="num">{{ num(f.sala) }}</td>
+              <td class="num sep-l">{{ num(f.bgd) }}</td>
+              <td class="num">{{ num(f.bgh) }}</td>
+              <td class="num sep-l">{{ num(f.erd) }}</td>
+              <td class="num">{{ num(f.erh) }}</td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+          {# Fila de subtotal de sección #}
+          <tr class="subtotal">
+            <td colspan="2">TOTAL {{ label }}</td>
+            <td>{{ num(ns.sd) }}</td>
+            <td>{{ num(ns.sh) }}</td>
+            <td class="sep-l">{{ num(ns.sald) }}</td>
+            <td>{{ num(ns.sala) }}</td>
+            <td class="sep-l">{{ num(ns.bgd) }}</td>
+            <td>{{ num(ns.bgh) }}</td>
+            <td class="sep-l">{{ num(ns.erd) }}</td>
+            <td>{{ num(ns.erh) }}</td>
+          </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="totales">
+        <td colspan="2">TOTALES</td>
+        <td>{{ num(tot.sd) }}</td><td>{{ num(tot.sh) }}</td>
+        <td class="sep-l">{{ num(tot.sald) }}</td><td>{{ num(tot.sala) }}</td>
+        <td class="sep-l">{{ num(tot.bgd) }}</td><td>{{ num(tot.bgh) }}</td>
+        <td class="sep-l">{{ num(tot.erd) }}</td><td>{{ num(tot.erh) }}</td>
+      </tr>
+      {% if resultado_er != 0 %}
+      <tr class="{{ 'resultado-util' if resultado_er > 0 else 'resultado-perd' }}">
+        <td colspan="2">{{ 'UTILIDAD DEL PERÍODO' if resultado_er > 0 else 'PÉRDIDA DEL PERÍODO' }}</td>
+        <td></td><td></td>
+        {% if resultado_er > 0 %}
+          <td class="sep-l"></td><td>{{ num(resultado_er) }}</td>
+          <td class="sep-l"></td><td>{{ num(resultado_er) }}</td>
+          <td class="sep-l">{{ num(resultado_er) }}</td><td></td>
+        {% else %}
+          <td class="sep-l">{{ num(resultado_er|abs) }}</td><td></td>
+          <td class="sep-l">{{ num(resultado_er|abs) }}</td><td></td>
+          <td class="sep-l"></td><td>{{ num(resultado_er|abs) }}</td>
+        {% endif %}
+      </tr>
+      {% endif %}
+    </tfoot>
+  </table>
+</div>
+{% endblock %}

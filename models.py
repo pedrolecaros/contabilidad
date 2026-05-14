@@ -1,0 +1,274 @@
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+
+db = SQLAlchemy()
+
+
+class Empresa(db.Model):
+    __tablename__ = 'empresas'
+    id = db.Column(db.Integer, primary_key=True)
+    rut = db.Column(db.String(12), unique=True, nullable=False)
+    razon_social = db.Column(db.String(200), nullable=False)
+    nombre_fantasia = db.Column(db.String(200))
+    giro = db.Column(db.String(300))
+    activa = db.Column(db.Boolean, default=True)
+
+    clave_sii = db.Column(db.String(200))   # clave portal SII (opcional)
+
+    cuentas = db.relationship('Cuenta', backref='empresa', lazy='dynamic')
+    asientos = db.relationship('Asiento', backref='empresa', lazy='dynamic')
+    documentos_sii = db.relationship('DocumentoSII', backref='empresa', lazy='dynamic')
+    movimientos_banco = db.relationship('MovimientoBanco', backref='empresa', lazy='dynamic')
+    reglas = db.relationship('ReglaClasificacion', backref='empresa', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Empresa {self.rut} {self.razon_social}>'
+
+
+class Cuenta(db.Model):
+    __tablename__ = 'cuentas'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    codigo = db.Column(db.String(20), nullable=False)
+    nombre = db.Column(db.String(200), nullable=False)
+    tipo = db.Column(db.String(20), nullable=False)       # ACTIVO, PASIVO, PATRIMONIO, INGRESO, GASTO
+    naturaleza = db.Column(db.String(10), nullable=False)  # DEUDORA, ACREEDORA
+    nivel = db.Column(db.Integer, default=1)
+    cuenta_padre_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
+    activa = db.Column(db.Boolean, default=True)
+    es_titulo = db.Column(db.Boolean, default=False)
+
+    hijos = db.relationship('Cuenta', backref=db.backref('padre', remote_side=[id]))
+    lineas = db.relationship('LineaAsiento', backref='cuenta', lazy='dynamic')
+
+    def saldo(self, desde=None, hasta=None):
+        q = self.lineas.join(Asiento).filter(Asiento.estado == 'CONFIRMADO')
+        if desde:
+            q = q.filter(Asiento.fecha >= desde)
+        if hasta:
+            q = q.filter(Asiento.fecha <= hasta)
+        lineas = q.all()
+        debe = sum(l.debe for l in lineas)
+        haber = sum(l.haber for l in lineas)
+        return debe - haber if self.naturaleza == 'DEUDORA' else haber - debe
+
+    def __repr__(self):
+        return f'<Cuenta {self.codigo} {self.nombre}>'
+
+
+class Asiento(db.Model):
+    __tablename__ = 'asientos'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    fecha = db.Column(db.Date, nullable=False)
+    numero = db.Column(db.Integer)
+    descripcion = db.Column(db.String(500))
+    origen = db.Column(db.String(20), default='MANUAL')
+    # MANUAL, LIBRO_COMPRAS, LIBRO_VENTAS, HONORARIOS, BANCO
+    estado = db.Column(db.String(15), default='BORRADOR')
+    # BORRADOR, CONFIRMADO, ANULADO
+    creado_en = db.Column(db.DateTime, default=datetime.now)
+
+    lineas = db.relationship('LineaAsiento', backref='asiento', lazy='select',
+                             cascade='all, delete-orphan',
+                             order_by='LineaAsiento.orden')
+
+    @property
+    def total_debe(self):
+        return sum(l.debe for l in self.lineas)
+
+    @property
+    def total_haber(self):
+        return sum(l.haber for l in self.lineas)
+
+    @property
+    def cuadrado(self):
+        return abs(self.total_debe - self.total_haber) < 1.0
+
+    def __repr__(self):
+        return f'<Asiento #{self.numero} {self.fecha}>'
+
+
+class LineaAsiento(db.Model):
+    __tablename__ = 'lineas_asiento'
+    id = db.Column(db.Integer, primary_key=True)
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=False)
+    cuenta_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=False)
+    debe = db.Column(db.Float, default=0.0)
+    haber = db.Column(db.Float, default=0.0)
+    descripcion = db.Column(db.String(300))
+    orden = db.Column(db.Integer, default=0)
+
+
+class Contraparte(db.Model):
+    __tablename__ = 'contrapartes'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    rut = db.Column(db.String(12), nullable=False)
+    razon_social = db.Column(db.String(200), nullable=False)
+    # PROVEEDOR, CLIENTE, AMBOS, HONORARIOS
+    tipo = db.Column(db.String(20), nullable=False, default='PROVEEDOR')
+    email = db.Column(db.String(200))
+    telefono = db.Column(db.String(50))
+    notas = db.Column(db.String(500))
+    activo = db.Column(db.Boolean, default=True)
+
+    empresa = db.relationship('Empresa', backref=db.backref('contrapartes', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<Contraparte {self.rut} {self.razon_social}>'
+
+
+class Conciliacion(db.Model):
+    __tablename__ = 'conciliaciones'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    fecha = db.Column(db.Date, nullable=False)
+    descripcion = db.Column(db.String(300))
+    # SII, SUELDO, RETIRO, IMPUESTO, BANCO, PRESTAMO, INTERNO, OTRO
+    tipo = db.Column(db.String(20), default='SII')
+    respaldo_url = db.Column(db.String(500))
+    contraparte_id = db.Column(db.Integer, db.ForeignKey('contrapartes.id'), nullable=True)
+
+    empresa = db.relationship('Empresa', backref=db.backref('conciliaciones', lazy='dynamic'))
+    contraparte = db.relationship('Contraparte', backref=db.backref('conciliaciones', lazy='dynamic'))
+
+
+class DocumentoSII(db.Model):
+    __tablename__ = 'documentos_sii'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    tipo_libro = db.Column(db.String(15), nullable=False)  # COMPRAS, VENTAS, HONORARIOS
+    tipo_dte = db.Column(db.String(10))                    # 33, 34, 39, 61, etc.
+    folio = db.Column(db.String(20))
+    fecha = db.Column(db.Date)
+    rut_contraparte = db.Column(db.String(12))
+    razon_social_contraparte = db.Column(db.String(200))
+    monto_exento = db.Column(db.Float, default=0.0)
+    monto_neto = db.Column(db.Float, default=0.0)
+    iva = db.Column(db.Float, default=0.0)
+    total = db.Column(db.Float, default=0.0)
+    procesado = db.Column(db.Boolean, default=False)
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
+    archivo_origen = db.Column(db.String(300))
+    conciliacion_id = db.Column(db.Integer, db.ForeignKey('conciliaciones.id'), nullable=True)
+
+    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
+    conciliacion = db.relationship('Conciliacion', backref=db.backref('documentos', lazy='select'))
+
+
+class MovimientoBanco(db.Model):
+    __tablename__ = 'movimientos_banco'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    banco = db.Column(db.String(100))
+    cuenta_bancaria = db.Column(db.String(50))
+    fecha = db.Column(db.Date)
+    descripcion = db.Column(db.String(500))
+    cargo = db.Column(db.Float, default=0.0)
+    abono = db.Column(db.Float, default=0.0)
+    saldo = db.Column(db.Float, nullable=True)
+    procesado = db.Column(db.Boolean, default=False)
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
+    archivo_origen = db.Column(db.String(300))
+
+    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
+    conciliacion_id = db.Column(db.Integer, db.ForeignKey('conciliaciones.id'), nullable=True)
+    conciliacion = db.relationship('Conciliacion', backref=db.backref('movimientos', lazy='select'))
+
+
+class Empleado(db.Model):
+    __tablename__ = 'empleados'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    rut = db.Column(db.String(12), nullable=False)
+    nombre = db.Column(db.String(200), nullable=False)
+    cargo = db.Column(db.String(200))
+    fecha_ingreso = db.Column(db.Date)
+    tipo_contrato = db.Column(db.String(20), default='INDEFINIDO')
+    sueldo_base = db.Column(db.Float, default=0.0)
+    # Previsión
+    afp = db.Column(db.String(50), default='Habitat')
+    tasa_afp_comision = db.Column(db.Float, default=0.0127)   # solo la comisión AFP (no los 10%)
+    tipo_salud = db.Column(db.String(10), default='FONASA')   # FONASA | ISAPRE
+    isapre = db.Column(db.String(100))
+    monto_isapre = db.Column(db.Float, default=0.0)           # adicional sobre 7% si isapre
+    # Haberes fijos mensuales
+    bono_colacion = db.Column(db.Float, default=0.0)
+    bono_movilizacion = db.Column(db.Float, default=0.0)
+    otros_haberes = db.Column(db.Float, default=0.0)
+    # Mutual de seguridad (tasa empleador)
+    tasa_mutual = db.Column(db.Float, default=0.0093)
+    activo = db.Column(db.Boolean, default=True)
+
+    empresa = db.relationship('Empresa', backref=db.backref('empleados', lazy='dynamic'))
+    liquidaciones = db.relationship('Liquidacion', backref='empleado', lazy='dynamic',
+                                    cascade='all, delete-orphan')
+
+
+class Liquidacion(db.Model):
+    __tablename__ = 'liquidaciones'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    periodo = db.Column(db.String(7), nullable=False)   # YYYY-MM
+    # Haberes del mes
+    sueldo_base = db.Column(db.Float, default=0.0)
+    horas_extra = db.Column(db.Float, default=0.0)
+    bono_colacion = db.Column(db.Float, default=0.0)
+    bono_movilizacion = db.Column(db.Float, default=0.0)
+    otros_haberes = db.Column(db.Float, default=0.0)
+    gratificacion = db.Column(db.Float, default=0.0)
+    # Totales calculados
+    total_haberes = db.Column(db.Float, default=0.0)
+    renta_imponible = db.Column(db.Float, default=0.0)
+    afp = db.Column(db.Float, default=0.0)
+    salud = db.Column(db.Float, default=0.0)
+    cesantia_trab = db.Column(db.Float, default=0.0)
+    impuesto_renta = db.Column(db.Float, default=0.0)
+    total_descuentos = db.Column(db.Float, default=0.0)
+    liquido = db.Column(db.Float, default=0.0)
+    # Aportes empleador
+    sis = db.Column(db.Float, default=0.0)
+    cesantia_emp = db.Column(db.Float, default=0.0)
+    mutual = db.Column(db.Float, default=0.0)
+    costo_empresa = db.Column(db.Float, default=0.0)
+    # Referencia UTM usada
+    utm = db.Column(db.Float, default=68306.0)
+    estado = db.Column(db.String(15), default='BORRADOR')   # BORRADOR | EMITIDA
+    creado_en = db.Column(db.DateTime, default=datetime.now)
+
+    empresa = db.relationship('Empresa', backref=db.backref('liquidaciones', lazy='dynamic'))
+
+
+class ReglaClasificacion(db.Model):
+    __tablename__ = 'reglas_clasificacion'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    tipo_origen = db.Column(db.String(20))      # LIBRO_COMPRAS, LIBRO_VENTAS, HONORARIOS, BANCO
+    tipo_dte = db.Column(db.String(10))          # para filtrar por tipo de DTE (opcional)
+    patron_descripcion = db.Column(db.String(200))  # texto a buscar en descripcion (opcional)
+    cuenta_debe_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
+    cuenta_haber_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
+    descripcion_asiento = db.Column(db.String(300))
+    orden = db.Column(db.Integer, default=0)
+    activa = db.Column(db.Boolean, default=True)
+
+    cuenta_debe = db.relationship('Cuenta', foreign_keys=[cuenta_debe_id])
+    cuenta_haber = db.relationship('Cuenta', foreign_keys=[cuenta_haber_id])
+
+
+class ArchivoImportado(db.Model):
+    __tablename__ = 'archivos_importados'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    tipo = db.Column(db.String(20), nullable=False)   # COMPRAS, VENTAS, HONORARIOS, BANCO
+    nombre_archivo = db.Column(db.String(300))
+    sha256 = db.Column(db.String(64), nullable=False)
+    fecha_importacion = db.Column(db.DateTime, default=datetime.now)
+    ndocs = db.Column(db.Integer, default=0)
+    periodo = db.Column(db.String(7))        # "YYYY-MM" of most docs, nullable
+    banco = db.Column(db.String(100))        # only for BANCO tipo
+    cuenta_bancaria = db.Column(db.String(50))
+
+    empresa = db.relationship('Empresa', backref=db.backref('archivos', lazy='dynamic'))

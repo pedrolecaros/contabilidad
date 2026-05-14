@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Contabilidad Chile – Empresas{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-building me-2"></i>Mis Empresas</h5>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('main.consolidado') }}" class="btn btn-outline-secondary btn-sm"
+       title="Ver resumen consolidado de todas las empresas">
+      <i class="bi bi-grid-3x3-gap me-1"></i>Consolidado
+    </a>
+    <a href="{{ url_for('main.backup') }}" class="btn btn-outline-dark btn-sm"
+       title="Descargar copia de seguridad de la base de datos">
+      <i class="bi bi-download me-1"></i>Backup BD
+    </a>
+    <a href="{{ url_for('empresas.nueva') }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Nueva Empresa
+    </a>
+  </div>
+</div>
+
+{% if empresas %}
+<table class="table table-sm table-hover">
+  <thead class="table-dark">
+    <tr>
+      <th>RUT</th>
+      <th>Razón Social</th>
+      <th>Giro</th>
+      <th class="text-center">Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in empresas %}
+    <tr>
+      <td class="font-monospace small">{{ e.rut }}</td>
+      <td>
+        <a href="{{ url_for('asientos.lista', eid=e.id) }}"
+           class="text-decoration-none fw-semibold">
+          {{ e.nombre_fantasia or e.razon_social }}
+        </a>
+        {% if e.nombre_fantasia %}
+          <div class="text-muted small">{{ e.razon_social }}</div>
+        {% endif %}
+      </td>
+      <td class="text-muted small">{{ (e.giro or '')[:55] }}</td>
+      <td class="text-center text-nowrap">
+        <a href="{{ url_for('asientos.lista', eid=e.id) }}"
+           class="btn btn-sm btn-dark py-0 px-2"
+           title="Abrir empresa">
+          <i class="bi bi-box-arrow-in-right"></i>
+        </a>
+        <a href="{{ url_for('importar.index', eid=e.id) }}"
+           class="btn btn-sm btn-outline-secondary py-0 px-2"
+           title="Importar archivos">
+          <i class="bi bi-upload"></i>
+        </a>
+        <a href="{{ url_for('empresas.editar', eid=e.id) }}"
+           class="btn btn-sm btn-outline-secondary py-0 px-2"
+           title="Editar datos empresa">
+          <i class="bi bi-pencil"></i>
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-building display-4"></i>
+  <p class="mt-3">No hay empresas registradas.<br>
+  <a href="{{ url_for('empresas.nueva') }}">Crea la primera empresa</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

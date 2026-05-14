@@ -1,0 +1,938 @@
+{% extends 'base.html' %}
+{% block title %}Conciliación – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-arrow-left-right me-2"></i>Conciliación Bancaria</h5>
+</div>
+
+<!-- Filtro período -->
+<form class="d-flex gap-2 align-items-center mb-3 flex-wrap" method="get">
+  <label class="small text-muted mb-0">Desde:</label>
+  <input type="month" name="desde" value="{{ desde_mes }}" class="form-control form-control-sm" style="width:145px">
+  <label class="small text-muted mb-0">Hasta:</label>
+  <input type="month" name="hasta" value="{{ hasta_mes }}" class="form-control form-control-sm" style="width:145px">
+  <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+  <a href="{{ url_for('conciliacion.index', eid=empresa.id, desde='', hasta='') }}"
+     class="btn btn-sm btn-outline-secondary" title="Ver todo">
+    <i class="bi bi-x"></i>
+  </a>
+</form>
+
+<!-- Resumen rápido -->
+{% set total_cargos = movs_sin | selectattr('cargo') | map(attribute='cargo') | sum %}
+{% set total_abonos = movs_sin | selectattr('abono') | map(attribute='abono') | sum %}
+{% set total_compras = docs_sin | selectattr('tipo_libro','eq','COMPRAS') | map(attribute='total') | sum %}
+{% set total_ventas = docs_sin | selectattr('tipo_libro','eq','VENTAS') | map(attribute='total') | sum %}
+{% set total_honor = docs_sin | selectattr('tipo_libro','eq','HONORARIOS') | map(attribute='total') | sum %}
+<div class="row g-2 mb-3">
+  <div class="col-auto">
+    <div class="card border-0 bg-light px-3 py-2 text-center">
+      <div class="small text-muted">Banco sin conciliar</div>
+      <div class="fw-bold">{{ movs_sin|length }} movs</div>
+      <div class="small text-danger">Cargos {{ total_cargos|clp }}</div>
+      <div class="small text-success">Abonos {{ total_abonos|clp }}</div>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="card border-0 bg-light px-3 py-2 text-center">
+      <div class="small text-muted">SII sin conciliar</div>
+      <div class="fw-bold">{{ docs_sin|length }} docs</div>
+      <div class="small text-primary">Compras {{ total_compras|clp }}</div>
+      <div class="small text-success">Ventas {{ total_ventas|clp }}</div>
+      <div class="small text-warning">Honorarios {{ total_honor|clp }}</div>
+    </div>
+  </div>
+  {% if conciliaciones %}
+  <div class="col-auto">
+    <div class="card border-0 bg-light px-3 py-2 text-center">
+      <div class="small text-muted">Ya conciliados</div>
+      <div class="fw-bold text-success">{{ conciliaciones|length }}</div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="col-auto">
+    <div class="card border-0 bg-light px-3 py-2 text-center">
+      <div class="small text-muted">Sin conciliar (historial)</div>
+      <div class="fw-bold text-warning">{{ total_movs_sin }} movs · {{ total_docs_sin }} docs</div>
+    </div>
+  </div>
+</div>
+
+<!-- Formulario principal -->
+<form method="post" action="{{ url_for('conciliacion.crear', eid=empresa.id) }}" id="formConc"
+      data-crear-url="{{ url_for('conciliacion.crear', eid=empresa.id) }}">
+  <input type="hidden" name="desde" value="{{ desde_mes }}">
+  <input type="hidden" name="hasta" value="{{ hasta_mes }}">
+
+  <!-- Sugerencias por monto -->
+  <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+    <button type="button" id="btnSugerir" class="btn btn-outline-warning btn-sm">
+      <i class="bi bi-lightbulb me-1"></i>Sugerir coincidencias
+    </button>
+    <button type="button" id="btnLimpiarSug" class="btn btn-outline-secondary btn-sm d-none">
+      <i class="bi bi-x me-1"></i>Limpiar resaltado
+    </button>
+    <span id="msgSugerencias" class="small text-muted"></span>
+  </div>
+
+  <!-- Barra de acción (visible al seleccionar) -->
+  <div id="barraConc" class="alert mb-3 py-2 d-none">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span id="labelConc"></span>
+
+      <!-- Líneas cuenta+monto: visible solo cuando no hay docs seleccionados -->
+      <div id="grupoCuenta" class="d-none w-100 mt-1">
+        <table class="table table-sm table-bordered mb-1 w-auto" style="min-width:520px">
+          <thead class="table-secondary">
+            <tr>
+              <th style="min-width:300px">Cuenta</th>
+              <th style="width:130px">Monto</th>
+              <th style="width:36px"></th>
+            </tr>
+          </thead>
+          <tbody id="tbodyLineas"></tbody>
+        </table>
+        <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
+          <button type="button" id="btnAddLinea" class="btn btn-outline-secondary btn-sm py-0 px-2">
+            <i class="bi bi-plus-lg me-1"></i>Línea
+          </button>
+          <span id="lblRestante" class="small fw-semibold"></span>
+          <input type="text" name="nota" id="inpNota" class="form-control form-control-sm"
+                 placeholder="Descripción (opcional)" style="width:180px">
+          <div class="input-group input-group-sm" style="width:220px">
+            <span class="input-group-text" title="Link respaldo"><i class="bi bi-link-45deg"></i></span>
+            <input type="url" name="respaldo_url" id="inpRespaldo"
+                   class="form-control form-control-sm" placeholder="Link respaldo…">
+          </div>
+        </div>
+      </div>
+
+      <!-- Select plantilla (hidden) para clonar en cada fila dinámica -->
+      <select id="tplCuentaSel" class="d-none">
+        <option value="">— cuenta —</option>
+        {% for c in cuentas %}
+        <option value="{{ c.id }}">{{ c.codigo }} – {{ c.nombre }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="tipo" id="hidTipo" value="SII">
+
+      <button type="submit" class="btn btn-success btn-sm" id="btnConciliar">
+        <i class="bi bi-arrow-left-right me-1"></i><span id="lblBtn">Conciliar</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-3">
+
+    <!-- Movimientos banco -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center gap-2">
+          <span class="text-nowrap"><i class="bi bi-bank me-2"></i>Banco sin conciliar</span>
+          <div class="input-group input-group-sm flex-grow-1" style="max-width:230px">
+            <span class="input-group-text" style="background:#444;border-color:#666">
+              <i class="bi bi-search text-white"></i>
+            </span>
+            <input type="text" id="buscarMovs" class="form-control form-control-sm buscar-conc"
+                   style="background:#333;border-color:#666;color:#fff"
+                   placeholder="monto, fecha, nombre…" autocomplete="off">
+            <button type="button" class="btn btn-sm limpiar-buscar" data-target="buscarMovs"
+                    style="background:#444;border-color:#666;color:#aaa" tabindex="-1">
+              <i class="bi bi-x"></i>
+            </button>
+          </div>
+          <span class="badge bg-secondary text-nowrap" id="cntMovs">{{ movs_sin|length }}</span>
+        </div>
+        {% if movs_sin %}
+        <div class="card-body p-0" style="max-height:420px;overflow-y:auto">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-secondary sticky-top">
+              <tr>
+                <th style="width:32px">
+                  <input type="checkbox" id="chkTodosMovs" class="form-check-input" title="Seleccionar todos">
+                </th>
+                <th data-sort="date">Fecha</th>
+                <th data-sort="text">Descripción</th>
+                <th class="text-end text-danger" data-sort="clp">Cargo <span class="fw-normal opacity-75" style="font-size:.75em">(salida)</span></th>
+                <th class="text-end text-success" data-sort="clp">Abono <span class="fw-normal opacity-75" style="font-size:.75em">(entrada)</span></th>
+              </tr>
+            </thead>
+            <tbody id="tbodyMovs">
+              {% for m in movs_sin %}
+              <tr data-search="{{ m.fecha|fecha_cl }} {{ m.descripcion or '' }} {{ m.banco or '' }} {{ m.cargo|clp }} {{ m.abono|clp }}">
+                <td class="py-1">
+                  <input type="checkbox" name="mov_ids" value="{{ m.id }}"
+                         class="form-check-input chk-mov"
+                         data-cargo="{{ m.cargo or 0 }}" data-abono="{{ m.abono or 0 }}">
+                </td>
+                <td class="small py-1">{{ m.fecha|fecha_cl }}</td>
+                <td class="small py-1" style="max-width:200px">
+                  <span title="{{ (m.descripcion or '') + (' · ' + m.banco if m.banco else '') }}">{{ (m.descripcion or '')[:35] }}{% if m.descripcion and m.descripcion|length > 35 %}…{% endif %}</span>
+                </td>
+                <td class="text-end small py-1 {% if m.cargo %}text-danger fw-semibold{% endif %}">
+                  {% if m.cargo %}{{ m.cargo|clp }}{% endif %}
+                </td>
+                <td class="text-end small py-1 {% if m.abono %}text-success fw-semibold{% endif %}">
+                  {% if m.abono %}{{ m.abono|clp }}{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="card-body text-muted small text-center py-4">
+          <i class="bi bi-check-circle text-success me-1"></i>Sin movimientos pendientes en este período
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Documentos SII -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center gap-2">
+          <span class="text-nowrap"><i class="bi bi-file-earmark-text me-2"></i>Documentos SII sin conciliar</span>
+          <div class="input-group input-group-sm flex-grow-1" style="max-width:230px">
+            <span class="input-group-text" style="background:#1a58c0;border-color:#3a78e0">
+              <i class="bi bi-search text-white"></i>
+            </span>
+            <input type="text" id="buscarDocs" class="form-control form-control-sm buscar-conc"
+                   style="background:#1565c0;border-color:#3a78e0;color:#fff"
+                   placeholder="monto, fecha, nombre…" autocomplete="off">
+            <button type="button" class="btn btn-sm limpiar-buscar" data-target="buscarDocs"
+                    style="background:#1a58c0;border-color:#3a78e0;color:#aad4ff" tabindex="-1">
+              <i class="bi bi-x"></i>
+            </button>
+          </div>
+          <span class="badge bg-light text-dark text-nowrap" id="cntDocs">{{ docs_sin|length }}</span>
+        </div>
+        {% if docs_sin %}
+        <div class="card-body p-0" style="max-height:420px;overflow-y:auto">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-secondary sticky-top">
+              <tr>
+                <th style="width:32px">
+                  <input type="checkbox" id="chkTodosDocs" class="form-check-input" title="Seleccionar todos">
+                </th>
+                <th data-sort="text">Libro</th>
+                <th data-sort="text">Folio</th>
+                <th data-sort="date">Fecha</th>
+                <th data-sort="text">Contraparte</th>
+                <th class="text-end" data-sort="clp">Total</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyDocs">
+              {% for d in docs_sin %}
+              <tr data-search="{{ d.tipo_libro }} {{ d.folio }} {{ d.fecha|fecha_cl }} {{ d.razon_social_contraparte or '' }} {{ d.rut_contraparte or '' }} {{ d.total|clp }}">
+                <td>
+                  <input type="checkbox" name="doc_ids" value="{{ d.id }}"
+                         class="form-check-input chk-doc"
+                         data-total="{{ d.total or 0 }}"
+                         data-liquido="{{ d.monto_neto or 0 }}"
+                         data-retencion="{{ d.iva or 0 }}"
+                         data-libro="{{ d.tipo_libro }}">
+                </td>
+                <td>
+                  <span class="badge
+                    {% if d.tipo_libro=='COMPRAS' %}bg-primary
+                    {% elif d.tipo_libro=='VENTAS' %}bg-success
+                    {% else %}bg-warning text-dark{% endif %}"
+                    style="font-size:.65rem">{{ d.tipo_libro }}</span>
+                </td>
+                <td class="small font-monospace">{{ d.folio }}</td>
+                <td class="small">{{ d.fecha|fecha_cl }}</td>
+                <td class="small" style="max-width:140px">
+                  <span title="{{ d.razon_social_contraparte }}">{{ (d.razon_social_contraparte or '')[:20] }}{% if d.razon_social_contraparte and d.razon_social_contraparte|length > 20 %}…{% endif %}</span>
+                </td>
+                <td class="text-end small fw-semibold">{{ d.total|clp }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="card-body text-muted small text-center py-4">
+          <i class="bi bi-check-circle text-success me-1"></i>Sin documentos pendientes en este período
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div><!-- /row -->
+</form>
+
+<!-- Ya conciliados -->
+{% if conciliaciones %}
+<h6 class="text-muted mt-4 mb-2">Conciliados en este período ({{ conciliaciones|length }})</h6>
+<div class="table-responsive">
+<table class="table table-sm table-bordered align-middle" id="tablaConc">
+  <thead class="table-dark">
+    <tr>
+      <th data-sort="date" style="width:90px">Fecha</th>
+      <th style="width:110px">Tipo</th>
+      <th>Documentos SII</th>
+      <th style="width:24px" class="text-center text-muted">↔</th>
+      <th>Banco</th>
+      <th style="width:80px" class="text-center">Estado</th>
+      <th style="width:60px"></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for c in conciliaciones %}
+  {% set cdocs = c.documentos|list %}
+  {% set cmovs = c.movimientos|list %}
+  {% set total_doc = cdocs | map(attribute='total') | sum %}
+  {% set total_banco = (cmovs | map(attribute='cargo') | sum) + (cmovs | map(attribute='abono') | sum) %}
+  {% set dif = total_doc - total_banco %}
+  <tr>
+    <td class="small text-nowrap">{{ c.fecha|fecha_cl }}</td>
+    <td>
+      <span class="badge
+        {% if c.tipo=='SII' %}bg-primary
+        {% elif c.tipo in ('SUELDO','RETIRO') %}bg-warning text-dark
+        {% elif c.tipo in ('F29','IMPUESTO') %}bg-danger
+        {% elif c.tipo=='BANCO' %}bg-secondary
+        {% else %}bg-secondary{% endif %}"
+        style="font-size:.7rem">{{ tipos_label.get(c.tipo, c.tipo) }}</span>
+    </td>
+
+    <!-- Docs SII -->
+    <td>
+      {% if cdocs %}
+        {% for d in cdocs %}
+        <div class="d-flex align-items-baseline gap-1 small lh-sm py-0">
+          <span class="badge flex-shrink-0
+            {% if d.tipo_libro=='COMPRAS' %}bg-primary
+            {% elif d.tipo_libro=='VENTAS' %}bg-success
+            {% else %}bg-warning text-dark{% endif %}"
+            style="font-size:.6rem">{{ d.tipo_libro[:3] }}</span>
+          <span class="font-monospace text-muted flex-shrink-0">{{ d.folio }}</span>
+          <span class="text-truncate" style="max-width:160px" title="{{ d.razon_social_contraparte }}">{{ (d.razon_social_contraparte or '')[:22] }}</span>
+          <span class="ms-auto text-nowrap fw-semibold">{{ d.total|clp }}</span>
+        </div>
+        {% endfor %}
+        {% if cdocs|length > 1 %}
+        <div class="small text-muted border-top mt-1 pt-1">Total: <strong>{{ total_doc|clp }}</strong></div>
+        {% endif %}
+      {% else %}
+        <span class="text-muted small">—</span>
+      {% endif %}
+    </td>
+
+    <td class="text-center text-muted fw-bold">↔</td>
+
+    <!-- Movimientos banco -->
+    <td>
+      {% if cmovs %}
+        {% for m in cmovs %}
+        <div class="d-flex align-items-baseline gap-1 small lh-sm py-0">
+          <span class="text-muted flex-shrink-0" style="font-size:.75em">{{ m.fecha|fecha_cl }}</span>
+          <span class="text-truncate" style="max-width:160px" title="{{ m.descripcion }}">{{ (m.descripcion or '')[:28] }}</span>
+          {% if m.cargo %}
+            <span class="ms-auto text-nowrap text-danger fw-semibold">-{{ m.cargo|clp }}</span>
+          {% else %}
+            <span class="ms-auto text-nowrap text-success fw-semibold">+{{ m.abono|clp }}</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% if cmovs|length > 1 %}
+        <div class="small text-muted border-top mt-1 pt-1">Total: <strong>{{ total_banco|clp }}</strong></div>
+        {% endif %}
+      {% else %}
+        <span class="text-muted small">—</span>
+      {% endif %}
+    </td>
+
+    <!-- Estado cuadre -->
+    <td class="text-center">
+      {% if dif|abs < 1 %}
+        <span class="badge bg-success">Cuadra</span>
+      {% else %}
+        <span class="badge bg-danger" title="Diferencia {{ dif|clp }}">Dif {{ dif|abs|clp }}</span>
+      {% endif %}
+      {% if c.respaldo_url %}
+      <br>
+      <a href="{{ c.respaldo_url }}" target="_blank" class="badge bg-info text-dark text-decoration-none mt-1"
+         title="Ver respaldo">
+        <i class="bi bi-link-45deg"></i>
+      </a>
+      {% endif %}
+    </td>
+
+    <!-- Acción deshacer -->
+    <td class="text-center">
+      <form method="post" action="{{ url_for('conciliacion.deshacer', eid=empresa.id, cid=c.id) }}">
+        <input type="hidden" name="desde" value="{{ desde_mes }}">
+        <input type="hidden" name="hasta" value="{{ hasta_mes }}">
+        <button class="btn btn-xs btn-sm btn-outline-danger py-0 px-1"
+                title="Deshacer esta conciliación"
+                onclick="return confirm('¿Deshacer esta conciliación?')">
+          <i class="bi bi-x-circle"></i>
+        </button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<!-- Modal sugerencias por monto -->
+<div class="modal fade" id="modalSugerencias" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0"><i class="bi bi-lightbulb me-2 text-warning"></i>Coincidencias sugeridas</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="sinSugerencias" class="text-center text-muted py-4 d-none">
+          Sin coincidencias exactas de monto en este período.
+        </div>
+        <table class="table table-sm mb-0" id="tablaSugerencias">
+          <thead class="sticky-top">
+            <tr>
+              <th class="table-secondary" style="width:32px">
+                <input type="checkbox" id="chkTodosSug" class="form-check-input" title="Marcar todos">
+              </th>
+              <th class="table-secondary" style="width:80px">Coincide</th>
+              <th class="bg-dark text-white">Movimiento(s) banco</th>
+              <th class="table-secondary text-center" style="width:24px">↔</th>
+              <th class="bg-primary text-white">Documento(s) SII</th>
+            </tr>
+          </thead>
+          <tbody id="tbodySugerencias"></tbody>
+        </table>
+      </div>
+      <div class="modal-footer py-2">
+        <span id="msgContadorSug" class="small text-muted me-auto"></span>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-success btn-sm" id="btnAplicarSug">
+          <i class="bi bi-arrow-left-right me-1"></i>Conciliar pares marcados
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .buscar-conc::placeholder { color: rgba(255,255,255,.65); }
+  .buscar-conc:focus { outline: none; box-shadow: none; }
+</style>
+<script>
+document.getElementById('chkTodosMovs')?.addEventListener('change', function() {
+  document.querySelectorAll('#tbodyMovs tr:not([style*="none"]) .chk-mov').forEach(c => c.checked = this.checked);
+  actualizarBarra();
+});
+document.getElementById('chkTodosDocs')?.addEventListener('change', function() {
+  document.querySelectorAll('#tbodyDocs tr:not([style*="none"]) .chk-doc').forEach(c => c.checked = this.checked);
+  actualizarBarra();
+});
+document.querySelectorAll('.chk-mov, .chk-doc').forEach(c =>
+  c.addEventListener('change', actualizarBarra)
+);
+
+// Buscador en tiempo real
+function normalizar(s) {
+  // elimina puntos de miles para que "1286550" y "1.286.550" sean equivalentes
+  return s.replace(/\./g, '').toLowerCase();
+}
+
+function activarBuscador(inputId, tbodyId, cntId, chkTodosId) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  inp.addEventListener('input', function() {
+    const q = normalizar(this.value.trim());
+    const rows = document.querySelectorAll('#' + tbodyId + ' tr');
+    let n = 0;
+    rows.forEach(tr => {
+      const txt = normalizar(tr.dataset.search || '');
+      const ok = !q || txt.includes(q);
+      tr.style.display = ok ? '' : 'none';
+      if (ok) n++;
+    });
+    const cnt = document.getElementById(cntId);
+    if (cnt) cnt.textContent = n;
+    const chkTodos = document.getElementById(chkTodosId);
+    if (chkTodos) chkTodos.checked = false;
+    actualizarBarra();
+  });
+}
+activarBuscador('buscarMovs', 'tbodyMovs', 'cntMovs', 'chkTodosMovs');
+activarBuscador('buscarDocs', 'tbodyDocs', 'cntDocs', 'chkTodosDocs');
+
+document.querySelectorAll('.limpiar-buscar').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const inp = document.getElementById(this.dataset.target);
+    if (!inp) return;
+    inp.value = '';
+    inp.dispatchEvent(new Event('input'));
+    inp.focus();
+  });
+});
+
+// ── Sugerencias: grupos N:M ────────────────────────────────────────────────
+const COLORES_SUG = [
+  '#fff3cd','#d1ecf1','#d4edda','#fde8f0','#e2d9f3',
+  '#fce8d5','#cfe2ff','#d2f4ea','#fff0d4','#e8eaf6',
+];
+
+let _sugGrupos = []; // [{movs, docs, sumMovs, sumDocs, razon, color}]
+
+function _textoMatch(a, b) {
+  if (!a || !b) return false;
+  const norm = s => s.toLowerCase().replace(/[.,;:\-_]/g, ' ');
+  const palabras = norm(b).split(/\s+/).filter(w => w.length > 3);
+  return palabras.length > 0 && palabras.some(p => norm(a).includes(p));
+}
+
+// Encuentra subconjuntos de items cuya suma ≈ target (tamaño 2..maxSize)
+// getVal: función para extraer el valor numérico de cada item (default: item.monto)
+function _subconjuntos(items, target, maxSize, getVal) {
+  if (!getVal) getVal = item => item.monto;
+  const resultados = [];
+  const sorted = [...items].sort((a, b) => getVal(a) - getVal(b));
+  function buscar(inicio, elegidos, suma) {
+    if (elegidos.length >= 2 && Math.abs(suma - target) < 1) {
+      resultados.push([...elegidos]);
+      return;
+    }
+    if (elegidos.length >= maxSize || inicio >= sorted.length || resultados.length >= 8) return;
+    for (let i = inicio; i < sorted.length; i++) {
+      if (suma + getVal(sorted[i]) > target + 1) break;
+      elegidos.push(sorted[i]);
+      buscar(i + 1, elegidos, suma + getVal(sorted[i]));
+      elegidos.pop();
+    }
+  }
+  buscar(0, [], 0);
+  return resultados;
+}
+
+function limpiarSugerencias() {
+  document.querySelectorAll('.sug-row').forEach(tr => {
+    tr.classList.remove('sug-row');
+    tr.style.background = '';
+    tr.querySelectorAll('.badge-sug').forEach(b => b.remove());
+    const chk = tr.querySelector('.chk-mov, .chk-doc');
+    if (chk) chk.checked = false;
+  });
+  document.getElementById('msgSugerencias').textContent = '';
+  document.getElementById('btnLimpiarSug').classList.add('d-none');
+  _sugGrupos = [];
+  actualizarBarra();
+}
+
+document.getElementById('btnLimpiarSug').addEventListener('click', limpiarSugerencias);
+
+function _recolectarGrupos() {
+  const movRows = [...document.querySelectorAll('#tbodyMovs tr:not([style*="display: none"]):not([style*="display:none"])')];
+  const docRows = [...document.querySelectorAll('#tbodyDocs tr:not([style*="display: none"]):not([style*="display:none"])')];
+
+  // Construir items con metadatos
+  const movItems = movRows.flatMap(tr => {
+    const chk = tr.querySelector('.chk-mov');
+    if (!chk) return [];
+    const cargo = parseFloat(chk.dataset.cargo || 0);
+    const abono = parseFloat(chk.dataset.abono || 0);
+    const monto = cargo || abono;
+    if (!monto) return [];
+    const cols = tr.querySelectorAll('td');
+    return [{tr, chk, monto, cargo, abono,
+             fecha: cols[1]?.textContent.trim() || '',
+             desc:  cols[2]?.textContent.trim() || ''}];
+  });
+  const docItems = docRows.flatMap(tr => {
+    const chk = tr.querySelector('.chk-doc');
+    if (!chk) return [];
+    const monto = parseFloat(chk.dataset.total || 0);
+    if (!monto) return [];
+    const badge   = tr.querySelector('.badge');
+    const cols    = tr.querySelectorAll('td');
+    const libro      = badge?.textContent.trim() || '';
+    const esHon      = libro === 'HONORARIOS';
+    // Para HONORARIOS leer líquido y retención directamente del CSV (data-liquido, data-retencion)
+    const liquido    = esHon ? parseFloat(chk.dataset.liquido || monto) : monto;
+    const retencion  = esHon ? parseFloat(chk.dataset.retencion || 0)   : 0;
+    const montoMatch = liquido; // para HONORARIOS compara por líquido, no bruto
+    return [{tr, chk, monto, montoMatch, liquido, retencion,
+             libro,
+             badgeCls: badge?.className || 'badge bg-secondary',
+             folio: cols[2]?.textContent.trim() || '',
+             contr: cols[4]?.textContent.trim() || ''}];
+  });
+
+  const grupos = [];
+  const visto  = new Set();
+  let ci = 0;
+
+  function clave(movs, docs) {
+    return movs.map(m => m.chk.value).sort().join(',')
+      + '|' + docs.map(d => d.chk.value).sort().join(',');
+  }
+
+  function addGrupo(movs, docs, razon, color) {
+    const k = clave(movs, docs);
+    if (visto.has(k)) return;
+    visto.add(k);
+    const sumMovs = movs.reduce((s, m) => s + m.monto, 0);
+    const sumDocs = docs.reduce((s, d) => s + d.monto, 0);
+    // Si ya existe un grupo que usa alguno de estos elementos con mejor razon, no agregar
+    grupos.push({movs: [...movs], docs: [...docs], sumMovs, sumDocs, razon, color});
+  }
+
+  const colorPorMonto = {};
+  function getColor(monto) {
+    const k = Math.round(monto);
+    if (!(k in colorPorMonto)) colorPorMonto[k] = COLORES_SUG[ci++ % COLORES_SUG.length];
+    return colorPorMonto[k];
+  }
+
+  // 1. 1 mov ↔ 1 doc (monto exacto; para HONORARIOS compara por líquido)
+  const movByMonto = {}, docByMonto = {};
+  movItems.forEach(m => (movByMonto[Math.round(m.monto)] = movByMonto[Math.round(m.monto)] || []).push(m));
+  docItems.forEach(d => (docByMonto[Math.round(d.montoMatch)] = docByMonto[Math.round(d.montoMatch)] || []).push(d));
+
+  Object.keys(movByMonto).forEach(k => {
+    if (!docByMonto[k]) return;
+    const color = getColor(parseFloat(k));
+    movByMonto[k].forEach(mov => {
+      docByMonto[k].forEach(doc => {
+        const textoOk = _textoMatch(mov.desc, doc.contr);
+        addGrupo([mov], [doc], textoOk ? 'MONTO+TEXTO' : 'MONTO', color);
+      });
+    });
+  });
+
+  // 2. 1 mov ↔ N docs (suma de montoMatch de docs = monto del mov)
+  movItems.forEach(mov => {
+    const subs = _subconjuntos(docItems, mov.monto, 6, d => d.montoMatch);
+    subs.forEach(docs => addGrupo([mov], docs, 'MONTO', getColor(mov.monto)));
+  });
+
+  // 3. N movs ↔ 1 doc (suma de movs = montoMatch del doc)
+  docItems.forEach(doc => {
+    const subs = _subconjuntos(movItems, doc.montoMatch, 6);
+    subs.forEach(movs => addGrupo(movs, [doc], 'MONTO', getColor(doc.montoMatch)));
+  });
+
+  // 4. Solo texto (sin match de monto ya encontrado)
+  movItems.forEach(mov => {
+    docItems.forEach(doc => {
+      if (visto.has(clave([mov],[doc]))) return;
+      if (_textoMatch(mov.desc, doc.contr))
+        addGrupo([mov], [doc], 'TEXTO', '#e9ecef');
+    });
+  });
+
+  // Ordenar: MONTO+TEXTO > MONTO 1:1 > MONTO N:M > TEXTO
+  grupos.sort((a, b) => {
+    const score = g => g.razon === 'MONTO+TEXTO' ? 0
+      : g.razon === 'MONTO' && g.movs.length + g.docs.length === 2 ? 1
+      : g.razon === 'MONTO' ? 2 : 3;
+    return score(a) - score(b);
+  });
+
+  return grupos;
+}
+
+function _montoHtml(m) {
+  return m.cargo
+    ? `<span class="text-danger fw-semibold">-$${Math.round(m.monto).toLocaleString('es-CL')}</span>`
+    : `<span class="text-success fw-semibold">+$${Math.round(m.monto).toLocaleString('es-CL')}</span>`;
+}
+
+function _renderSugerencias() {
+  const tbody  = document.getElementById('tbodySugerencias');
+  const tabla  = document.getElementById('tablaSugerencias');
+  const sinMsg = document.getElementById('sinSugerencias');
+  tbody.innerHTML = '';
+
+  if (_sugGrupos.length === 0) {
+    sinMsg.classList.remove('d-none'); tabla.classList.add('d-none');
+    document.getElementById('msgContadorSug').textContent = '';
+    return;
+  }
+
+  sinMsg.classList.add('d-none'); tabla.classList.remove('d-none');
+
+  _sugGrupos.forEach((g, idx) => {
+    const {movs, docs, sumMovs, sumDocs, razon, color} = g;
+
+    const razonBadge = razon === 'MONTO+TEXTO'
+      ? '<span class="badge bg-success" style="font-size:.6rem">Monto+Texto</span>'
+      : razon === 'MONTO'
+        ? '<span class="badge bg-warning text-dark" style="font-size:.6rem">Monto</span>'
+        : '<span class="badge bg-info text-dark" style="font-size:.6rem">Texto</span>';
+
+    let movHtml = movs.map(m =>
+      `<div class="d-flex justify-content-between gap-2">
+         <span class="text-muted text-nowrap">${m.fecha}</span>
+         <span class="text-truncate" style="max-width:200px" title="${m.desc}">${m.desc}</span>
+         ${_montoHtml(m)}
+       </div>`
+    ).join('');
+    if (movs.length > 1)
+      movHtml += `<div class="border-top mt-1 pt-1 text-end fw-bold">Total: $${Math.round(sumMovs).toLocaleString('es-CL')}</div>`;
+
+    let docHtml = docs.map(d => {
+      const montoLine = d.libro === 'HONORARIOS'
+        ? `<span class="fw-semibold text-nowrap">
+             $${Math.round(d.monto).toLocaleString('es-CL')}
+             <span class="text-muted" style="font-size:.7rem">
+               (liq. $${Math.round(d.liquido).toLocaleString('es-CL')}
+               · ret. $${Math.round(d.retencion).toLocaleString('es-CL')})
+             </span>
+           </span>`
+        : `<span class="fw-semibold text-nowrap">$${Math.round(d.monto).toLocaleString('es-CL')}</span>`;
+      return `<div class="d-flex justify-content-between gap-2 align-items-start">
+         <span><span class="${d.badgeCls}" style="font-size:.6rem">${d.libro}</span> ${d.folio}</span>
+         <span class="text-truncate" style="max-width:120px" title="${d.contr}">${d.contr}</span>
+         ${montoLine}
+       </div>`;
+    }).join('');
+    if (docs.length > 1)
+      docHtml += `<div class="border-top mt-1 pt-1 text-end fw-bold">Total bruto: $${Math.round(sumDocs).toLocaleString('es-CL')}</div>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="align-middle py-1" style="background:${color}">
+        <input type="checkbox" class="form-check-input chk-sug" data-idx="${idx}">
+      </td>
+      <td class="align-middle py-1" style="background:${color}">${razonBadge}</td>
+      <td class="small py-1" style="background:${color}">${movHtml}</td>
+      <td class="py-1 text-center text-muted align-middle">↔</td>
+      <td class="small py-1" style="background:${color}">${docHtml}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const nMT = _sugGrupos.filter(g => g.razon === 'MONTO+TEXTO').length;
+  const nM  = _sugGrupos.filter(g => g.razon === 'MONTO').length;
+  const nT  = _sugGrupos.filter(g => g.razon === 'TEXTO').length;
+  const parts = [];
+  if (nMT) parts.push(`${nMT} monto+texto`);
+  if (nM)  parts.push(`${nM} solo monto`);
+  if (nT)  parts.push(`${nT} solo texto`);
+  document.getElementById('msgContadorSug').textContent =
+    `${_sugGrupos.length} grupo(s): ${parts.join(' · ')}`;
+}
+
+document.getElementById('btnSugerir').addEventListener('click', function() {
+  _sugGrupos = _recolectarGrupos();
+  _renderSugerencias();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modalSugerencias')).show();
+});
+
+document.getElementById('chkTodosSug').addEventListener('change', function() {
+  document.querySelectorAll('.chk-sug').forEach(c => c.checked = this.checked);
+});
+
+let _modalDirty = false;
+
+document.getElementById('btnAplicarSug').addEventListener('click', async function() {
+  const selIdxs = [...document.querySelectorAll('.chk-sug:checked')].map(c => parseInt(c.dataset.idx));
+  if (!selIdxs.length) return;
+
+  this.disabled = true;
+  this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Conciliando…';
+
+  const crearUrl = document.getElementById('formConc').dataset.crearUrl;
+  const desde = document.querySelector('#formConc input[name="desde"]').value;
+  const hasta  = document.querySelector('#formConc input[name="hasta"]').value;
+
+  for (const idx of selIdxs) {
+    const g = _sugGrupos[idx];
+    if (!g) continue;
+    const body = new FormData();
+    body.append('desde', desde);
+    body.append('hasta', hasta);
+    body.append('tipo', 'SII');
+    body.append('nota', '');
+    g.movs.forEach(m => body.append('mov_ids', m.chk.value));
+    g.docs.forEach(d => body.append('doc_ids', d.chk.value));
+    try {
+      await fetch(crearUrl, {method: 'POST', body});
+      g.movs.forEach(m => { const tr = m.chk.closest('tr'); if (tr) tr.remove(); });
+      g.docs.forEach(d => { const tr = d.chk.closest('tr'); if (tr) tr.remove(); });
+      _modalDirty = true;
+    } catch(e) {}
+  }
+
+  _sugGrupos = _recolectarGrupos();
+  _renderSugerencias();
+
+  this.disabled = false;
+  this.innerHTML = '<i class="bi bi-check2-all me-1"></i>Conciliar pares marcados';
+});
+
+document.getElementById('modalSugerencias').addEventListener('hidden.bs.modal', function() {
+  if (_modalDirty) { _modalDirty = false; actualizarBarra(); }
+});
+
+function fmtCLP(n) {
+  return Math.abs(Math.round(n)).toLocaleString('es-CL');
+}
+
+function actualizarBarra() {
+  const movsSel = [...document.querySelectorAll('.chk-mov:checked')];
+  const docsSel = [...document.querySelectorAll('.chk-doc:checked')];
+  const barra   = document.getElementById('barraConc');
+  const label   = document.getElementById('labelConc');
+  const grupoCuenta = document.getElementById('grupoCuenta');
+  const hidTipo     = document.getElementById('hidTipo');
+  const lblBtn      = document.getElementById('lblBtn');
+
+  if (movsSel.length === 0 && docsSel.length === 0) {
+    barra.classList.add('d-none');
+    return;
+  }
+
+  let sumCargo = 0, sumAbono = 0;
+  movsSel.forEach(c => {
+    sumCargo += parseFloat(c.dataset.cargo || 0);
+    sumAbono += parseFloat(c.dataset.abono || 0);
+  });
+
+  const soloMovs = docsSel.length === 0;
+
+  if (soloMovs) {
+    // Sin docs → mostrar tabla de líneas cuenta+monto
+    grupoCuenta.classList.remove('d-none');
+    hidTipo.disabled = true;
+    lblBtn.textContent = 'Contabilizar';
+    barra.className = 'alert alert-secondary mb-3 py-2';
+    const totalBanco = sumCargo + sumAbono;
+    label.innerHTML = `<strong>${movsSel.length}</strong> mov  ·  Total banco: <strong>$${fmtCLP(totalBanco)}</strong>`;
+    _totalBanco = totalBanco;
+    if (document.getElementById('tbodyLineas').rows.length === 0) {
+      _addLinea(totalBanco);
+    }
+    _actualizarRestante();
+  } else {
+    // Con docs → comparar montos
+    grupoCuenta.classList.add('d-none');
+    hidTipo.disabled = false;
+    hidTipo.value = 'SII';
+    lblBtn.textContent = 'Conciliar seleccionados';
+
+    let sumDocSalida = 0, sumDocEntrada = 0;
+    docsSel.forEach(c => {
+      const t = parseFloat(c.dataset.total || 0);
+      if (c.dataset.libro === 'VENTAS') sumDocEntrada += t;
+      else sumDocSalida += t;
+    });
+
+    const difSalida  = sumCargo - sumDocSalida;
+    const difEntrada = sumAbono - sumDocEntrada;
+    const cuadra = Math.abs(difSalida) < 1 && Math.abs(difEntrada) < 1;
+    barra.className = 'alert mb-3 py-2 ' + (cuadra ? 'alert-success' : 'alert-warning');
+
+    let txt = `<strong>${movsSel.length}</strong> mov(s) ↔ <strong>${docsSel.length}</strong> doc(s)`;
+    if (sumCargo || sumDocSalida) {
+      const ok = Math.abs(difSalida) < 1;
+      txt += `  ·  Cargos/Compras: <span class="fw-semibold ${ok?'text-success':'text-danger'}">${fmtCLP(sumCargo)} vs ${fmtCLP(sumDocSalida)}</span>`;
+      if (!ok) txt += ` <span class="text-danger">(dif ${fmtCLP(difSalida)})</span>`;
+    }
+    if (sumAbono || sumDocEntrada) {
+      const ok = Math.abs(difEntrada) < 1;
+      txt += `  ·  Abonos/Ventas: <span class="fw-semibold ${ok?'text-success':'text-danger'}">${fmtCLP(sumAbono)} vs ${fmtCLP(sumDocEntrada)}</span>`;
+      if (!ok) txt += ` <span class="text-danger">(dif ${fmtCLP(difEntrada)})</span>`;
+    }
+    if (cuadra) txt += ' <i class="bi bi-check-circle-fill text-success ms-1"></i>';
+    label.innerHTML = txt;
+  }
+
+  barra.classList.remove('d-none');
+}
+
+// ── Líneas cuenta+monto para banco-solo ──────────────────────────────────────
+let _totalBanco = 0;
+
+function _tsRender(d) {
+  const parts = d.text.split(' – ');
+  return `<div><span class="font-monospace text-muted me-1" style="font-size:.85em">${parts[0]}</span>${parts.slice(1).join(' – ')}</div>`;
+}
+
+function _initTsLinea(sel) {
+  new TomSelect(sel, {
+    create: false, placeholder: '— buscar cuenta —',
+    maxOptions: 300, searchField: ['text'],
+    render: { option: _tsRender },
+    onChange: _actualizarRestante,
+  });
+}
+
+function _addLinea(monto) {
+  const tbody = document.getElementById('tbodyLineas');
+  const tr = document.createElement('tr');
+
+  // Clone select options from template
+  const tplSel = document.getElementById('tplCuentaSel');
+  const sel = tplSel.cloneNode(true);
+  sel.removeAttribute('id');
+  sel.name = 'cuenta_ids';
+  sel.classList.add('linea-cuenta');
+  sel.style.display = '';
+
+  const inpMonto = document.createElement('input');
+  inpMonto.type = 'number'; inpMonto.name = 'cuenta_montos';
+  inpMonto.className = 'form-control form-control-sm linea-monto';
+  inpMonto.min = '1'; inpMonto.step = '1';
+  inpMonto.value = monto > 0 ? Math.round(monto) : '';
+  inpMonto.addEventListener('input', _actualizarRestante);
+
+  const btnDel = document.createElement('button');
+  btnDel.type = 'button';
+  btnDel.className = 'btn btn-sm btn-outline-danger py-0 px-1';
+  btnDel.innerHTML = '<i class="bi bi-x-lg"></i>';
+  btnDel.addEventListener('click', function() {
+    if (tbody.rows.length > 1) { tr.remove(); _actualizarRestante(); }
+  });
+
+  const td1 = document.createElement('td'); td1.appendChild(sel);
+  const td2 = document.createElement('td'); td2.appendChild(inpMonto);
+  const td3 = document.createElement('td'); td3.appendChild(btnDel);
+  tr.append(td1, td2, td3);
+  tbody.appendChild(tr);
+  _initTsLinea(sel);
+}
+
+function _actualizarRestante() {
+  const montos = [...document.querySelectorAll('.linea-monto')]
+    .map(i => parseFloat(i.value) || 0);
+  const suma = montos.reduce((s, v) => s + v, 0);
+  const restante = _totalBanco - suma;
+  const lbl = document.getElementById('lblRestante');
+  if (!lbl) return;
+  if (Math.abs(restante) < 1) {
+    lbl.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i>Cuadra';
+    lbl.className = 'small fw-semibold text-success';
+  } else {
+    lbl.textContent = `Restante: $${fmtCLP(restante)}`;
+    lbl.className = 'small fw-semibold text-warning';
+  }
+}
+
+document.getElementById('btnAddLinea').addEventListener('click', function() {
+  const montos = [...document.querySelectorAll('.linea-monto')]
+    .map(i => parseFloat(i.value) || 0);
+  const suma = montos.reduce((s, v) => s + v, 0);
+  _addLinea(Math.max(0, _totalBanco - suma));
+});
+
+// Limpiar líneas cuando se cierra el panel banco-solo
+const _origActBarra = actualizarBarra;
+// Patch: reset lines when docs are selected (panel switches away)
+document.querySelectorAll('.chk-doc').forEach(c => c.addEventListener('change', function() {
+  if (document.querySelectorAll('.chk-doc:checked').length > 0) {
+    document.getElementById('tbodyLineas').innerHTML = '';
+    _totalBanco = 0;
+  }
+}));
+</script>
+{% endblock %}

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Liquidación {{ liq.periodo }} – {{ liq.empleado.nombre }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; padding: 20px; }
+  h2 { font-size: 14pt; margin-bottom: 2px; }
+  .empresa-head { margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 8px; }
+  .empresa-head .sub { font-size: 9pt; color: #444; }
+  .seccion { margin-bottom: 12px; }
+  .seccion h3 { font-size: 10pt; background: #222; color: #fff; padding: 3px 8px; margin-bottom: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { border: 1px solid #ccc; padding: 3px 8px; font-size: 10pt; }
+  th { background: #f0f0f0; font-weight: bold; text-align: left; }
+  .text-right { text-align: right; }
+  .total-row td { font-weight: bold; background: #222; color: #fff; }
+  .liquido-row td { font-weight: bold; font-size: 13pt; background: #d4edda; }
+  .footer { margin-top: 40px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 8px; }
+  .firma-row { display: flex; gap: 60px; margin-top: 50px; }
+  .firma-box { flex: 1; text-align: center; border-top: 1px solid #000; padding-top: 4px; font-size: 9pt; }
+  @media print {
+    body { padding: 10px; }
+    button { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="empresa-head">
+  <h2>{{ empresa.razon_social }}</h2>
+  <div class="sub">RUT: {{ empresa.rut }} &nbsp;|&nbsp; {{ empresa.giro or '' }}</div>
+</div>
+
+<div style="text-align:center;margin-bottom:12px">
+  <strong style="font-size:13pt">LIQUIDACIÓN DE SUELDO</strong><br>
+  <span style="font-size:11pt">Período: {{ liq.periodo }}</span>
+</div>
+
+{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+
+<!-- Datos empleado -->
+<div class="seccion">
+  <h3>Trabajador</h3>
+  <table>
+    <tr>
+      <th style="width:20%">Nombre</th><td>{{ liq.empleado.nombre }}</td>
+      <th style="width:15%">RUT</th><td>{{ liq.empleado.rut }}</td>
+    </tr>
+    <tr>
+      <th>Cargo</th><td>{{ liq.empleado.cargo or '—' }}</td>
+      <th>Contrato</th><td>{{ liq.empleado.tipo_contrato }}</td>
+    </tr>
+    <tr>
+      <th>AFP</th><td>{{ liq.empleado.afp }}</td>
+      <th>Salud</th>
+      <td>{{ liq.empleado.tipo_salud }}{% if liq.empleado.isapre %} – {{ liq.empleado.isapre }}{% endif %}</td>
+    </tr>
+  </table>
+</div>
+
+<!-- Haberes -->
+<div class="seccion">
+  <h3>Haberes</h3>
+  <table>
+    <tr><th>Concepto</th><th class="text-right" style="width:25%">Monto ($)</th></tr>
+    <tr><td>Sueldo Base</td><td class="text-right">{{ num(liq.sueldo_base) }}</td></tr>
+    {% if liq.horas_extra %}<tr><td>Horas Extra</td><td class="text-right">{{ num(liq.horas_extra) }}</td></tr>{% endif %}
+    {% if liq.gratificacion %}<tr><td>Gratificación</td><td class="text-right">{{ num(liq.gratificacion) }}</td></tr>{% endif %}
+    {% if liq.bono_colacion %}<tr><td>Bono Colación (no imponible)</td><td class="text-right">{{ num(liq.bono_colacion) }}</td></tr>{% endif %}
+    {% if liq.bono_movilizacion %}<tr><td>Bono Movilización (no imponible)</td><td class="text-right">{{ num(liq.bono_movilizacion) }}</td></tr>{% endif %}
+    {% if liq.otros_haberes %}<tr><td>Otros Haberes</td><td class="text-right">{{ num(liq.otros_haberes) }}</td></tr>{% endif %}
+    <tr class="total-row"><td>Total Haberes</td><td class="text-right">{{ num(liq.total_haberes) }}</td></tr>
+  </table>
+</div>
+
+<!-- Descuentos -->
+<div class="seccion">
+  <h3>Descuentos Legales</h3>
+  <table>
+    <tr><th>Concepto</th><th class="text-right" style="width:25%">Monto ($)</th></tr>
+    <tr>
+      <td>
+        AFP {{ liq.empleado.afp }}
+        (10% obligatorio + {{ (liq.empleado.tasa_afp_comision * 100) | round(2) }}% comisión)
+      </td>
+      <td class="text-right">{{ num(liq.afp) }}</td>
+    </tr>
+    <tr>
+      <td>
+        Salud ({{ liq.empleado.tipo_salud }}{% if liq.empleado.isapre %} – {{ liq.empleado.isapre }}{% endif %}, 7%)
+      </td>
+      <td class="text-right">{{ num(liq.salud) }}</td>
+    </tr>
+    <tr><td>Seguro de Cesantía – Trabajador (0.6%)</td><td class="text-right">{{ num(liq.cesantia_trab) }}</td></tr>
+    {% if liq.impuesto_renta %}
+    <tr><td>Impuesto Único 2ª Categoría</td><td class="text-right">{{ num(liq.impuesto_renta) }}</td></tr>
+    {% endif %}
+    <tr class="total-row"><td>Total Descuentos</td><td class="text-right">{{ num(liq.total_descuentos) }}</td></tr>
+  </table>
+</div>
+
+<!-- Líquido -->
+<table style="margin-top:4px">
+  <tr class="liquido-row">
+    <td style="font-size:13pt;padding:6px 8px">SUELDO LÍQUIDO A PAGAR</td>
+    <td class="text-right" style="width:25%;font-size:13pt;padding:6px 8px">$ {{ num(liq.liquido) }}</td>
+  </tr>
+</table>
+
+<!-- Aportes empleador -->
+<div class="seccion" style="margin-top:12px">
+  <h3>Aportes Empleador (referencia)</h3>
+  <table>
+    <tr><th>Concepto</th><th class="text-right" style="width:25%">Monto ($)</th></tr>
+    <tr><td>SIS – Seguro de Invalidez y Sobrevivencia (1.49%)</td><td class="text-right">{{ num(liq.sis) }}</td></tr>
+    <tr><td>Seguro de Cesantía – Empleador (2.4%)</td><td class="text-right">{{ num(liq.cesantia_emp) }}</td></tr>
+    <tr><td>Mutual de Seguridad</td><td class="text-right">{{ num(liq.mutual) }}</td></tr>
+    <tr class="total-row"><td>Costo Total Empresa</td><td class="text-right">{{ num(liq.costo_empresa) }}</td></tr>
+  </table>
+</div>
+
+<div style="font-size:9pt;color:#555;margin-top:8px">
+  Renta imponible: ${{ num(liq.renta_imponible) }} &nbsp;|&nbsp;
+  UTM: ${{ num(liq.utm) }} &nbsp;|&nbsp;
+  Período: {{ liq.periodo }}
+</div>
+
+<div class="firma-row">
+  <div class="firma-box">Empleador / Representante Legal</div>
+  <div class="firma-box">{{ liq.empleado.nombre }}<br>{{ liq.empleado.rut }}</div>
+</div>
+
+<div class="footer">
+  Emitido el {{ liq.creado_en.strftime('%d/%m/%Y %H:%M') if liq.creado_en else '' }} &nbsp;|&nbsp;
+  Conforme a normas vigentes Chile 2024-2025 &nbsp;|&nbsp; Compatible Previred
+</div>
+
+<br>
+<button onclick="window.print()" style="padding:6px 16px;font-size:11pt;cursor:pointer">Imprimir / Guardar PDF</button>
+
+</body>
+</html>

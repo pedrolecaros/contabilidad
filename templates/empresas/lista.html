@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Empresas{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5>Empresas</h5>
+  <a href="{{ url_for('empresas.nueva') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Nueva
+  </a>
+</div>
+<table class="table table-sm table-hover">
+  <thead class="table-dark">
+    <tr><th>RUT</th><th>Razón Social</th><th>Giro</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for e in empresas %}
+    <tr>
+      <td>{{ e.rut }}</td>
+      <td>{{ e.razon_social }}</td>
+      <td class="text-muted small">{{ (e.giro or '')[:50] }}</td>
+      <td>
+        <a href="{{ url_for('asientos.lista', eid=e.id) }}" class="btn btn-xs btn-sm btn-dark py-0">Abrir</a>
+        <a href="{{ url_for('empresas.editar', eid=e.id) }}" class="btn btn-xs btn-sm btn-outline-secondary py-0">Editar</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

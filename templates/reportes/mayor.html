@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Libro Mayor – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-book me-2"></i>Libro Mayor</h5>
+  {% if cuenta_sel %}
+  <a href="{{ url_for('reportes.mayor_imprimir', eid=empresa.id, cuenta_id=cuenta_sel.id, desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
+     target="_blank" class="btn btn-sm btn-dark">
+    <i class="bi bi-printer me-1"></i>Imprimir / PDF
+  </a>
+  {% endif %}
+</div>
+
+<form class="row g-2 mb-4" method="get">
+  <div class="col-auto">
+    <select name="cuenta_id" class="form-select form-select-sm">
+      <option value="">-- Seleccione cuenta --</option>
+      {% for c in cuentas %}
+      <option value="{{ c.id }}" {{ 'selected' if cuenta_sel and cuenta_sel.id==c.id }}>
+        {{ c.codigo }} – {{ c.nombre }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-secondary btn-sm">Ver</button>
+  </div>
+</form>
+
+{% if cuenta_sel %}
+<h6>{{ cuenta_sel.codigo }} – {{ cuenta_sel.nombre }}</h6>
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead class="table-dark">
+      <tr><th>Fecha</th><th>N° Asiento</th><th>Descripción</th>
+          <th class="text-end">Debe</th><th class="text-end">Haber</th><th class="text-end">Saldo</th></tr>
+    </thead>
+    <tbody>
+      {# Fila saldo inicial — siempre, aunque sea 0, para que el usuario vea desde dónde parte #}
+      <tr class="table-secondary fw-semibold">
+        <td class="small text-muted">{{ desde|fecha_cl }}</td>
+        <td colspan="2" class="small text-muted fst-italic">Saldo inicial (acumulado hasta {{ desde|fecha_cl }})</td>
+        <td class="text-end small"></td>
+        <td class="text-end small"></td>
+        <td class="text-end small">{{ saldo_inicial|clp }}</td>
+      </tr>
+      {% set saldo = [saldo_inicial] %}
+      {% for l in movimientos %}
+        {% if cuenta_sel.naturaleza == 'DEUDORA' %}
+          {% set _ = saldo.append(saldo[-1] + l.debe - l.haber) %}
+        {% else %}
+          {% set _ = saldo.append(saldo[-1] + l.haber - l.debe) %}
+        {% endif %}
+      <tr>
+        <td class="small">{{ l.asiento.fecha|fecha_cl }}</td>
+        <td class="small">
+          <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=l.asiento.id) }}"
+             target="_blank"
+             title="Editar asiento N°{{ l.asiento.numero }}">{{ l.asiento.numero }}</a>
+        </td>
+        <td class="small">{{ l.descripcion or l.asiento.descripcion or '' }}</td>
+        <td class="text-end small">{% if l.debe %}{{ l.debe|clp }}{% endif %}</td>
+        <td class="text-end small">{% if l.haber %}{{ l.haber|clp }}{% endif %}</td>
+        <td class="text-end small fw-semibold">{{ saldo[-1]|clp }}</td>
+      </tr>
+      {% endfor %}
+      {% if not movimientos %}
+      <tr><td colspan="6" class="text-center text-muted py-3 small">Sin movimientos en el período.</td></tr>
+      {% endif %}
+    </tbody>
+    <tfoot class="fw-bold table-light">
+      <tr>
+        <td colspan="3" class="text-end">TOTALES DEL PERÍODO</td>
+        <td class="text-end">{{ movimientos|sum(attribute='debe')|clp }}</td>
+        <td class="text-end">{{ movimientos|sum(attribute='haber')|clp }}</td>
+        <td class="text-end">{{ saldo[-1]|clp }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

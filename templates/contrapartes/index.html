@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block title %}Proveedores / Clientes – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-people me-2"></i>Proveedores / Clientes</h5>
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('contrapartes.importar_desde_docs', eid=empresa.id) }}">
+      <button class="btn btn-outline-secondary btn-sm" title="Crear contrapartes para todos los RUTs en documentos SII">
+        <i class="bi bi-cloud-download me-1"></i>Importar desde SII
+      </button>
+    </form>
+    <a href="{{ url_for('contrapartes.nueva', eid=empresa.id) }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Nueva
+    </a>
+  </div>
+</div>
+
+<!-- Filtros -->
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <select name="tipo" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Todos los tipos</option>
+      <option value="PROVEEDOR"  {% if tipo_filtro=='PROVEEDOR'  %}selected{% endif %}>Proveedores</option>
+      <option value="CLIENTE"    {% if tipo_filtro=='CLIENTE'    %}selected{% endif %}>Clientes</option>
+      <option value="HONORARIOS" {% if tipo_filtro=='HONORARIOS' %}selected{% endif %}>Honorarios</option>
+      <option value="AMBOS"      {% if tipo_filtro=='AMBOS'      %}selected{% endif %}>Ambos</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <div class="input-group input-group-sm">
+      <input type="text" name="q" value="{{ buscar }}" class="form-control" placeholder="Buscar RUT o nombre…">
+      <button class="btn btn-outline-secondary">Buscar</button>
+    </div>
+  </div>
+</form>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible py-2">{{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endwith %}
+
+{% if contrapartes %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle" style="font-size:.9rem">
+    <thead class="table-dark">
+      <tr>
+        <th>RUT</th>
+        <th>Razón Social</th>
+        <th>Tipo</th>
+        <th>Email</th>
+        <th>Teléfono</th>
+        <th>Estado</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cp in contrapartes %}
+      <tr>
+        <td class="font-monospace">{{ cp.rut }}</td>
+        <td>
+          <a href="{{ url_for('contrapartes.detalle', eid=empresa.id, cid=cp.id) }}" class="text-decoration-none fw-semibold">
+            {{ cp.razon_social }}
+          </a>
+        </td>
+        <td>
+          {% if cp.tipo == 'PROVEEDOR' %}
+            <span class="badge bg-primary">Proveedor</span>
+          {% elif cp.tipo == 'CLIENTE' %}
+            <span class="badge bg-success">Cliente</span>
+          {% elif cp.tipo == 'HONORARIOS' %}
+            <span class="badge bg-warning text-dark">Honorarios</span>
+          {% else %}
+            <span class="badge bg-secondary">Ambos</span>
+          {% endif %}
+        </td>
+        <td>{{ cp.email or '—' }}</td>
+        <td>{{ cp.telefono or '—' }}</td>
+        <td>
+          {% if cp.activo %}
+            <span class="badge bg-success-subtle text-success">Activo</span>
+          {% else %}
+            <span class="badge bg-danger-subtle text-danger">Inactivo</span>
+          {% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          <a href="{{ url_for('contrapartes.detalle', eid=empresa.id, cid=cp.id) }}"
+             class="btn btn-outline-secondary btn-sm py-0" title="Ver detalle">
+            <i class="bi bi-eye"></i>
+          </a>
+          <a href="{{ url_for('contrapartes.editar', eid=empresa.id, cid=cp.id) }}"
+             class="btn btn-outline-primary btn-sm py-0" title="Editar">
+            <i class="bi bi-pencil"></i>
+          </a>
+          <form method="post"
+                action="{{ url_for('contrapartes.eliminar', eid=empresa.id, cid=cp.id) }}"
+                class="d-inline"
+                onsubmit="return confirm('¿Eliminar a {{ cp.razon_social }}?')">
+            <button class="btn btn-outline-danger btn-sm py-0" title="Eliminar">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-muted text-center py-5">
+  <i class="bi bi-people fs-2 d-block mb-2"></i>
+  No hay contrapartes registradas.
+  <a href="{{ url_for('contrapartes.importar_desde_docs', eid=empresa.id) }}"
+     class="ms-2">Importar desde SII</a>
+</div>
+{% endif %}
+{% endblock %}

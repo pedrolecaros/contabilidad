@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Libro Mayor – {{ empresa.razon_social }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #000; background: #fff; }
+
+    .page-header { margin-bottom: 10px; border-bottom: 2px solid #000; padding-bottom: 6px; }
+    .page-header .empresa-nombre { font-size: 12pt; font-weight: bold; text-transform: uppercase; }
+    .page-header .empresa-rut    { font-size: 9pt; margin-top: 1px; }
+    .page-header .cuenta-titulo  { font-size: 10pt; font-weight: bold; margin-top: 6px; }
+    .page-header .periodo        { font-size: 8.5pt; color: #444; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #aaa; padding: 2px 5px; vertical-align: middle; }
+
+    thead th { background: #1a1a2e; color: #fff; font-size: 7.5pt; font-weight: bold; border-color: #000; padding: 3px 4px; text-align: center; }
+    thead th.text-left { text-align: left; }
+
+    tr.saldo-inicial td { background: #e8e8e8; font-style: italic; font-size: 8pt; }
+    tbody tr td { font-size: 8.5pt; }
+    td.num { text-align: right; }
+    td.saldo-num { text-align: right; font-weight: bold; }
+
+    tfoot td { font-weight: bold; background: #dde; border-top: 2px solid #000; font-size: 8.5pt; text-align: right; }
+    tfoot td:first-child { text-align: left; }
+
+    .page-footer { margin-top: 10px; border-top: 1px solid #aaa; padding-top: 4px; font-size: 7.5pt; color: #666; display: flex; justify-content: space-between; }
+
+    @page { size: A4 portrait; margin: 12mm 10mm; }
+    @media print { .no-print { display: none !important; } thead { display: table-header-group; } tfoot { display: table-footer-group; } }
+    .btn-print { display: inline-block; margin-bottom: 12px; padding: 6px 18px; background: #1a1a2e; color: #fff; border: none; border-radius: 4px; font-size: 10pt; cursor: pointer; }
+    @media print { .btn-print { display: none; } }
+  </style>
+</head>
+<body>
+<button class="btn-print no-print" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+
+<div class="page-header">
+  <div class="empresa-nombre">{{ empresa.razon_social }}</div>
+  <div class="empresa-rut">RUT: {{ empresa.rut }}</div>
+  {% if cuenta_sel %}
+  <div class="cuenta-titulo">{{ cuenta_sel.codigo }} – {{ cuenta_sel.nombre }}</div>
+  {% endif %}
+  <div class="periodo">Período: {{ desde.strftime('%d/%m/%Y') }} al {{ hasta.strftime('%d/%m/%Y') }}</div>
+</div>
+
+{% if cuenta_sel %}
+<table>
+  <thead>
+    <tr>
+      <th style="width:9%">Fecha</th>
+      <th style="width:6%">N° As.</th>
+      <th class="text-left" style="width:50%">Descripción</th>
+      <th style="width:12%">Debe</th>
+      <th style="width:12%">Haber</th>
+      <th style="width:11%">Saldo</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="saldo-inicial">
+      <td style="text-align:center">{{ desde.strftime('%d/%m/%Y') }}</td>
+      <td></td>
+      <td style="padding-left:6px">Saldo inicial (acumulado hasta {{ desde.strftime('%d/%m/%Y') }})</td>
+      <td></td><td></td>
+      <td class="saldo-num">{{ '{:,.0f}'.format(saldo_inicial).replace(',','.') }}</td>
+    </tr>
+    {% set saldo = [saldo_inicial] %}
+    {% for l in movimientos %}
+      {% if cuenta_sel.naturaleza == 'DEUDORA' %}
+        {% set _ = saldo.append(saldo[-1] + (l.debe or 0) - (l.haber or 0)) %}
+      {% else %}
+        {% set _ = saldo.append(saldo[-1] + (l.haber or 0) - (l.debe or 0)) %}
+      {% endif %}
+    <tr>
+      <td style="text-align:center">{{ l.asiento.fecha.strftime('%d/%m/%Y') }}</td>
+      <td style="text-align:center">{{ l.asiento.numero }}</td>
+      <td style="padding-left:6px">{{ l.descripcion or l.asiento.descripcion or '' }}</td>
+      <td class="num">{% if l.debe %}{{ '{:,.0f}'.format(l.debe).replace(',','.') }}{% endif %}</td>
+      <td class="num">{% if l.haber %}{{ '{:,.0f}'.format(l.haber).replace(',','.') }}{% endif %}</td>
+      <td class="saldo-num">{{ '{:,.0f}'.format(saldo[-1]).replace(',','.') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="3">TOTALES DEL PERÍODO</td>
+      <td>{{ '{:,.0f}'.format(movimientos|sum(attribute='debe')).replace(',','.') }}</td>
+      <td>{{ '{:,.0f}'.format(movimientos|sum(attribute='haber')).replace(',','.') }}</td>
+      <td>{{ '{:,.0f}'.format(saldo[-1]).replace(',','.') }}</td>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+<p style="color:#888;margin-top:20px">No se seleccionó ninguna cuenta.</p>
+{% endif %}
+
+<div class="page-footer">
+  <span>Generado: {{ now.strftime('%d/%m/%Y %H:%M') }}</span>
+  <span>{{ empresa.razon_social }} — RUT {{ empresa.rut }}</span>
+</div>
+<script>window.onload = function(){ window.print(); }</script>
+</body>
+</html>

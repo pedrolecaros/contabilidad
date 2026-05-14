@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Estado de Resultados – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<h5 class="mb-3"><i class="bi bi-graph-up me-2"></i>Estado de Resultados</h5>
+
+<form class="row g-2 mb-4" method="get">
+  <div class="col-auto">
+    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
+  </div>
+</form>
+
+<div style="max-width: 700px">
+  <table class="table table-sm">
+    <tbody>
+      {% for f in filas %}
+        {% if f.cuenta.tipo == 'INGRESO' and (f.saldo != 0 or f.cuenta.es_titulo) %}
+        <tr class="{{ 'titulo-cuenta' if f.cuenta.es_titulo }}">
+          <td style="padding-left:{{ (f.cuenta.nivel-1)*16 }}px">
+            {% if f.cuenta.es_titulo %}<strong>{{ f.cuenta.nombre }}</strong>
+            {% else %}{{ f.cuenta.nombre }}{% endif %}
+          </td>
+          <td class="text-end">{% if not f.cuenta.es_titulo %}{{ f.saldo|clp }}{% endif %}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+
+      <tr class="table-success fw-semibold">
+        <td>TOTAL INGRESOS</td><td class="text-end">{{ total_ingresos|clp }}</td>
+      </tr>
+
+      <tr><td colspan="2" class="py-2"></td></tr>
+
+      {% for f in filas %}
+        {% if f.cuenta.tipo == 'GASTO' and (f.saldo != 0 or f.cuenta.es_titulo) %}
+        <tr class="{{ 'titulo-cuenta' if f.cuenta.es_titulo }}">
+          <td style="padding-left:{{ (f.cuenta.nivel-1)*16 }}px">
+            {% if f.cuenta.es_titulo %}<strong>{{ f.cuenta.nombre }}</strong>
+            {% else %}{{ f.cuenta.nombre }}{% endif %}
+          </td>
+          <td class="text-end text-danger">{% if not f.cuenta.es_titulo %}{{ f.saldo|clp }}{% endif %}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+
+      <tr class="table-danger fw-semibold">
+        <td>TOTAL GASTOS</td><td class="text-end">{{ total_gastos|clp }}</td>
+      </tr>
+
+      <tr class="table-dark fw-bold fs-6">
+        <td>RESULTADO NETO</td>
+        <td class="text-end {{ 'text-success' if resultado_neto >= 0 else 'text-danger' }}">
+          {{ resultado_neto|clp }}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

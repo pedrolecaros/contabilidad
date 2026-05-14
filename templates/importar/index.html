@@ -1,0 +1,627 @@
+{% extends 'base.html' %}
+{% block title %}Importar Archivos – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+
+<h5 class="mb-3"><i class="bi bi-upload me-2"></i>Importar Archivos</h5>
+
+<!-- ── Importación automática SII ─────────────────────────────────────────── -->
+{% if empresa.rut %}
+<div class="card shadow-sm mb-4 border-primary">
+  <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-cloud-download me-2"></i>Descarga automática desde SII</span>
+    {% if not empresa.clave_sii %}
+    <a href="{{ url_for('empresas.editar', eid=empresa.id) }}"
+       class="btn btn-sm btn-light">
+      <i class="bi bi-key me-1"></i>Configurar clave SII
+    </a>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if empresa.clave_sii %}
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Período</label>
+        <input type="month" id="autoMes" class="form-control form-control-sm"
+               value="{{ mes_anterior }}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">Libro</label>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-sm btn-outline-primary btn-auto-sii" data-tipo="compras">
+            <i class="bi bi-cart-check me-1"></i>Compras
+          </button>
+          <button class="btn btn-sm btn-outline-success btn-auto-sii" data-tipo="ventas">
+            <i class="bi bi-receipt me-1"></i>Ventas
+          </button>
+          <button class="btn btn-sm btn-outline-warning btn-auto-sii" data-tipo="honorarios">
+            <i class="bi bi-person-badge me-1"></i>Honorarios
+          </button>
+          <button class="btn btn-sm btn-primary" id="btnDescargarTodo">
+            <i class="bi bi-cloud-download-fill me-1"></i>Descargar todo
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel de progreso inline (oculto hasta que empiece una descarga) -->
+    <div id="siiProgreso" class="d-none mt-2">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <small id="siiProgresoMsg" class="text-muted"></small>
+        <small id="siiProgresoPct" class="text-muted fw-semibold"></small>
+      </div>
+      <div class="progress mb-2" style="height:6px">
+        <div id="siiProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+             style="width:0%"></div>
+      </div>
+      <div id="siiProgresoItems" class="d-flex gap-3 flex-wrap small"></div>
+    </div>
+    {% else %}
+    <p class="text-muted small mb-0">
+      <i class="bi bi-info-circle me-1"></i>
+      Agrega la clave SII en la
+      <a href="{{ url_for('empresas.editar', eid=empresa.id) }}">ficha de la empresa</a>
+      para habilitar la descarga automática.
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Importación manual ──────────────────────────────────────────────────── -->
+<p class="text-muted small mb-3">Formatos soportados: <strong>CSV, XLS, XLSX</strong>.</p>
+
+<div class="row g-3">
+
+  <!-- Compras -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <i class="bi bi-cart-check me-2"></i>Libro de Compras (SII)
+      </div>
+      <div class="card-body">
+        <p class="small text-muted">Genera asientos: <em>Gasto / IVA CF → Proveedores</em></p>
+        <form class="form-import"
+              data-url="{{ url_for('importar.subir', eid=empresa.id, tipo='compras') }}"
+              enctype="multipart/form-data">
+          <div class="mb-2">
+            <input type="file" name="archivo" class="form-control form-control-sm"
+                   accept=".csv,.xls,.xlsx" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-upload me-1"></i>Importar
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ventas -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-success text-white">
+        <i class="bi bi-receipt me-2"></i>Libro de Ventas (SII)
+      </div>
+      <div class="card-body">
+        <p class="small text-muted">Genera asientos: <em>Clientes → Ventas / IVA DF</em></p>
+        <form class="form-import"
+              data-url="{{ url_for('importar.subir', eid=empresa.id, tipo='ventas') }}"
+              enctype="multipart/form-data">
+          <div class="mb-2">
+            <input type="file" name="archivo" class="form-control form-control-sm"
+                   accept=".csv,.xls,.xlsx" required>
+          </div>
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-upload me-1"></i>Importar
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Honorarios -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-warning text-dark">
+        <i class="bi bi-person-badge me-2"></i>Libro Honorarios (SII)
+      </div>
+      <div class="card-body">
+        <p class="small text-muted">Genera asientos: <em>Honorarios → Proveedor + Retención</em></p>
+        <form class="form-import"
+              data-url="{{ url_for('importar.subir', eid=empresa.id, tipo='honorarios') }}"
+              enctype="multipart/form-data">
+          <div class="mb-2">
+            <input type="file" name="archivo" class="form-control form-control-sm"
+                   accept=".csv,.xls,.xlsx" required>
+          </div>
+          <button type="submit" class="btn btn-warning btn-sm">
+            <i class="bi bi-upload me-1"></i>Importar
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cartola Bancaria -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-dark text-white">
+        <i class="bi bi-bank me-2"></i>Cartola Bancaria
+      </div>
+      <div class="card-body">
+        <p class="small text-muted">Cualquier banco. Se clasifican manualmente en Pendientes.</p>
+        <form class="form-import"
+              data-url="{{ url_for('importar.subir', eid=empresa.id, tipo='banco') }}"
+              enctype="multipart/form-data">
+          <div class="mb-2">
+            <input type="file" name="archivo" class="form-control form-control-sm"
+                   accept=".csv,.xls,.xlsx" required>
+          </div>
+          <button type="submit" class="btn btn-dark btn-sm">
+            <i class="bi bi-upload me-1"></i>Importar
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if archivos %}
+<hr class="mt-4">
+<h6 class="text-muted mt-3"><i class="bi bi-clock-history me-1"></i>Historial de importaciones</h6>
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th data-sort="date">Fecha</th>
+        <th data-sort="text">Período</th>
+        <th data-sort="text">Tipo</th>
+        <th data-sort="text">Archivo</th>
+        <th class="text-end" data-sort="num">Registros</th>
+        <th class="text-end" data-sort="num">Pendientes</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in archivos %}
+      {% set pend = pendientes_fn(a) %}
+      <tr>
+        <td class="small text-nowrap">{{ a.fecha_importacion|fecha_cl }}</td>
+        <td class="small">{{ a.periodo or '—' }}</td>
+        <td>
+          <span class="badge
+            {% if a.tipo=='COMPRAS' %}bg-primary
+            {% elif a.tipo=='VENTAS' %}bg-success
+            {% elif a.tipo=='HONORARIOS' %}bg-warning text-dark
+            {% else %}bg-dark{% endif %}">
+            {{ a.tipo }}
+          </span>
+        </td>
+        <td class="small text-muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            title="{{ a.nombre_archivo }}">{{ a.nombre_archivo }}</td>
+        <td class="text-end small">{{ a.ndocs or 0 }}</td>
+        <td class="text-end small">
+          {% if pend > 0 %}
+            <span class="badge bg-warning text-dark">{{ pend }}</span>
+          {% else %}
+            <span class="text-muted">0</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          <form method="post"
+                action="{{ url_for('importar.revertir', eid=empresa.id, aid=a.id) }}"
+                class="d-inline">
+            <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                    title="Eliminar registros pendientes de esta importación"
+                    onclick="return confirm('¿Revertir importación «{{ a.nombre_archivo }}»?\nSe eliminarán {{ pend }} registro(s) pendiente(s).\nLos ya contabilizados NO se tocan.')">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Revertir
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- ── Modal resultado ────────────────────────────────────────────────────── -->
+<div class="modal fade" id="modalResultado" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" id="modalResHead">
+        <h6 class="modal-title" id="modalResTitulo">Resultado</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="modalResCuerpo"></div>
+      <div class="modal-footer">
+        <a id="btnIrPendientes" href="{{ url_for('pendientes.index', eid=empresa.id) }}"
+           class="btn btn-primary btn-sm d-none">
+          <i class="bi bi-clock-history me-1"></i>Ir a Pendientes
+        </a>
+        <button type="button" class="btn btn-secondary btn-sm"
+                data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+#siiProgresoItems span { transition: color .3s; }
+</style>
+
+<!-- ── Modal cargando ──────────────────────────────────────────────────────── -->
+<div class="modal fade" id="modalCargando" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <div id="msgCargando" class="text-muted small">Procesando…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LABELS = {
+  compras: 'Libro de Compras',
+  ventas:  'Libro de Ventas',
+  honorarios: 'Libro Honorarios',
+  banco:   'Cartola Bancaria',
+};
+const autoUrl   = '{{ url_for("importar.sii_auto",        eid=empresa.id) }}';
+const BATCH_URL = '{{ url_for("importar.sii_start_batch", eid=empresa.id) }}';
+const modalRes = new bootstrap.Modal(document.getElementById('modalResultado'));
+const modalCar = new bootstrap.Modal(document.getElementById('modalCargando'));
+
+function mostrarResultado(data) {
+  const head  = document.getElementById('modalResHead');
+  const title = document.getElementById('modalResTitulo');
+  const body  = document.getElementById('modalResCuerpo');
+  const btnP  = document.getElementById('btnIrPendientes');
+  const elCar = document.getElementById('modalCargando');
+
+  if (!data.ok) {
+    head.className = 'modal-header bg-danger text-white';
+    title.textContent = 'Error';
+    body.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-circle me-2"></i>${data.error}</div>`;
+    btnP.classList.add('d-none');
+  } else {
+    head.className = 'modal-header bg-success text-white';
+    title.textContent = LABELS[data.tipo] || data.tipo;
+    let html = '';
+    if (data.aviso) {
+      html += `<div class="alert alert-warning py-2 mb-2">${data.aviso}</div>`;
+    }
+    html += `<p class="mb-1"><i class="bi bi-check-circle-fill text-success me-1"></i>
+             <strong>${data.importados}</strong> registro(s) importado(s).</p>`;
+    if (data.nombre) {
+      html += `<p class="small text-muted mb-1">Archivo: ${data.nombre}</p>`;
+    }
+    if (data.errores && data.errores.length) {
+      html += `<div class="alert alert-warning py-2 mt-2 mb-0">
+        <strong>Advertencias (${data.errores.length}):</strong>
+        <ul class="mb-0 mt-1 small">
+          ${data.errores.slice(0,15).map(e => `<li>${e}</li>`).join('')}
+          ${data.errores.length > 15 ? `<li class="text-muted">…y ${data.errores.length-15} más</li>` : ''}
+        </ul>
+      </div>`;
+    }
+    body.innerHTML = html;
+    if (['compras','ventas','honorarios'].includes(data.tipo)) {
+      btnP.classList.remove('d-none');
+    } else {
+      btnP.classList.add('d-none');
+    }
+  }
+
+  // Esperar que modalCar termine de cerrar antes de abrir modalRes
+  if (elCar.classList.contains('show')) {
+    elCar.addEventListener('hidden.bs.modal', () => modalRes.show(), {once: true});
+    modalCar.hide();
+  } else {
+    modalRes.show();
+  }
+}
+
+// ── Forms manuales ────────────────────────────────────────────────────────
+document.querySelectorAll('.form-import').forEach(form => {
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    document.getElementById('msgCargando').textContent = 'Procesando archivo…';
+    modalCar.show();
+    try {
+      const res  = await fetch(this.dataset.url, {method: 'POST', body: new FormData(this)});
+      const data = await res.json();
+      mostrarResultado(data);
+      this.reset();
+    } catch (err) {
+      mostrarResultado({ok: false, error: 'Error de red: ' + err.message});
+    }
+  });
+});
+
+// ── Progreso inline SII ───────────────────────────────────────────────────
+const siiProgreso = document.getElementById('siiProgreso');
+const siiMsg      = document.getElementById('siiProgresoMsg');
+const siiPct      = document.getElementById('siiProgresoPct');
+const siiBar      = document.getElementById('siiProgressBar');
+const siiItems    = document.getElementById('siiProgresoItems');
+
+const ICONS = {compras:'bi-cart-check', ventas:'bi-receipt', honorarios:'bi-person-badge'};
+const COLS  = {compras:'text-primary',  ventas:'text-success', honorarios:'text-warning'};
+const START_URL  = '{{ url_for("importar.sii_start",  eid=empresa.id) }}';
+const STATUS_URL = '{{ url_for("importar.sii_status", eid=empresa.id, job_id="JOB") }}'.replace('/JOB','');
+const SK = 'sii_jobs_{{ empresa.id }}';   // sessionStorage key
+
+let ocultarTimer = null;
+let activoPolling = false;   // evitar doble-polling
+
+// ── Utilidades de progreso ────────────────────────────────────────────────
+function progresoMostrar(tipos) {
+  if (ocultarTimer) { clearTimeout(ocultarTimer); ocultarTimer = null; }
+  siiItems.innerHTML = tipos.map(t =>
+    `<span id="pitem-${t}" class="text-muted"><i class="bi ${ICONS[t]} me-1"></i>${LABELS[t]}</span>`
+  ).join('');
+  siiBar.style.width = '0%';
+  siiBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+  siiProgreso.classList.remove('d-none');
+}
+
+function progresoActualizar(msg, pct) {
+  siiMsg.textContent = msg;
+  siiPct.textContent = Math.round(pct) + '%';
+  siiBar.style.width = pct + '%';
+}
+
+function progresoItem(tipo, estado, texto='') {
+  const el = document.getElementById('pitem-' + tipo);
+  if (!el) return;
+  const icons = {
+    espera: `<i class="bi bi-hourglass-split text-muted me-1"></i>`,
+    activo: `<i class="bi bi-arrow-repeat me-1 ${COLS[tipo]}" style="animation:spin 1s linear infinite"></i>`,
+    ok:     `<i class="bi bi-check-circle-fill text-success me-1"></i>`,
+    aviso:  `<i class="bi bi-check-circle text-warning me-1"></i>`,
+    error:  `<i class="bi bi-x-circle-fill text-danger me-1"></i>`,
+  };
+  const cls = {ok:'text-success', error:'text-danger', aviso:'text-warning', activo:COLS[tipo]}[estado] || 'text-muted';
+  el.className = cls;
+  el.innerHTML = `${icons[estado]||''}${LABELS[tipo]}${texto ? ` <span class="fw-semibold">${texto}</span>` : ''}`;
+}
+
+function progresoOcultar() {
+  ocultarTimer = setTimeout(() => { siiProgreso.classList.add('d-none'); ocultarTimer = null; }, 5000);
+}
+
+function setBotones(dis) {
+  document.querySelectorAll('.btn-auto-sii, #btnDescargarTodo').forEach(b => b.disabled = dis);
+}
+
+// ── sessionStorage helpers ────────────────────────────────────────────────
+function jobsGuardar(jobs) { sessionStorage.setItem(SK, JSON.stringify(jobs)); }
+function jobsLeer()        { try { return JSON.parse(sessionStorage.getItem(SK) || '{}'); } catch { return {}; } }
+function jobLimpiar(tipo)  { const j = jobsLeer(); delete j[tipo]; jobsGuardar(j); }
+
+// ── Polling de un job ─────────────────────────────────────────────────────
+async function pollJob(job_id, tipo, onProgress) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 1800));
+    let job;
+    try {
+      const r = await fetch(STATUS_URL + '/' + job_id);
+      job = await r.json();
+    } catch {
+      job = {status:'error', message:'Sin conexión con el servidor', pct:0};
+    }
+    onProgress(job);
+    if (job.status === 'done' || job.status === 'error' || job.status === 'unknown') {
+      jobLimpiar(tipo);
+      return job;
+    }
+  }
+}
+
+// ── Descarga individual ───────────────────────────────────────────────────
+async function descargarUno(tipo, periodo) {
+  // Arrancar job en servidor
+  const fd = new FormData();
+  fd.append('tipo', tipo); fd.append('periodo', periodo);
+  const r    = await fetch(START_URL, {method:'POST', body:fd});
+  const data = await r.json();
+  if (!data.ok && !data.job_id) return data;   // error inmediato
+  if (data.done) return data.result;           // ya importado, sin Playwright
+
+  const job_id = data.job_id;
+  // Persistir en sessionStorage para sobrevivir navegación
+  const jobs = jobsLeer();
+  jobs[tipo] = {job_id, periodo};
+  jobsGuardar(jobs);
+
+  progresoItem(tipo, 'activo');
+
+  const job = await pollJob(job_id, tipo, j => {
+    progresoActualizar(j.message || '…', j.pct || 0);
+    progresoItem(tipo, 'activo', j.message ? '' : '');
+  });
+
+  return job.result || {ok: false, error: job.message || 'Error desconocido'};
+}
+
+// ── Botones individuales ──────────────────────────────────────────────────
+document.querySelectorAll('.btn-auto-sii').forEach(btn => {
+  btn.addEventListener('click', async function() {
+    if (activoPolling) return;
+    const tipo    = this.dataset.tipo;
+    const periodo = document.getElementById('autoMes').value;
+    if (!periodo) { alert('Selecciona un período'); return; }
+
+    activoPolling = true;
+    setBotones(true);
+    progresoMostrar([tipo]);
+    progresoActualizar('Iniciando…', 5);
+
+    try {
+      const data = await descargarUno(tipo, periodo);
+      if (data.ok) {
+        progresoItem(tipo, data.aviso ? 'aviso' : 'ok', data.aviso ? '(ya importado)' : `${data.importados} reg.`);
+        progresoActualizar('Listo', 100);
+        siiBar.className = 'progress-bar bg-success';
+        mostrarResultado(data);
+      } else {
+        progresoItem(tipo, 'error');
+        progresoActualizar(data.error || 'Error', 100);
+        siiBar.className = 'progress-bar bg-danger';
+        mostrarResultado(data);
+      }
+    } catch (e) {
+      progresoItem(tipo, 'error');
+      mostrarResultado({ok:false, tipo, error:'Error de red: '+e.message});
+    } finally {
+      activoPolling = false;
+      setBotones(false);
+      progresoOcultar();
+    }
+  });
+});
+
+// ── Descargar todo (una sola sesión Playwright) ───────────────────────────
+document.getElementById('btnDescargarTodo').addEventListener('click', async function() {
+  if (activoPolling) return;
+  const periodo = document.getElementById('autoMes').value;
+  if (!periodo) { alert('Selecciona un período'); return; }
+
+  const tipos = ['compras','ventas','honorarios'];
+  activoPolling = true;
+  setBotones(true);
+  progresoMostrar(tipos);
+  tipos.forEach(t => progresoItem(t, 'espera'));
+  progresoActualizar('Iniciando descarga…', 5);
+
+  try {
+    const fd = new FormData();
+    fd.append('tipos', tipos.join(','));
+    fd.append('periodo', periodo);
+    const r = await fetch(BATCH_URL, {method:'POST', body:fd});
+    const data = await r.json();
+
+    if (!data.ok) {
+      tipos.forEach(t => progresoItem(t, 'error'));
+      progresoActualizar(data.error || 'Error', 100);
+      siiBar.className = 'progress-bar bg-danger';
+      mostrarResultadoBatch({}, data.error, tipos);
+      return;
+    }
+
+    const job_id = data.job_id;
+    const jobs = jobsLeer(); jobs['__batch__'] = {job_id, periodo, tipos}; jobsGuardar(jobs);
+    tipos.forEach(t => progresoItem(t, 'activo'));
+
+    // Poll
+    let results = {};
+    while (true) {
+      await new Promise(res => setTimeout(res, 1800));
+      let job;
+      try { job = await (await fetch(STATUS_URL + '/' + job_id)).json(); }
+      catch { job = {status:'error', message:'Sin conexión', pct:0}; }
+
+      progresoActualizar(job.message || '…', job.pct || 0);
+      if (job.current_tipo) progresoItem(job.current_tipo, 'activo');
+
+      if (job.status === 'done' || job.status === 'error' || job.status === 'unknown') {
+        results = job.results || {};
+        jobLimpiar('__batch__');
+        break;
+      }
+    }
+
+    tipos.forEach(t => {
+      const r = results[t];
+      if (r) progresoItem(t, r.ok ? (r.aviso ? 'aviso' : 'ok') : 'error',
+                          r.ok ? (r.aviso ? '(ya imp.)' : `${r.importados} reg.`) : '');
+      else   progresoItem(t, 'error');
+    });
+    const hayError = tipos.some(t => !results[t] || !results[t].ok);
+    progresoActualizar('Completado', 100);
+    siiBar.className = `progress-bar ${hayError ? 'bg-warning' : 'bg-success'}`;
+    mostrarResultadoBatch(results, null, tipos);
+
+  } catch(e) {
+    tipos.forEach(t => progresoItem(t, 'error'));
+    progresoActualizar('Error de red', 100);
+    siiBar.className = 'progress-bar bg-danger';
+    mostrarResultadoBatch({}, e.message, tipos);
+  } finally {
+    activoPolling = false;
+    setBotones(false);
+    progresoOcultar();
+  }
+});
+
+function mostrarResultadoBatch(results, errorGlobal, tipos) {
+  const head = document.getElementById('modalResHead');
+  const title = document.getElementById('modalResTitulo');
+  const body  = document.getElementById('modalResCuerpo');
+  const btnP  = document.getElementById('btnIrPendientes');
+  const hayError = errorGlobal || tipos.some(t => !results[t] || !results[t].ok);
+  head.className    = hayError ? 'modal-header bg-warning text-dark' : 'modal-header bg-success text-white';
+  title.textContent = 'Descarga completa';
+  btnP.classList.remove('d-none');
+  let html = '';
+  if (errorGlobal) { html += `<div class="alert alert-danger py-2 mb-2">${errorGlobal}</div>`; }
+  html += '<table class="table table-sm mb-0"><tbody>';
+  for (const tipo of tipos) {
+    const r = results[tipo];
+    if (!r) {
+      html += `<tr><td><i class="bi bi-x-circle-fill text-danger me-1"></i>${LABELS[tipo]}</td>
+                   <td class="text-end text-danger small">Sin resultado</td></tr>`;
+    } else if (r.ok) {
+      html += `<tr><td><i class="bi bi-check-circle-fill text-success me-1"></i>${LABELS[tipo]}</td>
+                   <td class="text-end">${r.importados} reg.${r.aviso ? ' <span class="text-muted small">(ya imp.)</span>' : ''}</td></tr>`;
+    } else {
+      html += `<tr><td><i class="bi bi-x-circle-fill text-danger me-1"></i>${LABELS[tipo]}</td>
+                   <td class="text-end text-danger small">${r.error}</td></tr>`;
+    }
+  }
+  html += '</tbody></table>';
+  body.innerHTML = html;
+  modalRes.show();
+}
+
+// ── Retomar jobs activos al volver a la página ────────────────────────────
+(async function retomarJobsPendientes() {
+  const jobs = jobsLeer();
+  const tiposPendientes = Object.keys(jobs);
+  if (!tiposPendientes.length || activoPolling) return;
+
+  activoPolling = true;
+  setBotones(true);
+  progresoMostrar(tiposPendientes);
+  tiposPendientes.forEach(t => progresoItem(t, 'activo', 'retomando…'));
+  progresoActualizar('Retomando descarga en curso…', 20);
+
+  for (const tipo of tiposPendientes) {
+    const {job_id, periodo} = jobs[tipo];
+    progresoItem(tipo, 'activo');
+    try {
+      const job = await pollJob(job_id, tipo, j => {
+        progresoActualizar(j.message || '…', j.pct || 30);
+      });
+      const data = job.result || {ok:false, error: job.message || 'Error'};
+      progresoItem(tipo, data.ok ? (data.aviso ? 'aviso' : 'ok') : 'error',
+                   data.ok ? (data.aviso ? '(ya imp.)' : `${data.importados} reg.`) : '');
+    } catch (e) {
+      progresoItem(tipo, 'error');
+      jobLimpiar(tipo);
+    }
+  }
+  progresoActualizar('Listo', 100);
+  siiBar.className = 'progress-bar bg-success';
+  activoPolling = false;
+  setBotones(false);
+  progresoOcultar();
+})();
+</script>
+{% endblock %}
