@@ -8,19 +8,19 @@
   </a>
 </div>
 
+{% if not preview %}
+{# ── Paso 1: Formulario de entrada ── #}
 <div class="card shadow-sm" style="max-width:700px">
   <div class="card-body">
     <form method="post">
       <div class="row g-3">
 
-        <!-- Period selector -->
         <div class="col-md-4">
           <label class="form-label">Período <span class="text-danger">*</span></label>
           <input type="month" name="periodo" id="liquidar_periodo" class="form-control"
                  value="{{ periodo_default }}" required onchange="cargarVariables(this.value)">
         </div>
 
-        <!-- Variables info display -->
         <div id="vars_info" class="col-12">
           {% if vars_mes %}
           <div class="alert alert-info py-2 small mb-0">
@@ -39,7 +39,6 @@
           {% endif %}
         </div>
 
-        <!-- Employee info -->
         <div class="col-12">
           <div class="alert alert-secondary py-2 small mb-0">
             <strong>Sueldo {{ emp.tipo_sueldo | lower if emp.tipo_sueldo else 'bruto' }}:</strong>
@@ -57,7 +56,6 @@
 
         <div class="col-12"><hr class="my-1"></div>
 
-        <!-- Variable monthly fields -->
         <div class="col-md-4">
           <label class="form-label">Horas extra ($)</label>
           <input type="number" name="horas_extra" class="form-control" min="0" step="1" value="0">
@@ -75,11 +73,8 @@
         </div>
 
         <div class="col-12">
-          <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
-            <i class="bi bi-pencil me-1"></i>Guardar Borrador
-          </button>
-          <button type="submit" name="accion" value="emitir" class="btn btn-primary ms-2">
-            <i class="bi bi-check2-circle me-1"></i>Calcular y Emitir
+          <button type="submit" name="accion" value="calcular" class="btn btn-primary">
+            <i class="bi bi-calculator me-1"></i>Calcular
           </button>
           <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="btn btn-link ms-2 text-secondary">Cancelar</a>
         </div>
@@ -87,6 +82,108 @@
     </form>
   </div>
 </div>
+
+{% else %}
+{# ── Paso 2: Preview calculada ── #}
+<div class="row g-3" style="max-width:750px">
+
+  {# Haberes #}
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><strong>Haberes</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><td>Sueldo base</td><td class="text-end">${{ preview.sueldo_base | clp }}</td></tr>
+            <tr><td>Gratificación legal</td><td class="text-end">${{ preview.gratificacion | clp }}</td></tr>
+            {% if preview.horas_extra %}<tr><td>Horas extra</td><td class="text-end">${{ preview.horas_extra | clp }}</td></tr>{% endif %}
+            {% if preview.bono_colacion %}<tr><td>Bono colación</td><td class="text-end">${{ preview.bono_colacion | clp }}</td></tr>{% endif %}
+            {% if preview.bono_movilizacion %}<tr><td>Bono movilización</td><td class="text-end">${{ preview.bono_movilizacion | clp }}</td></tr>{% endif %}
+            {% if preview.otros_haberes %}<tr><td>Otros haberes</td><td class="text-end">${{ preview.otros_haberes | clp }}</td></tr>{% endif %}
+            <tr class="table-secondary fw-bold"><td>Total haberes</td><td class="text-end">${{ preview.total_haberes | clp }}</td></tr>
+            <tr class="text-muted"><td><small>Renta imponible</small></td><td class="text-end small">${{ preview.renta_imponible | clp }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# Descuentos #}
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><strong>Descuentos trabajador</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><td>AFP {{ preview.afp_nombre }} ({{ preview.tasa_afp | round(2) }}%)</td><td class="text-end">${{ preview.afp | clp }}</td></tr>
+            <tr>
+              <td>
+                Salud
+                {% if preview.tipo_salud == 'ISAPRE' and preview.isapre %}
+                  – {{ preview.isapre }} (7% + exceso plan)
+                {% else %}
+                  FONASA (7%)
+                {% endif %}
+              </td>
+              <td class="text-end">${{ preview.salud | clp }}{% if preview.extra_isapre %} + ${{ preview.extra_isapre | clp }}{% endif %}</td>
+            </tr>
+            <tr><td>Seguro cesantía (0.6%)</td><td class="text-end">${{ preview.cesantia_trab | clp }}</td></tr>
+            <tr><td>Impuesto 2ª categoría</td><td class="text-end">${{ preview.impuesto_renta | clp }}</td></tr>
+            <tr class="table-secondary fw-bold"><td>Total descuentos</td><td class="text-end">${{ preview.total_descuentos | clp }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# Líquido #}
+  <div class="col-12">
+    <div class="card border-success shadow-sm">
+      <div class="card-body py-2 d-flex justify-content-between align-items-center">
+        <strong class="fs-5">Líquido a pagar</strong>
+        <strong class="fs-4 text-success">${{ preview.liquido | clp }}</strong>
+      </div>
+    </div>
+  </div>
+
+  {# Aportes empleador #}
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><strong>Aportes empleador</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><td>SIS (1.49%)</td><td class="text-end">${{ preview.sis | clp }}</td></tr>
+            <tr><td>Seguro cesantía (2.4%)</td><td class="text-end">${{ preview.cesantia_emp | clp }}</td></tr>
+            <tr><td>Mutual de seguridad</td><td class="text-end">${{ preview.mutual | clp }}</td></tr>
+            <tr class="table-secondary fw-bold"><td>Costo total empresa</td><td class="text-end">${{ preview.costo_empresa | clp }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# Botones de acción #}
+  <div class="col-12">
+    <form method="post">
+      <input type="hidden" name="periodo"     value="{{ form_data.periodo }}">
+      <input type="hidden" name="horas_extra" value="{{ form_data.horas_extra }}">
+      <input type="hidden" name="otros"       value="{{ form_data.otros }}">
+      <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
+        <i class="bi bi-pencil me-1"></i>Guardar Borrador
+      </button>
+      <button type="submit" name="accion" value="emitir" class="btn btn-primary ms-2">
+        <i class="bi bi-check2-circle me-1"></i>Emitir Liquidación
+      </button>
+      <a href="{{ url_for('remuneraciones.liquidar', eid=empresa.id, emp_id=emp.id) }}" class="btn btn-link ms-2 text-secondary">
+        Modificar datos
+      </a>
+    </form>
+  </div>
+
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -94,6 +191,7 @@
 async function cargarVariables(periodo) {
   if (!periodo) return;
   const varsInfo = document.getElementById('vars_info');
+  if (!varsInfo) return;
   try {
     const url = '{{ url_for("remuneraciones.variables_get", eid=empresa.id, periodo="PERIODO") }}'.replace('PERIODO', periodo);
     const resp = await fetch(url);

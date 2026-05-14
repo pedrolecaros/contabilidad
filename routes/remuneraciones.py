@@ -71,6 +71,7 @@ def liquidar(eid, emp_id):
         periodo = request.form.get('periodo', '').strip()
         horas_extra = float(request.form.get('horas_extra', 0) or 0)
         otros = float(request.form.get('otros', 0) or 0)
+        accion = request.form.get('accion', 'calcular')
 
         if not periodo:
             flash('El período es obligatorio.', 'danger')
@@ -89,12 +90,6 @@ def liquidar(eid, emp_id):
             return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
                                    vars_mes=vars_mes, periodo_default=periodo_default)
 
-        # Evitar duplicados
-        existe = Liquidacion.query.filter_by(empleado_id=emp_id, periodo=periodo).first()
-        if existe:
-            flash(f'Ya existe una liquidación para {periodo}. Edítela o elimínela primero.', 'warning')
-            return redirect(url_for('remuneraciones.detalle', eid=eid, liq_id=existe.id))
-
         resultado = motor.calcular(
             emp,
             utm=vars.utm,
@@ -104,9 +99,21 @@ def liquidar(eid, emp_id):
             horas_extra=horas_extra,
             otros=otros,
         )
-        accion = request.form.get('accion', 'emitir')
-        estado = 'EMITIDA' if accion == 'emitir' else 'BORRADOR'
 
+        if accion == 'calcular':
+            # Mostrar preview sin guardar
+            return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
+                                   vars_mes=vars, periodo_default=periodo,
+                                   preview=resultado,
+                                   form_data={'periodo': periodo, 'horas_extra': horas_extra, 'otros': otros})
+
+        # accion == 'borrador' o 'emitir' → guardar
+        existe = Liquidacion.query.filter_by(empleado_id=emp_id, periodo=periodo).first()
+        if existe:
+            flash(f'Ya existe una liquidación para {periodo}. Edítela o elimínela primero.', 'warning')
+            return redirect(url_for('remuneraciones.detalle', eid=eid, liq_id=existe.id))
+
+        estado = 'EMITIDA' if accion == 'emitir' else 'BORRADOR'
         liq = Liquidacion(empresa_id=eid, empleado_id=emp_id, periodo=periodo, estado=estado)
         for campo, valor in resultado.items():
             if hasattr(liq, campo):
@@ -452,46 +459,51 @@ def variables_get(eid, periodo):
     })
 
 
-@bp.route('/empresa/<int:eid>/remuneraciones/variables/fetch-previred')
+@bp.route('/empresa/<int:eid>/remuneraciones/variables/fetch-indicadores')
 def variables_fetch_previred(eid):
-    """Intenta obtener indicadores del mes actual de previred.com."""
+    """Obtiene UF y UTM del mes desde mindicador.cl (API JSON gratuita)."""
     try:
         import requests
+        import calendar
         from datetime import date
-        from bs4 import BeautifulSoup
-        hoy = date.today()
-        periodo = hoy.strftime('%Y-%m')
 
-        url = 'https://www.previred.com/web/previred/indicadores-previsionales'
-        r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-        soup = BeautifulSoup(r.text, 'html.parser')
+        periodo = request.args.get('periodo', '')
+        if not periodo:
+            hoy = date.today()
+            periodo = hoy.strftime('%Y-%m')
 
-        # Try to extract UF, UTM, IMM from the page
-        text = soup.get_text()
-        import re
+        anio, mes = int(periodo[:4]), int(periodo[5:7])
+        ultimo_dia = calendar.monthrange(anio, mes)[1]
 
-        def find_value(patterns, text):
-            for p in patterns:
-                m = re.search(p, text, re.IGNORECASE)
-                if m:
-                    val = m.group(1).replace('.', '').replace(',', '.')
-                    try:
-                        return float(val)
-                    except Exception:
-                        pass
-            return None
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        base = 'https://mindicador.cl/api'
 
-        uf = find_value([r'UF[^\d]*(\d{1,2}[.,]\d{3}[.,]\d{2})', r'Unidad de Fomento[^\d]*(\d[\d.,]+)'], text)
-        utm = find_value([r'UTM[^\d]*\$?\s*(\d{1,3}[.,]\d{3})', r'Unidad Tributaria Mensual[^\d]*\$?\s*(\d[\d.,]+)'], text)
-        imm = find_value([r'Ingreso M[íi]nimo[^\d]*\$?\s*(\d{1,3}[.,]\d{3})', r'IMM[^\d]*\$?\s*(\d[\d.,]+)'], text)
+        # UF: valor del último día del mes
+        r_uf = requests.get(f'{base}/uf/{ultimo_dia:02d}-{mes:02d}-{anio}',
+                            timeout=10, headers=headers)
+        uf_data = r_uf.json()
+        uf = uf_data.get('serie', [{}])[0].get('valor') if r_uf.status_code == 200 else None
 
-        result = {'periodo': periodo, 'uf': uf, 'utm': utm, 'imm': imm}
-        if imm:
-            result['tope_gratificacion'] = round(imm * 4.75 / 12)
+        # UTM: valor del mes (usar día 01)
+        r_utm = requests.get(f'{base}/utm/01-{mes:02d}-{anio}',
+                             timeout=10, headers=headers)
+        utm_data = r_utm.json()
+        utm = utm_data.get('serie', [{}])[0].get('valor') if r_utm.status_code == 200 else None
+
+        result = {
+            'ok': True,
+            'periodo': periodo,
+            'uf': uf,
+            'utm': utm,
+            'imm': None,
+        }
+        # Topes derivados
         if uf:
-            result['tope_imponible'] = round(uf * 81)
+            result['tope_imponible'] = round(uf * 90)   # 90 UF tope imponible
+        if result.get('imm'):
+            result['tope_gratificacion'] = round(result['imm'] * 4.75 / 12)
 
-        return jsonify({'ok': True, **result})
+        return jsonify(result)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 

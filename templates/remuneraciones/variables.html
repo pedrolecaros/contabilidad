@@ -103,7 +103,7 @@
               </div>
             </div>
             <div class="col-md-4">
-              <label class="form-label">Tope Imponible (81 UF)</label>
+              <label class="form-label">Tope Imponible (90 UF)</label>
               <div class="input-group">
                 <span class="input-group-text">$</span>
                 <input type="number" name="tope_imponible" id="var_tope_imponible" class="form-control" min="0" step="1">
@@ -146,7 +146,7 @@ function autoCalcularTopes() {
   const uf = parseFloat(document.getElementById('var_uf').value) || 0;
   const imm = parseFloat(document.getElementById('var_imm').value) || 0;
   if (uf > 0) {
-    document.getElementById('var_tope_imponible').value = Math.round(uf * 81);
+    document.getElementById('var_tope_imponible').value = Math.round(uf * 90);
   }
   if (imm > 0) {
     document.getElementById('var_tope_gratificacion').value = Math.round(imm * 4.75 / 12);
@@ -157,7 +157,7 @@ function autoCalcularTopes() {
 document.getElementById('var_uf').addEventListener('input', function() {
   const uf = parseFloat(this.value) || 0;
   if (uf > 0) {
-    document.getElementById('var_tope_imponible').value = Math.round(uf * 81);
+    document.getElementById('var_tope_imponible').value = Math.round(uf * 90);
   }
 });
 
@@ -176,7 +176,10 @@ async function fetchPrevired() {
   const statusEl = document.getElementById('previred_status');
   statusEl.textContent = 'Consultando Previred...';
   try {
-    const resp = await fetch('{{ url_for("remuneraciones.variables_fetch_previred", eid=empresa.id) }}');
+    const periodo = document.getElementById('var_periodo').value;
+    const url = '{{ url_for("remuneraciones.variables_fetch_previred", eid=empresa.id) }}'
+      + (periodo ? '?periodo=' + encodeURIComponent(periodo) : '');
+    const resp = await fetch(url);
     const data = await resp.json();
     if (data.ok) {
       if (data.periodo) document.getElementById('var_periodo').value = data.periodo;
