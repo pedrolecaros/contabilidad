@@ -109,6 +109,9 @@
         <li><a class="nav-link {% if request.endpoint=='reportes.aging' %}active{% endif %}"
                href="{{ url_for('reportes.aging', eid=empresa.id) }}">
           <i class="bi bi-hourglass-split me-2"></i>Antigüedad Saldos</a></li>
+        <li><a class="nav-link {% if request.endpoint=='reportes.ajuste_uf' %}active{% endif %}"
+               href="{{ url_for('reportes.ajuste_uf', eid=empresa.id) }}">
+          <i class="bi bi-currency-exchange me-2"></i>Ajuste UF</a></li>
       </ul>
     </nav>
     <main class="col-md-10 main-content">

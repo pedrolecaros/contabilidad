@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, flash, redirect, url_for
 from datetime import date
 import calendar
 from models import db, Empresa, Cuenta, LineaAsiento, Asiento, DocumentoSII
@@ -452,3 +452,193 @@ def mayor_imprimir(eid):
                            cuenta_sel=cuenta_sel, movimientos=movimientos,
                            saldo_inicial=saldo_inicial, desde=desde, hasta=hasta,
                            now=datetime.now())
+
+
+@bp.route('/empresa/<int:eid>/ajuste-uf', methods=['GET', 'POST'])
+def ajuste_uf(eid):
+    """Genera asiento de ajuste por variación de UF en préstamos denominados en UF."""
+    from datetime import datetime as dt
+    from models import Prestamo, CuotaPrestamo, ValorUF
+    from sqlalchemy import or_
+
+    empresa = Empresa.query.get_or_404(eid)
+    hoy = date.today()
+
+    # Default period: last month
+    if hoy.month == 1:
+        default_periodo = f'{hoy.year - 1}-12'
+    else:
+        default_periodo = f'{hoy.year}-{hoy.month - 1:02d}'
+
+    periodo = request.args.get('periodo', default_periodo)
+    if request.method == 'POST':
+        periodo = request.form.get('periodo', default_periodo)
+
+    try:
+        anio_p, mes_p = int(periodo[:4]), int(periodo[5:7])
+    except (ValueError, IndexError):
+        anio_p, mes_p = hoy.year, max(1, hoy.month - 1)
+        periodo = f'{anio_p}-{mes_p:02d}'
+
+    primer_dia = date(anio_p, mes_p, 1)
+    ultimo_dia = date(anio_p, mes_p, calendar.monthrange(anio_p, mes_p)[1])
+
+    # Get UF values
+    def _buscar_uf(target_date):
+        """Find closest ValorUF on or before the target date."""
+        v = ValorUF.query.filter(ValorUF.fecha <= target_date).order_by(ValorUF.fecha.desc()).first()
+        return v
+
+    uf_inicio_obj = _buscar_uf(primer_dia)
+    uf_fin_obj = _buscar_uf(ultimo_dia)
+
+    # Allow manual override from form
+    if request.method == 'POST':
+        try:
+            uf_inicio_val = float(request.form.get('uf_inicio', 0) or 0)
+        except ValueError:
+            uf_inicio_val = uf_inicio_obj.valor if uf_inicio_obj else 0.0
+        try:
+            uf_fin_val = float(request.form.get('uf_fin', 0) or 0)
+        except ValueError:
+            uf_fin_val = uf_fin_obj.valor if uf_fin_obj else 0.0
+    else:
+        uf_inicio_val = uf_inicio_obj.valor if uf_inicio_obj else 0.0
+        uf_fin_val = uf_fin_obj.valor if uf_fin_obj else 0.0
+
+    # Get active UF-denominated loans
+    prestamos_uf = (Prestamo.query
+        .filter_by(empresa_id=eid, moneda='UF', activo=True)
+        .order_by(Prestamo.nombre)
+        .all())
+
+    # Compute adjustments
+    filas = []
+    total_ajuste = 0.0
+    diferencia_uf = uf_fin_val - uf_inicio_val
+
+    for p in prestamos_uf:
+        # saldo_insoluto = capital of unpaid cuotas in UF units
+        capital_pendiente_uf = sum(
+            c.saldo_insoluto for c in p.cuotas
+            if not c.pagada and c.saldo_insoluto
+        )
+        if not capital_pendiente_uf and p.cuotas:
+            # If no saldo_insoluto set, use last unpaid cuota saldo
+            capital_pendiente_uf = p.monto_original
+
+        ajuste_pesos = round(capital_pendiente_uf * diferencia_uf)
+        total_ajuste += ajuste_pesos
+
+        filas.append({
+            'prestamo': p,
+            'saldo_uf': capital_pendiente_uf,
+            'uf_inicio': uf_inicio_val,
+            'uf_fin': uf_fin_val,
+            'diferencia_uf': diferencia_uf,
+            'ajuste_pesos': ajuste_pesos,
+        })
+
+    # Find accounts for adjustment
+    def _buscar_cuenta(tipo, keywords):
+        for kw in keywords:
+            c = (Cuenta.query
+                .filter_by(empresa_id=eid, activa=True, es_titulo=False, tipo=tipo)
+                .filter(or_(Cuenta.nombre.ilike(f'%{kw}%'), Cuenta.codigo.like(f'{kw}%')))
+                .first())
+            if c:
+                return c
+        return None
+
+    cuenta_perdida = _buscar_cuenta('GASTO', ['diferencia', 'ajuste uf', 'uf'])
+    cuenta_ganancia = _buscar_cuenta('INGRESO', ['diferencia', 'ajuste uf', 'uf'])
+    cuenta_pasivo = _buscar_cuenta('PASIVO', ['prestamo', 'préstamo'])
+    cuenta_activo = _buscar_cuenta('ACTIVO', ['prestamo', 'préstamo'])
+
+    asiento_generado = None
+
+    if request.method == 'POST' and request.form.get('accion') == 'generar_asiento':
+        if not prestamos_uf:
+            flash('No hay préstamos en UF activos.', 'warning')
+        elif abs(total_ajuste) < 1:
+            flash('El ajuste es cero (sin diferencia UF o sin saldo pendiente).', 'warning')
+        elif not uf_inicio_val or not uf_fin_val:
+            flash('Debes ingresar los valores UF de inicio y fin del período.', 'danger')
+        else:
+            cuenta_debe_id = request.form.get('cuenta_debe_id', type=int)
+            cuenta_haber_id = request.form.get('cuenta_haber_id', type=int)
+
+            if not cuenta_debe_id or not cuenta_haber_id:
+                flash('Selecciona las cuentas contables para el asiento.', 'danger')
+            else:
+                ultimo = (Asiento.query
+                    .filter_by(empresa_id=eid)
+                    .order_by(Asiento.numero.desc())
+                    .first())
+                siguiente_num = (ultimo.numero + 1) if ultimo and ultimo.numero else 1
+
+                monto_abs = abs(total_ajuste)
+                if diferencia_uf >= 0:
+                    desc_debe = f'Pérdida diferencia UF {periodo}'
+                    desc_haber = f'Ajuste préstamo UF {periodo}'
+                else:
+                    desc_debe = f'Ajuste préstamo UF {periodo}'
+                    desc_haber = f'Ganancia diferencia UF {periodo}'
+
+                asiento = Asiento(
+                    empresa_id=eid,
+                    fecha=ultimo_dia,
+                    numero=siguiente_num,
+                    descripcion=f'Ajuste diferencia UF {periodo}',
+                    origen='MANUAL',
+                    estado='CONFIRMADO',
+                )
+                db.session.add(asiento)
+                db.session.flush()
+
+                db.session.add(LineaAsiento(
+                    asiento_id=asiento.id,
+                    cuenta_id=cuenta_debe_id,
+                    debe=monto_abs,
+                    haber=0.0,
+                    descripcion=desc_debe,
+                    orden=1,
+                ))
+                db.session.add(LineaAsiento(
+                    asiento_id=asiento.id,
+                    cuenta_id=cuenta_haber_id,
+                    debe=0.0,
+                    haber=monto_abs,
+                    descripcion=desc_haber,
+                    orden=2,
+                ))
+                db.session.commit()
+                asiento_generado = asiento
+                flash(f'Asiento N°{siguiente_num} de ajuste UF generado por $ {monto_abs:,.0f}.', 'success')
+
+    # All accounts for manual selection
+    cuentas_gastos = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False, tipo='GASTO')
+        .order_by(Cuenta.codigo).all())
+    cuentas_ingresos = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False, tipo='INGRESO')
+        .order_by(Cuenta.codigo).all())
+    cuentas_activo = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False, tipo='ACTIVO')
+        .order_by(Cuenta.codigo).all())
+    cuentas_pasivo = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False, tipo='PASIVO')
+        .order_by(Cuenta.codigo).all())
+
+    return render_template('reportes/ajuste_uf.html',
+        empresa=empresa, periodo=periodo,
+        uf_inicio_val=uf_inicio_val, uf_fin_val=uf_fin_val,
+        uf_inicio_obj=uf_inicio_obj, uf_fin_obj=uf_fin_obj,
+        filas=filas, total_ajuste=total_ajuste, diferencia_uf=diferencia_uf,
+        prestamos_uf=prestamos_uf,
+        cuenta_perdida=cuenta_perdida, cuenta_ganancia=cuenta_ganancia,
+        cuenta_pasivo=cuenta_pasivo, cuenta_activo=cuenta_activo,
+        cuentas_gastos=cuentas_gastos, cuentas_ingresos=cuentas_ingresos,
+        cuentas_activo=cuentas_activo, cuentas_pasivo=cuentas_pasivo,
+        asiento_generado=asiento_generado,
+        ultimo_dia=ultimo_dia)
