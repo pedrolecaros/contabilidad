@@ -202,6 +202,73 @@ def historial(eid, emp_id):
     return render_template('remuneraciones/historial.html', empresa=empresa, emp=emp, liqs=liqs)
 
 
+@bp.route('/empresa/<int:eid>/remuneraciones/informe-renta')
+def informe_renta(eid):
+    from datetime import date
+    empresa = Empresa.query.get_or_404(eid)
+    hoy = date.today()
+    anio = request.args.get('anio', hoy.year, type=int)
+
+    # Query all EMITIDA liquidaciones for this year grouped by employee
+    liqs = (Liquidacion.query
+            .join(Empleado, Liquidacion.empleado_id == Empleado.id)
+            .filter(
+                Liquidacion.empresa_id == eid,
+                Liquidacion.estado == 'EMITIDA',
+                Liquidacion.periodo.like(f'{anio}-%'),
+            )
+            .order_by(Empleado.nombre, Liquidacion.periodo)
+            .all())
+
+    # Group by employee
+    from collections import defaultdict
+    grupos = {}  # emp_id -> dict
+    detalles = defaultdict(list)  # emp_id -> [liq, ...]
+
+    for liq in liqs:
+        eid_emp = liq.empleado_id
+        detalles[eid_emp].append(liq)
+        if eid_emp not in grupos:
+            grupos[eid_emp] = {
+                'empleado': liq.empleado,
+                'renta_acumulada': 0.0,
+                'impuesto_acumulado': 0.0,
+                'meses': 0,
+            }
+        grupos[eid_emp]['renta_acumulada'] += liq.renta_imponible or 0
+        grupos[eid_emp]['impuesto_acumulado'] += liq.impuesto_renta or 0
+        grupos[eid_emp]['meses'] += 1
+
+    filas = []
+    for eid_emp, g in grupos.items():
+        meses = g['meses']
+        impuesto_acum = g['impuesto_acumulado']
+        proyeccion = round(impuesto_acum * 12 / meses) if meses > 0 else 0
+        filas.append({
+            'empleado': g['empleado'],
+            'renta_acumulada': g['renta_acumulada'],
+            'impuesto_acumulado': impuesto_acum,
+            'meses': meses,
+            'proyeccion_anual': proyeccion,
+            'detalle': detalles[eid_emp],
+        })
+
+    # Sort by renta desc
+    filas.sort(key=lambda x: x['renta_acumulada'], reverse=True)
+
+    totales = {
+        'renta_acumulada': sum(f['renta_acumulada'] for f in filas),
+        'impuesto_acumulado': sum(f['impuesto_acumulado'] for f in filas),
+        'proyeccion_anual': sum(f['proyeccion_anual'] for f in filas),
+    }
+
+    anios_disponibles = list(range(hoy.year - 2, hoy.year + 3))
+
+    return render_template('remuneraciones/informe_renta.html',
+        empresa=empresa, anio=anio, anios=anios_disponibles,
+        filas=filas, totales=totales)
+
+
 @bp.route('/empresa/<int:eid>/remuneraciones/buscar-liquidacion')
 def buscar_liquidacion(eid):
     """Devuelve liquidaciones cuyo líquido coincide con el monto bancario (±1 peso)."""
