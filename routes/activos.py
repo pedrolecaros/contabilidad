@@ -105,11 +105,13 @@ def lista(eid):
                                  Cuenta.activa == True,
                                  Cuenta.codigo.like('5.2.1%'))
                          .order_by(Cuenta.codigo).all())
+    hoy = date.today()
     return render_template('activos/lista.html', empresa=empresa, activos=activos,
                            categorias=CATEGORIA_NOMBRES,
                            cuentas_activo=cuentas_activo,
                            cuentas_gasto_dep=cuentas_gasto_dep,
-                           vida_util_default=VIDA_UTIL_DEFAULT)
+                           vida_util_default=VIDA_UTIL_DEFAULT,
+                           hoy_mes=hoy.strftime('%Y-%m'))
 
 
 @bp.route('/empresa/<int:eid>/activos/nuevo', methods=['POST'])
@@ -238,6 +240,92 @@ def depreciar(eid, aid):
     db.session.commit()
     flash(f'Depreciación de {periodo} registrada: ${cuota:,.0f}. Asiento #{num} confirmado.', 'success')
     return redirect(url_for('activos.detalle', eid=eid, aid=aid))
+
+
+@bp.route('/empresa/<int:eid>/activos/depreciar-todos', methods=['POST'])
+def depreciar_todos(eid):
+    """Genera asientos de depreciación de todos los activos activos para un período."""
+    Empresa.query.get_or_404(eid)
+    periodo = request.form.get('periodo', '')
+    if not periodo:
+        flash('Debe indicar el período.', 'danger')
+        return redirect(url_for('activos.lista', eid=eid))
+
+    cuenta_gasto_dep = _get_cuenta(eid, '5.2.14')
+    if not cuenta_gasto_dep:
+        flash('No se encontró la cuenta 5.2.14 (Depreciación del Ejercicio).', 'danger')
+        return redirect(url_for('activos.lista', eid=eid))
+
+    periodo_date = date.fromisoformat(periodo + '-01')
+    import calendar
+    fecha_asiento = periodo_date.replace(
+        day=calendar.monthrange(periodo_date.year, periodo_date.month)[1]
+    )
+
+    activos_todos = ActivoFijo.query.filter_by(empresa_id=eid, activo=True).all()
+    registrados = 0
+    omitidos = []
+
+    for activo in activos_todos:
+        existing = DepreciacionRegistro.query.filter_by(
+            activo_fijo_id=activo.id, periodo=periodo
+        ).first()
+        if existing:
+            omitidos.append(f'{activo.nombre} (ya registrado)')
+            continue
+
+        diff = relativedelta(periodo_date, activo.fecha_compra)
+        mes_num = diff.years * 12 + diff.months + 1
+        if mes_num < 1 or mes_num > activo.vida_util_meses:
+            omitidos.append(f'{activo.nombre} (fuera de vida útil)')
+            continue
+
+        cuota = _calcular_cuota(activo, mes_num)
+        if cuota <= 0:
+            omitidos.append(f'{activo.nombre} (cuota cero)')
+            continue
+
+        if not activo.cuenta_dep_id:
+            omitidos.append(f'{activo.nombre} (sin cuenta depreciación)')
+            continue
+
+        num = _next_numero(eid)
+        asiento = Asiento(
+            empresa_id=eid,
+            fecha=fecha_asiento,
+            numero=num,
+            descripcion=f'Depreciación {periodo} – {activo.nombre}',
+            origen='MANUAL',
+            estado='CONFIRMADO',
+        )
+        db.session.add(asiento)
+        db.session.flush()
+
+        db.session.add(LineaAsiento(
+            asiento_id=asiento.id, cuenta_id=cuenta_gasto_dep.id,
+            debe=cuota, haber=0.0, descripcion=f'Dep. {activo.nombre}', orden=1,
+        ))
+        db.session.add(LineaAsiento(
+            asiento_id=asiento.id, cuenta_id=activo.cuenta_dep_id,
+            debe=0.0, haber=cuota, descripcion=f'Dep. Acum. {activo.nombre}', orden=2,
+        ))
+
+        db.session.add(DepreciacionRegistro(
+            activo_fijo_id=activo.id, periodo=periodo,
+            monto=cuota, asiento_id=asiento.id,
+        ))
+        registrados += 1
+
+    db.session.commit()
+
+    if registrados:
+        flash(f'Depreciación {periodo}: {registrados} activo(s) procesado(s).', 'success')
+    if omitidos:
+        flash(f'Omitidos: {"; ".join(omitidos)}.', 'info')
+    if not registrados and not omitidos:
+        flash('No hay activos activos para depreciar en este período.', 'warning')
+
+    return redirect(url_for('activos.lista', eid=eid))
 
 
 @bp.route('/empresa/<int:eid>/activos/<int:aid>/desactivar', methods=['POST'])

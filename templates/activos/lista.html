@@ -12,9 +12,20 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0"><i class="bi bi-building me-2"></i>Activos Fijos</h5>
-  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalNuevo">
-    <i class="bi bi-plus-circle me-1"></i>Registrar Activo
-  </button>
+  <div class="d-flex gap-2 align-items-center">
+    <form method="post" action="{{ url_for('activos.depreciar_todos', eid=empresa.id) }}"
+          class="d-flex gap-1 align-items-center"
+          onsubmit="return confirm('¿Generar depreciación de todos los activos activos para el período seleccionado?')">
+      <input type="month" name="periodo" class="form-control form-control-sm"
+             value="{{ hoy_mes }}" style="width:145px;" required>
+      <button type="submit" class="btn btn-outline-warning btn-sm text-nowrap">
+        <i class="bi bi-calculator me-1"></i>Depreciar todos
+      </button>
+    </form>
+    <button class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#modalNuevo">
+      <i class="bi bi-plus-circle me-1"></i>Registrar Activo
+    </button>
+  </div>
 </div>
 
 {% if activos %}
