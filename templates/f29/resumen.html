@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+{% block title %}F29 – {{ datos.mes_nombre }} {{ anio }}{% endblock %}
+
+{% block content %}
+<style>
+  @media print {
+    .no-print { display: none !important; }
+    .card { border: 1px solid #dee2e6 !important; }
+    body { font-size: 12px; }
+  }
+  .f29-linea { border-left: 3px solid transparent; }
+  .f29-linea:hover { background: #f8f9fa; }
+  .f29-total { background: #212529; color: #fff; }
+  .f29-subtotal { background: #e9ecef; font-weight: 600; }
+  .f29-pagar { background: #fff3cd; }
+  .f29-ok { background: #d1e7dd; }
+  .linea-num { color: #6c757d; font-size: .75rem; width: 32px; text-align: right; padding-right: 8px; }
+</style>
+
+<!-- Encabezado -->
+<div class="d-flex justify-content-between align-items-start mb-3 no-print">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Formulario 29</h5>
+    <div class="text-muted small">IVA · PPM · Retenciones · Segunda Categoría</div>
+  </div>
+  <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Imprimir / PDF
+  </button>
+</div>
+
+<!-- Selector de período -->
+<div class="card mb-4 no-print">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Mes</label>
+        <select name="mes" class="form-select form-select-sm">
+          {% for nombre in meses %}
+          <option value="{{ loop.index }}" {% if loop.index == mes %}selected{% endif %}>{{ nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Año</label>
+        <select name="anio" class="form-select form-select-sm">
+          {% for a in anios %}
+          <option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Tasa PPM</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="tasa_ppm" class="form-control" style="width:70px"
+                 step="0.01" min="0" max="10" value="{{ datos.tasa_ppm_pct }}">
+          <span class="input-group-text">%</span>
+        </div>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-calculator me-1"></i>Calcular
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Encabezado del formulario -->
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex justify-content-between align-items-center">
+    <div>
+      <span class="fw-bold fs-5">FORMULARIO 29</span>
+      <span class="ms-3 text-muted">Declaración y Pago Simultáneo Mensual</span>
+    </div>
+    <div class="text-end">
+      <div class="fw-semibold">{{ empresa.razon_social }}</div>
+      <div class="text-muted small">{{ empresa.rut }} &nbsp;·&nbsp; Período: {{ datos.mes_nombre }} {{ anio }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+
+  <!-- ── Columna izquierda ──────────────────────────────────────────────────── -->
+  <div class="col-lg-8">
+
+    <!-- IVA -->
+    {% if empresa.contribuyente_iva %}
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold small d-flex justify-content-between">
+        <span><i class="bi bi-percent me-1"></i>IVA – Impuesto al Valor Agregado</span>
+        <span class="text-muted">Tasa 19%</span>
+      </div>
+      <table class="table table-sm mb-0" style="font-size:.85rem;">
+        <tbody>
+          <!-- Ventas -->
+          <tr class="table-light">
+            <td colspan="3" class="fw-semibold small text-muted py-1">DÉBITO FISCAL (Ventas)</td>
+          </tr>
+          <tr class="f29-linea">
+            <td class="linea-num">503</td>
+            <td>Ventas y servicios afectos – Base imponible neta
+              <span class="badge bg-light text-dark ms-1">{{ datos.n_ventas }} docs</span>
+            </td>
+            <td class="text-end fw-semibold">$ {{ datos.ventas_neto|clp }}</td>
+          </tr>
+          {% if datos.ventas_exento > 0 %}
+          <tr class="f29-linea">
+            <td class="linea-num">142</td>
+            <td>Ventas exentas / no afectas</td>
+            <td class="text-end">$ {{ datos.ventas_exento|clp }}</td>
+          </tr>
+          {% endif %}
+          <tr class="f29-linea">
+            <td class="linea-num">502</td>
+            <td>IVA débito del período</td>
+            <td class="text-end fw-semibold">$ {{ datos.iva_debito_bruto|clp }}</td>
+          </tr>
+          {% if datos.nc_emitidas > 0 %}
+          <tr class="f29-linea">
+            <td class="linea-num">503</td>
+            <td class="text-danger">(–) Notas de crédito emitidas</td>
+            <td class="text-end text-danger">–$ {{ datos.nc_emitidas|clp }}</td>
+          </tr>
+          {% endif %}
+          <tr class="f29-subtotal">
+            <td class="linea-num"></td>
+            <td>IVA débito neto</td>
+            <td class="text-end">$ {{ datos.iva_debito_neto|clp }}</td>
+          </tr>
+
+          <!-- Compras -->
+          <tr class="table-light">
+            <td colspan="3" class="fw-semibold small text-muted py-1">CRÉDITO FISCAL (Compras)</td>
+          </tr>
+          <tr class="f29-linea">
+            <td class="linea-num">521</td>
+            <td>Compras con derecho a crédito fiscal – Base imponible neta
+              <span class="badge bg-light text-dark ms-1">{{ datos.n_compras }} docs</span>
+            </td>
+            <td class="text-end fw-semibold">$ {{ datos.compras_neto|clp }}</td>
+          </tr>
+          <tr class="f29-linea">
+            <td class="linea-num">522</td>
+            <td>Crédito fiscal del período</td>
+            <td class="text-end fw-semibold">$ {{ datos.credito_bruto|clp }}</td>
+          </tr>
+          {% if datos.nc_recibidas > 0 %}
+          <tr class="f29-linea">
+            <td class="linea-num">523</td>
+            <td class="text-danger">(–) Notas de crédito recibidas</td>
+            <td class="text-end text-danger">–$ {{ datos.nc_recibidas|clp }}</td>
+          </tr>
+          {% endif %}
+          <tr class="f29-subtotal">
+            <td class="linea-num"></td>
+            <td>Crédito fiscal neto</td>
+            <td class="text-end">$ {{ datos.credito_fiscal_neto|clp }}</td>
+          </tr>
+
+          <!-- Resultado IVA -->
+          <tr class="table-light">
+            <td colspan="3" class="fw-semibold small text-muted py-1">RESULTADO IVA</td>
+          </tr>
+          {% if datos.iva_pagar > 0 %}
+          <tr class="f29-pagar">
+            <td class="linea-num">89</td>
+            <td class="fw-bold">IVA a pagar (débito – crédito)</td>
+            <td class="text-end fw-bold text-danger">$ {{ datos.iva_pagar|clp }}</td>
+          </tr>
+          {% else %}
+          <tr class="f29-ok">
+            <td class="linea-num">77</td>
+            <td class="fw-bold">Remanente de crédito fiscal</td>
+            <td class="text-end fw-bold text-success">$ {{ datos.remanente|clp }}</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info small mb-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Esta empresa <strong>no es contribuyente de IVA</strong> — el IVA de compras se registra como gasto.
+      La sección IVA no aplica.
+    </div>
+    {% endif %}
+
+    <!-- PPM -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold small">
+        <i class="bi bi-arrow-repeat me-1"></i>PPM – Pago Provisional Mensual
+      </div>
+      <table class="table table-sm mb-0" style="font-size:.85rem;">
+        <tbody>
+          <tr class="f29-linea">
+            <td class="linea-num">563</td>
+            <td>Base de ventas del período</td>
+            <td class="text-end">$ {{ datos.ppm_base|clp }}</td>
+          </tr>
+          <tr class="f29-linea">
+            <td class="linea-num">563</td>
+            <td>Tasa PPM aplicada</td>
+            <td class="text-end">{{ datos.tasa_ppm_pct }}%</td>
+          </tr>
+          <tr class="f29-pagar {% if datos.ppm == 0 %}f29-ok{% endif %}">
+            <td class="linea-num">68</td>
+            <td class="fw-bold">PPM a enterar</td>
+            <td class="text-end fw-bold {% if datos.ppm > 0 %}text-danger{% else %}text-muted{% endif %}">
+              $ {{ datos.ppm|clp }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Retenciones -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold small">
+        <i class="bi bi-receipt me-1"></i>Retenciones e Impuestos de Terceros
+      </div>
+      <table class="table table-sm mb-0" style="font-size:.85rem;">
+        <tbody>
+          <tr class="table-light">
+            <td colspan="3" class="fw-semibold small text-muted py-1">Honorarios (Retención 10.75%)</td>
+          </tr>
+          <tr class="f29-linea">
+            <td class="linea-num">151</td>
+            <td>Monto bruto honorarios
+              <span class="badge bg-light text-dark ms-1">{{ datos.n_honorarios }} boletas</span>
+            </td>
+            <td class="text-end">$ {{ datos.honor_bruto|clp }}</td>
+          </tr>
+          <tr class="f29-pagar {% if datos.retencion_honorarios == 0 %}f29-ok{% endif %}">
+            <td class="linea-num">151</td>
+            <td class="fw-bold">Retención honorarios a enterar</td>
+            <td class="text-end fw-bold {% if datos.retencion_honorarios > 0 %}text-danger{% else %}text-muted{% endif %}">
+              $ {{ datos.retencion_honorarios|clp }}
+            </td>
+          </tr>
+
+          <tr class="table-light">
+            <td colspan="3" class="fw-semibold small text-muted py-1">Segunda Categoría (Trabajadores)</td>
+          </tr>
+          <tr class="f29-linea">
+            <td class="linea-num">162</td>
+            <td>Empleados con impuesto segunda categoría
+              <span class="badge bg-light text-dark ms-1">{{ datos.n_empleados }} trabajadores</span>
+            </td>
+            <td class="text-end">{{ datos.n_empleados }}</td>
+          </tr>
+          <tr class="f29-pagar {% if datos.segunda_categoria == 0 %}f29-ok{% endif %}">
+            <td class="linea-num">162</td>
+            <td class="fw-bold">Impuesto única segunda categoría</td>
+            <td class="text-end fw-bold {% if datos.segunda_categoria > 0 %}text-danger{% else %}text-muted{% endif %}">
+              $ {{ datos.segunda_categoria|clp }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div><!-- /col izq -->
+
+  <!-- ── Columna derecha: resumen ───────────────────────────────────────────── -->
+  <div class="col-lg-4">
+    <div class="card sticky-top" style="top:1rem;">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-calculator me-1"></i>Resumen a Pagar
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.9rem;">
+          <tbody>
+            {% if empresa.contribuyente_iva %}
+            <tr>
+              <td class="ps-3">IVA neto</td>
+              <td class="text-end pe-3 fw-semibold {% if datos.iva_pagar > 0 %}text-danger{% else %}text-success{% endif %}">
+                {% if datos.iva_pagar > 0 %}
+                $ {{ datos.iva_pagar|clp }}
+                {% else %}
+                <span class="text-success">Remanente $ {{ datos.remanente|clp }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endif %}
+            <tr>
+              <td class="ps-3">PPM ({{ datos.tasa_ppm_pct }}%)</td>
+              <td class="text-end pe-3 fw-semibold">$ {{ datos.ppm|clp }}</td>
+            </tr>
+            <tr>
+              <td class="ps-3">Retención honorarios</td>
+              <td class="text-end pe-3 fw-semibold">$ {{ datos.retencion_honorarios|clp }}</td>
+            </tr>
+            <tr>
+              <td class="ps-3">Segunda categoría</td>
+              <td class="text-end pe-3 fw-semibold">$ {{ datos.segunda_categoria|clp }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="f29-total">
+              <td class="ps-3 fw-bold py-3" style="font-size:1rem;">TOTAL A PAGAR</td>
+              <td class="text-end pe-3 fw-bold py-3" style="font-size:1.1rem;">
+                $ {{ datos.total|clp }}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {% if datos.remanente > 0 %}
+      <div class="card-footer text-muted small">
+        <i class="bi bi-arrow-right-circle me-1 text-success"></i>
+        Remanente de crédito fiscal ${{ datos.remanente|clp }} pasa al mes siguiente.
+      </div>
+      {% endif %}
+
+      <!-- Fuente de datos -->
+      <div class="card-footer text-muted small no-print">
+        <div class="fw-semibold mb-1">Fuente de datos:</div>
+        <div><i class="bi bi-dot"></i>{{ datos.n_ventas }} documentos de venta</div>
+        <div><i class="bi bi-dot"></i>{{ datos.n_compras }} documentos de compra</div>
+        <div><i class="bi bi-dot"></i>{{ datos.n_honorarios }} boletas honorarios</div>
+        <div><i class="bi bi-dot"></i>{{ datos.n_empleados }} liquidaciones emitidas</div>
+        <div class="mt-2 text-warning-emphasis">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Verificar antes de declarar en SII.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /row -->
+
+{% endblock %}

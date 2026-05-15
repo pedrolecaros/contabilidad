@@ -71,6 +71,9 @@
         <li><a class="nav-link {% if 'prestamos' in request.endpoint %}active{% endif %}"
                href="{{ url_for('prestamos.lista', eid=empresa.id) }}">
           <i class="bi bi-bank me-2"></i>Préstamos</a></li>
+        <li><a class="nav-link {% if 'f29' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('f29.index', eid=empresa.id) }}">
+          <i class="bi bi-file-earmark-text me-2"></i>F29</a></li>
         <li><a class="nav-link {% if 'validacion' in request.endpoint %}active{% endif %}"
                href="{{ url_for('validacion.index', eid=empresa.id) }}">
           <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>

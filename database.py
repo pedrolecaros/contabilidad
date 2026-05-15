@@ -54,6 +54,8 @@ def _migrar(app):
     movimiento_banco_id INTEGER REFERENCES movimientos_banco(id),
     notas VARCHAR(300)
 )""",
+        "ALTER TABLE empresas ADD COLUMN contribuyente_iva INTEGER DEFAULT 1",
+        "ALTER TABLE empresas ADD COLUMN tasa_ppm REAL DEFAULT 1.0",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

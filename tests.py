@@ -699,6 +699,121 @@ class TestPrestamosFlask(unittest.TestCase):
             self.assertEqual(remaining, 0)
 
 
+class TestF29(unittest.TestCase):
+    """Tests for F29 monthly tax calculation."""
+
+    def setUp(self):
+        from app import create_app
+        from config import Config
+        class TestConfig(Config):
+            TESTING = True
+            SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+            WTF_CSRF_ENABLED = False
+            SECRET_KEY = 'test'
+        self.app_obj = create_app(TestConfig)
+        self.client = self.app_obj.test_client()
+        with self.app_obj.app_context():
+            from models import db, Empresa, DocumentoSII, Liquidacion
+            db.create_all()
+            e = Empresa(rut='11.111.111-1', razon_social='F29 Test SA',
+                        contribuyente_iva=True, tasa_ppm=1.0)
+            db.session.add(e)
+            db.session.flush()
+            self.eid = e.id
+            from datetime import date
+            # Venta afecta: neto 1.000.000, iva 190.000
+            db.session.add(DocumentoSII(
+                empresa_id=self.eid, tipo_libro='VENTAS', tipo_dte='33',
+                fecha=date(2025, 3, 10), monto_neto=1_000_000, iva=190_000, total=1_190_000))
+            # NC emitida: neto -100.000, iva -19.000
+            db.session.add(DocumentoSII(
+                empresa_id=self.eid, tipo_libro='VENTAS', tipo_dte='61',
+                fecha=date(2025, 3, 15), monto_neto=-100_000, iva=-19_000, total=-119_000))
+            # Compra afecta: neto 500.000, iva 95.000
+            db.session.add(DocumentoSII(
+                empresa_id=self.eid, tipo_libro='COMPRAS', tipo_dte='33',
+                fecha=date(2025, 3, 5), monto_neto=500_000, iva=95_000, total=595_000))
+            # Honorario: bruto 200.000, retencion 21.500 (10.75%)
+            db.session.add(DocumentoSII(
+                empresa_id=self.eid, tipo_libro='HONORARIOS', tipo_dte='39',
+                fecha=date(2025, 3, 20), total=200_000, iva=21_500, monto_neto=178_500))
+            # Liquidación con impuesto renta
+            db.session.add(Liquidacion(
+                empresa_id=self.eid, empleado_id=1,
+                periodo='2025-03', impuesto_renta=15_000,
+                estado='EMITIDA'))
+            db.session.commit()
+
+    def _calcular(self, anio=2025, mes=3, tasa_ppm=1.0):
+        with self.app_obj.app_context():
+            from routes.f29 import _calcular_f29
+            return _calcular_f29(self.eid, anio, mes, tasa_ppm)
+
+    def test_iva_debito_bruto(self):
+        d = self._calcular()
+        self.assertEqual(d['iva_debito_bruto'], 190_000)
+
+    def test_nc_emitidas_reduce_debito(self):
+        d = self._calcular()
+        self.assertEqual(d['nc_emitidas'], 19_000)
+        self.assertEqual(d['iva_debito_neto'], 171_000)
+
+    def test_credito_fiscal(self):
+        d = self._calcular()
+        self.assertEqual(d['credito_bruto'], 95_000)
+        self.assertEqual(d['credito_fiscal_neto'], 95_000)
+
+    def test_iva_pagar(self):
+        d = self._calcular()
+        # 171.000 - 95.000 = 76.000
+        self.assertEqual(d['iva_pagar'], 76_000)
+        self.assertEqual(d['remanente'], 0)
+
+    def test_ppm_calculo(self):
+        d = self._calcular(tasa_ppm=1.0)
+        # ventas_total = 1.000.000 - 100.000 = 900.000 → PPM = 9.000
+        self.assertEqual(d['ppm_base'], 900_000)
+        self.assertEqual(d['ppm'], 9_000)
+
+    def test_retencion_honorarios(self):
+        d = self._calcular()
+        self.assertEqual(d['retencion_honorarios'], 21_500)
+
+    def test_segunda_categoria(self):
+        d = self._calcular()
+        self.assertEqual(d['segunda_categoria'], 15_000)
+
+    def test_total(self):
+        d = self._calcular()
+        esperado = 76_000 + 9_000 + 21_500 + 15_000
+        self.assertEqual(d['total'], esperado)
+
+    def test_remanente_cuando_credito_mayor(self):
+        # Agregar compras grandes para que crédito > débito
+        with self.app_obj.app_context():
+            from models import db, DocumentoSII
+            from datetime import date
+            db.session.add(DocumentoSII(
+                empresa_id=self.eid, tipo_libro='COMPRAS', tipo_dte='33',
+                fecha=date(2025, 3, 25), monto_neto=2_000_000, iva=380_000, total=2_380_000))
+            db.session.commit()
+        d = self._calcular()
+        self.assertEqual(d['iva_pagar'], 0)
+        self.assertGreater(d['remanente'], 0)
+
+    def test_periodo_sin_datos(self):
+        d = self._calcular(anio=2020, mes=1)
+        self.assertEqual(d['iva_pagar'], 0)
+        self.assertEqual(d['ppm'], 0)
+        self.assertEqual(d['total'], 0)
+
+    def test_ruta_f29(self):
+        r = self.client.get(f'/empresa/{self.eid}/f29?anio=2025&mes=3')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'F29', r.data)
+        self.assertIn(b'190.000', r.data)
+
+
 if __name__ == '__main__':
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -707,6 +822,7 @@ if __name__ == '__main__':
     suite.addTests(loader.loadTestsFromTestCase(TestFlaskRoutes))
     suite.addTests(loader.loadTestsFromTestCase(TestPMT))
     suite.addTests(loader.loadTestsFromTestCase(TestPrestamosFlask))
+    suite.addTests(loader.loadTestsFromTestCase(TestF29))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
