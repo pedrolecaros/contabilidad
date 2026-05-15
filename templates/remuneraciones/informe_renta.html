@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block title %}Informe Renta por Trabajador {{ anio }} – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-person-lines-fill me-2"></i>Informe Renta por Trabajador</h4>
+  <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Remuneraciones
+  </a>
+</div>
+
+<!-- Selector de año -->
+<form class="row g-2 align-items-center mb-4" method="get">
+  <div class="col-auto">
+    <label class="form-label mb-0 fw-semibold">Año tributario:</label>
+  </div>
+  <div class="col-auto">
+    <select name="anio" class="form-select form-select-sm filtro-auto" style="width:auto">
+      {% for a in anios %}
+      <option value="{{ a }}" {{ 'selected' if a == anio }}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+{% if filas %}
+<div class="card shadow-sm">
+  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-table me-1"></i>Resumen Anual {{ anio }} — {{ filas|length }} trabajador(es)</span>
+    <span class="text-muted small">Solo liquidaciones <strong class="text-white">EMITIDAS</strong></span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0" id="tablaRenta">
+      <thead class="table-secondary">
+        <tr>
+          <th data-sort="text">Empleado</th>
+          <th data-sort="text">RUT</th>
+          <th class="text-center" data-sort="num">Meses liquidados</th>
+          <th class="text-end" data-sort="clp">Renta imponible acumulada</th>
+          <th class="text-end" data-sort="clp">Impuesto retenido acumulado</th>
+          <th class="text-end" data-sort="clp">Proyección anual</th>
+          <th class="text-center">Detalle</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in filas %}
+        <tr>
+          <td class="fw-semibold">{{ f.empleado.nombre }}</td>
+          <td class="small font-monospace text-muted">{{ f.empleado.rut }}</td>
+          <td class="text-center">
+            <span class="badge bg-secondary">{{ f.meses }}</span>
+          </td>
+          <td class="text-end">$ {{ f.renta_acumulada|clp }}</td>
+          <td class="text-end {% if f.impuesto_acumulado > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+            {% if f.impuesto_acumulado > 0 %}$ {{ f.impuesto_acumulado|clp }}{% else %}—{% endif %}
+          </td>
+          <td class="text-end {% if f.proyeccion_anual > 0 %}text-warning-emphasis{% else %}text-muted{% endif %}">
+            {% if f.proyeccion_anual > 0 %}$ {{ f.proyeccion_anual|clp }}{% else %}—{% endif %}
+          </td>
+          <td class="text-center">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#det-{{ f.empleado.id }}"
+                    aria-expanded="false"
+                    title="Ver desglose mensual">
+              <i class="bi bi-chevron-down"></i>
+            </button>
+          </td>
+        </tr>
+        <!-- Detalle mensual colapsable -->
+        <tr class="collapse" id="det-{{ f.empleado.id }}">
+          <td colspan="7" class="p-0">
+            <div class="bg-light border-start border-primary border-3 px-3 py-2">
+              <table class="table table-sm mb-0 small">
+                <thead class="table-dark">
+                  <tr>
+                    <th>Período</th>
+                    <th class="text-end">Renta imponible</th>
+                    <th class="text-end">Impuesto retenido</th>
+                    <th class="text-end">Líquido</th>
+                    <th class="text-center">Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for liq in f.detalle %}
+                  <tr>
+                    <td>{{ liq.periodo }}</td>
+                    <td class="text-end">$ {{ liq.renta_imponible|clp }}</td>
+                    <td class="text-end {% if liq.impuesto_renta %}text-danger{% else %}text-muted{% endif %}">
+                      {% if liq.impuesto_renta %}$ {{ liq.impuesto_renta|clp }}{% else %}—{% endif %}
+                    </td>
+                    <td class="text-end text-success fw-semibold">$ {{ liq.liquido|clp }}</td>
+                    <td class="text-center">
+                      <span class="badge {% if liq.estado == 'EMITIDA' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                        {{ liq.estado }}
+                      </span>
+                    </td>
+                    <td>
+                      <a href="{{ url_for('remuneraciones.detalle', eid=empresa.id, liq_id=liq.id) }}"
+                         class="btn btn-outline-secondary btn-sm py-0 px-1" title="Ver liquidación">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                      </a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot class="table-secondary fw-semibold">
+                  <tr>
+                    <td>Total {{ f.meses }} mes(es)</td>
+                    <td class="text-end">$ {{ f.renta_acumulada|clp }}</td>
+                    <td class="text-end {% if f.impuesto_acumulado %}text-danger{% endif %}">
+                      {% if f.impuesto_acumulado %}$ {{ f.impuesto_acumulado|clp }}{% else %}—{% endif %}
+                    </td>
+                    <td class="text-end">$ {{ f.detalle|sum(attribute='liquido')|clp }}</td>
+                    <td colspan="2"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-dark fw-bold">
+        <tr>
+          <td colspan="3">TOTALES</td>
+          <td class="text-end">$ {{ totales.renta_acumulada|clp }}</td>
+          <td class="text-end {% if totales.impuesto_acumulado %}text-danger{% endif %}">
+            {% if totales.impuesto_acumulado %}$ {{ totales.impuesto_acumulado|clp }}{% else %}—{% endif %}
+          </td>
+          <td class="text-end">
+            {% if totales.proyeccion_anual %}$ {{ totales.proyeccion_anual|clp }}{% else %}—{% endif %}
+          </td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="text-muted small mt-2">
+  <i class="bi bi-info-circle me-1"></i>
+  La proyección anual se calcula como: Impuesto acumulado × 12 / Meses liquidados.
+  Solo considera liquidaciones en estado <strong>EMITIDA</strong>.
+</div>
+
+{% else %}
+<div class="alert alert-info">
+  <i class="bi bi-calendar-x me-1"></i>
+  No hay liquidaciones emitidas para el año <strong>{{ anio }}</strong>.
+</div>
+{% endif %}
+{% endblock %}

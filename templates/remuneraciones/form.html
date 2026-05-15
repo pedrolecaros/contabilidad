@@ -118,6 +118,35 @@
            value="{{ (emp.tasa_mutual * 100) | round(3) if emp else 0.93 }}">
   </div>
 
+  <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1">APV — Ahorro Previsional Voluntario</h6></div>
+
+  <div class="col-md-3">
+    <label class="form-label">Monto APV mensual ($)</label>
+    <input type="text" name="apv_monto" class="form-control num-fmt" inputmode="numeric"
+           value="{{ (emp.apv_monto | int | clp) if emp and emp.apv_monto else '0' }}"
+           placeholder="0">
+    <div class="form-text">0 si no tiene APV</div>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Tipo APV</label>
+    <div class="mt-2">
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="apv_tipo" id="apv_a" value="A"
+               {{ 'checked' if not emp or not emp.apv_tipo or emp.apv_tipo == 'A' }}>
+        <label class="form-check-label" for="apv_a">
+          <strong>Tipo A</strong> <span class="text-muted small">(rebaja base imponible)</span>
+        </label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="apv_tipo" id="apv_b" value="B"
+               {{ 'checked' if emp and emp.apv_tipo == 'B' }}>
+        <label class="form-check-label" for="apv_b">
+          <strong>Tipo B</strong> <span class="text-muted small">(crédito tributario 15%)</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
   <div class="col-12 mt-3">
     <button type="submit" class="btn btn-primary">
       <i class="bi bi-floppy me-1"></i>Guardar

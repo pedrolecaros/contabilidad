@@ -56,6 +56,9 @@ def _migrar(app):
 )""",
         "ALTER TABLE empresas ADD COLUMN contribuyente_iva INTEGER DEFAULT 1",
         "ALTER TABLE empresas ADD COLUMN tasa_ppm REAL DEFAULT 1.0",
+        "ALTER TABLE empleados ADD COLUMN apv_monto REAL DEFAULT 0.0",
+        "ALTER TABLE empleados ADD COLUMN apv_tipo VARCHAR(1) DEFAULT 'A'",
+        "ALTER TABLE liquidaciones ADD COLUMN apv REAL DEFAULT 0.0",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

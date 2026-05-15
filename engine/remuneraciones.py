@@ -92,10 +92,16 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
         extra_isapre  = max(0, monto_isapre - salud_legal)
 
     cesantia_trab   = round(renta_imponible * TASA_CESANTIA_TRAB)
-    base_renta      = renta_imponible - afp_desc - salud_desc - cesantia_trab
-    impuesto        = _calcular_impuesto(base_renta, utm)
 
-    total_descuentos = afp_desc + salud_desc + cesantia_trab + impuesto + extra_isapre
+    # APV: Tipo A reduce la base imponible para impuesto 2ª categoría
+    apv_monto = round(getattr(emp, 'apv_monto', 0) or 0)
+    apv_tipo  = getattr(emp, 'apv_tipo', 'A') or 'A'
+
+    base_renta      = renta_imponible - afp_desc - salud_desc - cesantia_trab
+    base_impuesto   = max(0, base_renta - (apv_monto if apv_tipo == 'A' else 0))
+    impuesto        = _calcular_impuesto(base_impuesto, utm)
+
+    total_descuentos = afp_desc + salud_desc + cesantia_trab + impuesto + extra_isapre + apv_monto
     liquido          = total_haberes - total_descuentos
 
     sis_emp         = round(renta_imponible * tasa_sis)
@@ -124,6 +130,7 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
         'costo_empresa':     costo_empresa,
         'utm':               utm,
         'extra_isapre':      extra_isapre,
+        'apv':               apv_monto,
         'afp_nombre':        getattr(emp, 'afp', ''),
         'tasa_afp':          round(tasa_afp_total * 100, 4),
         'tipo_salud':        getattr(emp, 'tipo_salud', 'FONASA'),
@@ -144,6 +151,8 @@ def _encontrar_bruto(emp, utm, tope_grat, monto_isapre, horas_extra, otros, tasa
         bono_movilizacion=getattr(emp, 'bono_movilizacion', 0.0),
         otros_haberes=getattr(emp, 'otros_haberes', 0.0),
         tasa_mutual=getattr(emp, 'tasa_mutual', 0.0093),
+        apv_monto=getattr(emp, 'apv_monto', 0.0),
+        apv_tipo=getattr(emp, 'apv_tipo', 'A'),
         tipo_sueldo='BRUTO',
         monto_isapre=0,
         monto_isapre_uf=0,

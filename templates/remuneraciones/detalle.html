@@ -91,6 +91,16 @@
               <td class="text-end text-danger">$ {{ num(liq.impuesto_renta) }}</td>
             </tr>
             {% endif %}
+            {% if liq.apv %}
+            <tr>
+              <td>APV
+                {% if liq.empleado.apv_tipo %}
+                  <span class="badge bg-info text-dark ms-1">Tipo {{ liq.empleado.apv_tipo }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end text-danger">$ {{ num(liq.apv) }}</td>
+            </tr>
+            {% endif %}
           </tbody>
           <tfoot class="table-dark">
             <tr><th>Total Descuentos</th><th class="text-end text-danger">$ {{ num(liq.total_descuentos) }}</th></tr>
