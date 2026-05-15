@@ -325,55 +325,6 @@ class CuotaPrestamo(db.Model):
     notas = db.Column(db.String(300))
 
 
-class ValorUF(db.Model):
-    __tablename__ = 'valores_uf'
-    id = db.Column(db.Integer, primary_key=True)
-    fecha = db.Column(db.Date, nullable=False, unique=True)
-    valor = db.Column(db.Float, nullable=False)
-
-
-class Prestamo(db.Model):
-    __tablename__ = 'prestamos'
-    id = db.Column(db.Integer, primary_key=True)
-    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
-    empresa_relacionada_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=True)
-    nombre = db.Column(db.String(200), nullable=False)
-    tipo = db.Column(db.String(10), nullable=False)       # PAGAR | COBRAR
-    moneda = db.Column(db.String(5), default='PESOS')     # PESOS | UF
-    monto_original = db.Column(db.Float, nullable=False)
-    tasa_interes_anual = db.Column(db.Float, default=0.0)
-    fecha_inicio = db.Column(db.Date, nullable=False)
-    n_cuotas = db.Column(db.Integer, nullable=True)
-    periodicidad = db.Column(db.String(10), default='MENSUAL')
-    acreedor_deudor = db.Column(db.String(200))
-    activo = db.Column(db.Boolean, default=True)
-    notas = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-
-    empresa = db.relationship('Empresa', foreign_keys=[empresa_id],
-                              backref=db.backref('prestamos', lazy='dynamic'))
-    empresa_relacionada = db.relationship('Empresa', foreign_keys=[empresa_relacionada_id])
-    cuotas = db.relationship('CuotaPrestamo', backref='prestamo',
-                             order_by='CuotaPrestamo.numero_cuota',
-                             cascade='all, delete-orphan', lazy='select')
-
-
-class CuotaPrestamo(db.Model):
-    __tablename__ = 'cuotas_prestamo'
-    id = db.Column(db.Integer, primary_key=True)
-    prestamo_id = db.Column(db.Integer, db.ForeignKey('prestamos.id'), nullable=False)
-    numero_cuota = db.Column(db.Integer, nullable=False)
-    fecha_vencimiento = db.Column(db.Date, nullable=False)
-    capital = db.Column(db.Float, default=0.0)
-    interes = db.Column(db.Float, default=0.0)
-    cuota_total = db.Column(db.Float, default=0.0)
-    saldo_insoluto = db.Column(db.Float, default=0.0)
-    pagada = db.Column(db.Boolean, default=False)
-    fecha_pago = db.Column(db.Date, nullable=True)
-    movimiento_banco_id = db.Column(db.Integer, db.ForeignKey('movimientos_banco.id'), nullable=True)
-    notas = db.Column(db.String(300))
-
-
 class ReglaClasificacion(db.Model):
     __tablename__ = 'reglas_clasificacion'
     id = db.Column(db.Integer, primary_key=True)
