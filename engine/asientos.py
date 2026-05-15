@@ -470,6 +470,12 @@ def generar_asiento_cuota_custom(cuota, lineas_data) -> Asiento:
     nombre = prestamo.acreedor_deudor or prestamo.nombre
     desc_asiento = f"Cuota {cuota.numero_cuota} préstamo {nombre}"
 
+    # Filter out rows with no account or zero amounts
+    lineas_data = [l for l in lineas_data if l.get('cuenta_id') and
+                   (float(l.get('debe') or 0) or float(l.get('haber') or 0))]
+    if not lineas_data:
+        raise ValueError("No hay líneas válidas en el asiento (falta cuenta o monto)")
+
     total_debe = sum(float(l.get('debe') or 0) for l in lineas_data)
     total_haber = sum(float(l.get('haber') or 0) for l in lineas_data)
     if abs(total_debe - total_haber) > 1:

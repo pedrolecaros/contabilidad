@@ -1,7 +1,7 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte, MovimientoBanco
+from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte, MovimientoBanco, Cuenta
 from engine.asientos import generar_asiento_cuota_prestamo, generar_asiento_cuota_custom
 
 bp = Blueprint('prestamos', __name__)
@@ -291,6 +291,10 @@ def detalle(eid, pid):
     total_cuotas = sum(c.cuota_total for c in prestamo.cuotas)
     capital_pendiente = sum(c.capital for c in prestamo.cuotas if not c.pagada)
 
+    import json
+    cuentas_activas = Cuenta.query.filter_by(empresa_id=eid, activa=True, es_titulo=False).order_by(Cuenta.codigo).all()
+    cuentas_json = json.dumps([{'id': c.id, 'codigo': c.codigo, 'nombre': c.nombre} for c in cuentas_activas])
+
     return render_template('prestamos/detalle.html',
                            empresa=empresa,
                            prestamo=prestamo,
@@ -299,7 +303,8 @@ def detalle(eid, pid):
                            total_capital=total_capital,
                            total_interes=total_interes,
                            total_cuotas=total_cuotas,
-                           capital_pendiente=capital_pendiente)
+                           capital_pendiente=capital_pendiente,
+                           cuentas_json=cuentas_json)
 
 
 # ── Editar ────────────────────────────────────────────────────────────────────

@@ -360,6 +360,8 @@
 
 {% endif %}
 
+<script id="cuentas-data" type="application/json">{{ cuentas_json | safe }}</script>
+
 {# ── Modal preview asiento cuota ── #}
 <div class="modal fade" id="modalPagarCuota" tabindex="-1">
   <div class="modal-dialog modal-lg">
@@ -385,6 +387,7 @@
                 <th style="min-width:130px;">Descripción</th>
                 <th class="text-end" style="width:110px;">Debe $</th>
                 <th class="text-end" style="width:110px;">Haber $</th>
+                <th style="width:32px;"></th>
               </tr>
             </thead>
             <tbody id="modal-lineas"></tbody>
@@ -395,9 +398,15 @@
                 </td>
                 <td class="text-end" id="modal-total-debe"></td>
                 <td class="text-end" id="modal-total-haber"></td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
+          <div class="mt-1">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-agregar-fila">
+              <i class="bi bi-plus me-1"></i>Agregar fila
+            </button>
+          </div>
           <div id="modal-sin-cuentas" class="alert alert-warning mt-2 small d-none">
             <i class="bi bi-exclamation-triangle me-1"></i>
             Algunas cuentas contables no están configuradas. El asiento no se generará, pero el pago se registrará igual.
@@ -452,9 +461,86 @@
 (function() {
   const fmt = n => Math.round(n).toLocaleString('es-CL');
 
+  const CUENTAS = JSON.parse(document.getElementById('cuentas-data').textContent || '[]');
+
   let currentToggleUrl = '';
   let currentFechaPago = '';
   let selectedMovMonto = null;
+
+  // ── Build account <select> ───────────────────────────────────────────────
+  function buildCuentaSelect(selectedId) {
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm py-0 linea-cuenta';
+    sel.style.cssText = 'font-size:.78rem;min-width:160px;';
+    const blank = new Option('— Cuenta —', '');
+    sel.appendChild(blank);
+    CUENTAS.forEach(c => {
+      const opt = new Option(`${c.codigo} ${c.nombre}`, c.id);
+      if (c.id == selectedId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    return sel;
+  }
+
+  // ── Add one editable row to the tbody ────────────────────────────────────
+  function addRow(l) {
+    l = l || {};
+    const tbody = document.getElementById('modal-lineas');
+    const tr = document.createElement('tr');
+    tr.dataset.esBanco = l.es_banco ? 'true' : 'false';
+
+    const tdCuenta = document.createElement('td');
+    tdCuenta.className = 'py-1';
+    tdCuenta.appendChild(buildCuentaSelect(l.cuenta_id));
+    tr.appendChild(tdCuenta);
+
+    const tdDesc = document.createElement('td');
+    tdDesc.className = 'py-1';
+    const inpDesc = document.createElement('input');
+    inpDesc.type = 'text';
+    inpDesc.className = 'form-control form-control-sm py-0 linea-desc';
+    inpDesc.value = l.descripcion || '';
+    inpDesc.style.cssText = 'min-width:120px;font-size:.8rem;';
+    tdDesc.appendChild(inpDesc);
+    tr.appendChild(tdDesc);
+
+    const tdDebe = document.createElement('td');
+    tdDebe.className = 'py-1';
+    const inpDebe = document.createElement('input');
+    inpDebe.type = 'number';
+    inpDebe.className = 'form-control form-control-sm py-0 text-end linea-debe';
+    inpDebe.value = l.debe || '';
+    inpDebe.min = '0'; inpDebe.step = '1';
+    inpDebe.style.cssText = 'width:100px;font-size:.8rem;';
+    inpDebe.addEventListener('input', recalcTotals);
+    tdDebe.appendChild(inpDebe);
+    tr.appendChild(tdDebe);
+
+    const tdHaber = document.createElement('td');
+    tdHaber.className = 'py-1';
+    const inpHaber = document.createElement('input');
+    inpHaber.type = 'number';
+    inpHaber.className = 'form-control form-control-sm py-0 text-end linea-haber';
+    inpHaber.value = l.haber || '';
+    inpHaber.min = '0'; inpHaber.step = '1';
+    inpHaber.style.cssText = 'width:100px;font-size:.8rem;';
+    inpHaber.addEventListener('input', recalcTotals);
+    tdHaber.appendChild(inpHaber);
+    tr.appendChild(tdHaber);
+
+    const tdDel = document.createElement('td');
+    tdDel.className = 'py-1 text-center';
+    const btnDel = document.createElement('button');
+    btnDel.type = 'button';
+    btnDel.className = 'btn btn-link text-danger p-0';
+    btnDel.title = 'Eliminar fila';
+    btnDel.innerHTML = '<i class="bi bi-x-lg" style="font-size:.85rem;"></i>';
+    btnDel.addEventListener('click', () => { tr.remove(); recalcTotals(); });
+    tdDel.appendChild(btnDel);
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+  }
 
   // ── Recalculate totals and balance indicator ─────────────────────────────
   function recalcTotals() {
@@ -485,7 +571,6 @@
     const el = document.getElementById('modal-mov-diff');
     if (!el) return;
     if (!selectedMovMonto) { el.classList.add('d-none'); return; }
-    // Bank side: for PAGAR the bank is in haber; for COBRAR in debe.
     const asientoTotal = Math.max(sumDebe, sumHaber);
     const diff = Math.round(selectedMovMonto - asientoTotal);
     el.classList.remove('d-none');
@@ -493,15 +578,13 @@
       el.className = 'alert alert-success py-1 mt-2 small';
       el.innerHTML = '<i class="bi bi-check-circle me-1"></i>Movimiento bancario cuadra con el asiento ✓';
     } else {
-      const signo = diff > 0 ? '+' : '';
       el.className = 'alert alert-warning py-1 mt-2 small';
       el.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i>
         Diferencia con movimiento: <strong>$${fmt(Math.abs(diff))}</strong>
         (movimiento $${fmt(selectedMovMonto)}, asiento $${fmt(asientoTotal)})
         &nbsp;<a href="#" id="btn-ajustar-mov" class="small">Ajustar asiento al movimiento</a>`;
       document.getElementById('btn-ajustar-mov').onclick = function(e) {
-        e.preventDefault();
-        ajustarAlMovimiento();
+        e.preventDefault(); ajustarAlMovimiento();
       };
     }
   }
@@ -514,11 +597,8 @@
     if (!bancoRow) return;
     const haberInp = bancoRow.querySelector('.linea-haber');
     const debeInp  = bancoRow.querySelector('.linea-debe');
-    if (parseFloat(haberInp?.value || 0) > 0) {
-      haberInp.value = selectedMovMonto;
-    } else if (parseFloat(debeInp?.value || 0) > 0) {
-      debeInp.value = selectedMovMonto;
-    }
+    if (parseFloat(haberInp?.value || 0) > 0) haberInp.value = selectedMovMonto;
+    else if (parseFloat(debeInp?.value || 0) > 0)  debeInp.value  = selectedMovMonto;
     recalcTotals();
   }
 
@@ -526,8 +606,9 @@
   function getLineasJson() {
     const lineas = [];
     document.querySelectorAll('#modal-lineas tr').forEach(tr => {
+      const sel = tr.querySelector('.linea-cuenta');
       lineas.push({
-        cuenta_id: tr.dataset.cuentaId,
+        cuenta_id: sel ? (sel.value || null) : null,
         descripcion: tr.querySelector('.linea-desc')?.value || '',
         debe:  parseFloat(tr.querySelector('.linea-debe')?.value  || 0) || 0,
         haber: parseFloat(tr.querySelector('.linea-haber')?.value || 0) || 0,
@@ -538,35 +619,8 @@
 
   // ── Render lineas as editable rows ───────────────────────────────────────
   function renderLineas(lineas) {
-    const tbody = document.getElementById('modal-lineas');
-    tbody.innerHTML = '';
-    lineas.forEach(l => {
-      const tr = document.createElement('tr');
-      tr.dataset.cuentaId = l.cuenta_id || '';
-      tr.dataset.esBanco  = l.es_banco ? 'true' : 'false';
-      const cuentaLabel = l.nombre.startsWith('(')
-        ? `<span class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>${l.nombre}</span>`
-        : `<span class="font-monospace" style="font-size:.78rem;">${l.cuenta}</span>
-           <span class="text-muted" style="font-size:.78rem;"> ${l.nombre}</span>`;
-      tr.innerHTML = `
-        <td class="py-1">${cuentaLabel}</td>
-        <td class="py-1">
-          <input type="text" class="form-control form-control-sm py-0 linea-desc"
-                 value="${l.descripcion}" style="min-width:120px;font-size:.8rem;">
-        </td>
-        <td class="py-1">
-          <input type="number" class="form-control form-control-sm py-0 text-end linea-debe"
-                 value="${l.debe || ''}" min="0" step="1" style="width:100px;font-size:.8rem;">
-        </td>
-        <td class="py-1">
-          <input type="number" class="form-control form-control-sm py-0 text-end linea-haber"
-                 value="${l.haber || ''}" min="0" step="1" style="width:100px;font-size:.8rem;">
-        </td>`;
-      tr.querySelectorAll('.linea-debe, .linea-haber').forEach(inp => {
-        inp.addEventListener('input', recalcTotals);
-      });
-      tbody.appendChild(tr);
-    });
+    document.getElementById('modal-lineas').innerHTML = '';
+    lineas.forEach(l => addRow(l));
     recalcTotals();
   }
 
@@ -602,7 +656,6 @@
           document.getElementById('form-mov-banco-oculto').value = m.id;
           document.getElementById('modal-mov-seleccionado').textContent =
             `Vinculado: ${m.fecha} – ${m.descripcion} ($${fmt(m.monto)})`;
-          // Immediately show diff
           const sd = [...document.querySelectorAll('.linea-debe')].reduce((s,i)=>s+parseFloat(i.value||0),0);
           const sh = [...document.querySelectorAll('.linea-haber')].reduce((s,i)=>s+parseFloat(i.value||0),0);
           checkMovDiff(sd, sh);
@@ -614,6 +667,12 @@
       sinMovs.classList.remove('d-none');
     }
   }
+
+  // ── "Agregar fila" button ─────────────────────────────────────────────────
+  document.getElementById('btn-agregar-fila').addEventListener('click', () => {
+    addRow();
+    recalcTotals();
+  });
 
   // ── Main: button click opens modal and fetches preview ───────────────────
   document.querySelectorAll('.btn-pagar-cuota').forEach(btn => {
