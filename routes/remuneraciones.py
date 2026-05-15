@@ -202,6 +202,175 @@ def historial(eid, emp_id):
     return render_template('remuneraciones/historial.html', empresa=empresa, emp=emp, liqs=liqs)
 
 
+@bp.route('/empresa/<int:eid>/remuneraciones/provision-vacaciones', methods=['GET', 'POST'])
+def provision_vacaciones(eid):
+    from datetime import date, timedelta
+    import calendar
+    empresa = Empresa.query.get_or_404(eid)
+    hoy = date.today()
+    # Default: last month
+    if hoy.month == 1:
+        default_periodo = f'{hoy.year - 1}-12'
+    else:
+        default_periodo = f'{hoy.year}-{hoy.month - 1:02d}'
+    periodo = request.args.get('periodo', default_periodo)
+
+    # Parse period
+    try:
+        anio_p, mes_p = int(periodo[:4]), int(periodo[5:7])
+    except (ValueError, IndexError):
+        anio_p, mes_p = hoy.year, max(1, hoy.month - 1)
+        periodo = f'{anio_p}-{mes_p:02d}'
+
+    ultimo_dia_periodo = date(anio_p, mes_p, calendar.monthrange(anio_p, mes_p)[1])
+
+    # Get active employees with at least one EMITIDA liquidacion
+    empleados_activos = (Empleado.query
+        .filter_by(empresa_id=eid, activo=True)
+        .order_by(Empleado.nombre)
+        .all())
+
+    filas = []
+    total_provision = 0.0
+
+    for emp in empleados_activos:
+        # Get last EMITIDA liquidacion for base salary reference
+        ultima_liq = (Liquidacion.query
+            .filter_by(empresa_id=eid, empleado_id=emp.id, estado='EMITIDA')
+            .order_by(Liquidacion.periodo.desc())
+            .first())
+
+        if not ultima_liq:
+            continue  # Skip if no emitida liquidacion
+
+        # Base: renta imponible from last liquidacion
+        renta_base = ultima_liq.renta_imponible or emp.sueldo_base or 0
+
+        # Monthly accrual = renta_base / 12
+        provision_mensual = round(renta_base / 12)
+
+        # Count months active (from fecha_ingreso or first liquidacion)
+        if emp.fecha_ingreso:
+            meses_activos = (hoy.year - emp.fecha_ingreso.year) * 12 + (hoy.month - emp.fecha_ingreso.month)
+        else:
+            # Count EMITIDA liquidaciones
+            meses_activos = Liquidacion.query.filter_by(
+                empresa_id=eid, empleado_id=emp.id, estado='EMITIDA').count()
+
+        meses_activos = max(0, meses_activos)
+        dias_acumulados = round(meses_activos * 1.25, 1)
+        total_acumulado = round(provision_mensual * meses_activos)
+
+        filas.append({
+            'emp': emp,
+            'renta_base': renta_base,
+            'provision_mensual': provision_mensual,
+            'meses_activos': meses_activos,
+            'dias_acumulados': dias_acumulados,
+            'total_acumulado': total_acumulado,
+            'ultimo_periodo': ultima_liq.periodo,
+        })
+        total_provision += provision_mensual
+
+    # Look for vacation accounts
+    from models import Cuenta, Asiento, LineaAsiento
+    from sqlalchemy import or_
+
+    cuenta_gasto = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False)
+        .filter(Cuenta.tipo == 'GASTO')
+        .filter(or_(
+            Cuenta.nombre.ilike('%vacacion%'),
+            Cuenta.codigo.like('5.1.10%'),
+        ))
+        .first())
+
+    cuenta_pasivo = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False)
+        .filter(Cuenta.tipo == 'PASIVO')
+        .filter(or_(
+            Cuenta.nombre.ilike('%vacacion%'),
+            Cuenta.codigo.like('2.1.05%'),
+        ))
+        .first())
+
+    asiento_generado = None
+    warning_cuentas = not cuenta_gasto or not cuenta_pasivo
+
+    if request.method == 'POST':
+        accion = request.form.get('accion')
+        if accion == 'generar_asiento':
+            cuenta_gasto_id = request.form.get('cuenta_gasto_id', type=int)
+            cuenta_pasivo_id = request.form.get('cuenta_pasivo_id', type=int)
+
+            if not cuenta_gasto_id or not cuenta_pasivo_id:
+                flash('Selecciona las cuentas contables para generar el asiento.', 'danger')
+            elif total_provision <= 0:
+                flash('No hay provisión que registrar.', 'warning')
+            else:
+                # Generate journal entry
+                from models import Asiento as AsientoModel, LineaAsiento as LineaModel
+                total_prov_round = round(total_provision)
+
+                # Next asiento number
+                ultimo = (AsientoModel.query
+                    .filter_by(empresa_id=eid)
+                    .order_by(AsientoModel.numero.desc())
+                    .first())
+                siguiente_num = (ultimo.numero + 1) if ultimo and ultimo.numero else 1
+
+                asiento = AsientoModel(
+                    empresa_id=eid,
+                    fecha=ultimo_dia_periodo,
+                    numero=siguiente_num,
+                    descripcion=f'Provisión vacaciones {periodo}',
+                    origen='MANUAL',
+                    estado='CONFIRMADO',
+                )
+                db.session.add(asiento)
+                db.session.flush()
+
+                linea_debe = LineaModel(
+                    asiento_id=asiento.id,
+                    cuenta_id=cuenta_gasto_id,
+                    debe=total_prov_round,
+                    haber=0.0,
+                    descripcion=f'Gasto provisión vacaciones {periodo}',
+                    orden=1,
+                )
+                linea_haber = LineaModel(
+                    asiento_id=asiento.id,
+                    cuenta_id=cuenta_pasivo_id,
+                    debe=0.0,
+                    haber=total_prov_round,
+                    descripcion=f'Pasivo provisión vacaciones {periodo}',
+                    orden=2,
+                )
+                db.session.add(linea_debe)
+                db.session.add(linea_haber)
+                db.session.commit()
+
+                asiento_generado = asiento
+                flash(f'Asiento N°{siguiente_num} generado por $ {total_prov_round:,.0f} (provisión vacaciones {periodo}).', 'success')
+
+    # All accounts for manual selection
+    cuentas_gasto = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False, tipo='GASTO')
+        .order_by(Cuenta.codigo).all())
+    cuentas_pasivo = (Cuenta.query
+        .filter_by(empresa_id=eid, activa=True, es_titulo=False, tipo='PASIVO')
+        .order_by(Cuenta.codigo).all())
+
+    return render_template('remuneraciones/provision_vacaciones.html',
+        empresa=empresa, periodo=periodo, filas=filas,
+        total_provision=total_provision,
+        cuenta_gasto=cuenta_gasto, cuenta_pasivo=cuenta_pasivo,
+        cuentas_gasto=cuentas_gasto, cuentas_pasivo=cuentas_pasivo,
+        warning_cuentas=warning_cuentas,
+        asiento_generado=asiento_generado,
+        ultimo_dia_periodo=ultimo_dia_periodo)
+
+
 @bp.route('/empresa/<int:eid>/remuneraciones/informe-renta')
 def informe_renta(eid):
     from datetime import date
