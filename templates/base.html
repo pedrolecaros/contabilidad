@@ -21,32 +21,26 @@
     .badge-anulado { background: #dc3545; }
     .table-sm td, .table-sm th { font-size: .85rem; }
     .titulo-cuenta { font-weight: 700; background: #e9ecef !important; }
-    /* Dark mode */
-    [data-theme="dark"] body { background: #121212; color: #e0e0e0; }
-    [data-theme="dark"] .card { background: #1e1e1e; border-color: #333; color: #e0e0e0; }
-    [data-theme="dark"] .table { color: #e0e0e0; }
-    [data-theme="dark"] .table-secondary { background: #2a2a2a; color: #ccc; }
-    [data-theme="dark"] .table-hover tbody tr:hover { background: #2d2d2d; }
-    [data-theme="dark"] .table-light { background: #2a2a2a; color: #ccc; }
-    [data-theme="dark"] .form-control, [data-theme="dark"] .form-select {
-      background: #2a2a2a; border-color: #444; color: #e0e0e0; }
-    [data-theme="dark"] .main-content { background: #121212; }
-    [data-theme="dark"] .alert-info { background: #0d3349; color: #74c0fc; border-color: #1864ab; }
-    [data-theme="dark"] .alert-warning { background: #3d2c00; color: #fcc419; border-color: #7c5c00; }
-    /* Search modal */
-    #modal-buscar .buscar-item { cursor:pointer; padding:.5rem .75rem; border-radius:4px; }
-    #modal-buscar .buscar-item:hover { background: rgba(0,0,0,.06); }
-    #modal-buscar .buscar-item-icon { width:28px; text-align:center; font-size:1rem; }
-    .buscar-kbd { background:#eee; border:1px solid #ccc; border-radius:3px;
-                  padding:1px 5px; font-size:.75rem; font-family:monospace; }
+    /* Buscador global en sidebar */
+    #buscador-global-wrap { position:relative; padding:.75rem .75rem .5rem; }
+    #buscador-global-wrap .buscar-dropdown {
+      position:absolute; top:calc(100% - 4px); left:.75rem; right:.75rem; z-index:1050;
+      background:#fff; border:1px solid #dee2e6;
+      border-radius:0 0 6px 6px; box-shadow:0 6px 18px rgba(0,0,0,.18);
+      max-height:400px; overflow-y:auto; display:none;
+    }
+    #buscador-global-wrap .buscar-dropdown.show { display:block; }
+    #buscador-global-wrap .buscar-item {
+      display:flex; align-items:center; gap:8px;
+      padding:.4rem .65rem; cursor:pointer; text-decoration:none; color:#212529;
+      font-size:.82rem; border-bottom:1px solid #f0f0f0;
+    }
+    #buscador-global-wrap .buscar-item:last-child { border-bottom:none; }
+    #buscador-global-wrap .buscar-item:hover { background:#e8f0fe; }
+    #buscador-global-wrap .buscar-item-icon { width:20px; text-align:center; color:#6c757d; font-size:.9rem; }
+    .buscar-kbd { background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.3);
+                  border-radius:3px; padding:1px 4px; font-size:.68rem; font-family:monospace; color:#adb5bd; }
   </style>
-  <script>
-    // Apply saved theme before paint to avoid flash
-    (function(){
-      var t = localStorage.getItem('theme') || 'light';
-      document.documentElement.setAttribute('data-theme', t);
-    })();
-  </script>
 </head>
 <body>
 <div class="container-fluid">
@@ -55,6 +49,23 @@
     {% if empresa is defined and empresa %}
     <!-- Sidebar empresa -->
     <nav class="col-md-2 sidebar d-flex flex-column py-3">
+
+      <!-- Buscador global al tope del menú -->
+      {% if empresa is defined and empresa %}
+      <div id="buscador-global-wrap">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-transparent border-secondary text-secondary">
+            <i class="bi bi-search"></i>
+          </span>
+          <input type="text" id="input-buscar-global"
+                 class="form-control form-control-sm bg-transparent border-secondary text-white"
+                 placeholder="Buscar… (Ctrl+K)"
+                 autocomplete="off" style="color:#fff !important;">
+        </div>
+        <div class="buscar-dropdown" id="buscar-dropdown"></div>
+      </div>
+      {% endif %}
+
       <div class="empresa-nombre">
         <a href="{{ url_for('main.index') }}"
            class="d-flex align-items-center gap-1 text-secondary text-decoration-none mb-2"
@@ -156,39 +167,7 @@
           <i class="bi bi-building-gear me-2"></i>Empresa</a></li>
       </ul>
 
-      <!-- Buscador y dark mode al pie del sidebar -->
-      <div class="mt-auto px-3 pb-2 pt-3 border-top border-secondary">
-        <button class="btn btn-outline-light btn-sm w-100 mb-2"
-                onclick="document.getElementById('input-buscar-global').focus(); new bootstrap.Modal(document.getElementById('modal-buscar')).show()">
-          <i class="bi bi-search me-1"></i>Buscar
-          <span class="buscar-kbd ms-1">Ctrl+K</span>
-        </button>
-        <button class="btn btn-outline-secondary btn-sm w-100" id="btn-toggle-theme">
-          <i class="bi bi-moon-stars me-1" id="icon-theme"></i><span id="lbl-theme">Modo oscuro</span>
-        </button>
-      </div>
     </nav>
-
-    <!-- Modal buscador global -->
-    <div class="modal fade" id="modal-buscar" tabindex="-1">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-body pb-1">
-            <div class="input-group">
-              <span class="input-group-text"><i class="bi bi-search"></i></span>
-              <input type="text" id="input-buscar-global" class="form-control form-control-lg"
-                     placeholder="Buscar asientos, cuentas, empleados, proveedores…"
-                     autocomplete="off">
-            </div>
-            <div id="buscar-resultados" class="mt-2 mb-1" style="max-height:380px;overflow-y:auto">
-              <div class="text-center text-muted py-4 small" id="buscar-hint">
-                Escribe para buscar en esta empresa
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
     <main class="col-md-10 main-content">
     {% else %}
     <main class="col-12 main-content">
@@ -270,90 +249,65 @@ document.addEventListener('change', function(e) {
   }
 });
 
-// ── Dark mode toggle ──────────────────────────────────────────────────────────
+// ── Buscador global en sidebar (Ctrl+K) ──────────────────────────────────────
 (function(){
-  function applyTheme(t) {
-    document.getElementById('html-root').setAttribute('data-theme', t);
-    localStorage.setItem('theme', t);
-    var icon = document.getElementById('icon-theme');
-    var lbl  = document.getElementById('lbl-theme');
-    if (icon) icon.className = t === 'dark' ? 'bi bi-sun me-1' : 'bi bi-moon-stars me-1';
-    if (lbl)  lbl.textContent = t === 'dark' ? 'Modo claro' : 'Modo oscuro';
-  }
-  var btn = document.getElementById('btn-toggle-theme');
-  if (btn) {
-    applyTheme(localStorage.getItem('theme') || 'light');
-    btn.addEventListener('click', function(){
-      var cur = localStorage.getItem('theme') || 'light';
-      applyTheme(cur === 'dark' ? 'light' : 'dark');
-    });
-  }
-})();
-
-// ── Buscador global (Ctrl+K / Cmd+K) ─────────────────────────────────────────
-(function(){
-  var modal, input, resultados, timer;
   {% if empresa is defined and empresa %}
   var EID = {{ empresa.id }};
   {% else %}
   var EID = null;
   {% endif %}
+  var timer;
+  var inputEl  = document.getElementById('input-buscar-global');
+  var dropdown = document.getElementById('buscar-dropdown');
+  if (!inputEl || !dropdown || !EID) return;
 
-  document.addEventListener('keydown', function(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-      e.preventDefault();
-      if (!EID) return;
-      modal = modal || new bootstrap.Modal(document.getElementById('modal-buscar'));
-      modal.show();
-      setTimeout(function(){
-        document.getElementById('input-buscar-global').focus();
-      }, 200);
-    }
-    if (e.key === 'Escape') {
-      var m = document.getElementById('modal-buscar');
-      if (m && m.classList.contains('show')) {
-        bootstrap.Modal.getInstance(m).hide();
-      }
-    }
+  var ICONOS = { asiento:'bi-journal-text', cuenta:'bi-list-nested',
+                 empleado:'bi-person-vcard', contraparte:'bi-people' };
+
+  function showDropdown(html) {
+    dropdown.innerHTML = html;
+    dropdown.classList.add('show');
+  }
+  function hideDropdown() {
+    dropdown.classList.remove('show');
+    dropdown.innerHTML = '';
+  }
+
+  inputEl.addEventListener('input', function(){
+    clearTimeout(timer);
+    var q = this.value.trim();
+    if (!q) { hideDropdown(); return; }
+    timer = setTimeout(function(){ doSearch(q); }, 180);
   });
 
-  var inputEl = document.getElementById('input-buscar-global');
-  if (inputEl) {
-    inputEl.addEventListener('input', function(){
-      clearTimeout(timer);
-      var q = this.value.trim();
-      if (!q || !EID) { resetResultados(); return; }
-      timer = setTimeout(function(){ doSearch(q); }, 200);
-    });
-  }
+  inputEl.addEventListener('blur', function(){
+    setTimeout(hideDropdown, 180);
+  });
 
-  function resetResultados() {
-    var el = document.getElementById('buscar-resultados');
-    if (el) el.innerHTML = '<div class="text-center text-muted py-4 small">Escribe para buscar en esta empresa</div>';
-  }
-
-  var ICONOS = { asiento: 'bi-journal-text', cuenta: 'bi-list-nested',
-                 empleado: 'bi-person-vcard', contraparte: 'bi-people' };
+  document.addEventListener('keydown', function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      if (inputEl) { inputEl.focus(); inputEl.select(); }
+    }
+    if (e.key === 'Escape') hideDropdown();
+  });
 
   function doSearch(q) {
     fetch('/empresa/' + EID + '/buscar?q=' + encodeURIComponent(q))
       .then(function(r){ return r.json(); })
-      .then(function(data) {
-        var el = document.getElementById('buscar-resultados');
-        if (!el) return;
+      .then(function(data){
         if (!data.resultados.length) {
-          el.innerHTML = '<div class="text-center text-muted py-3 small">Sin resultados para "' + q + '"</div>';
+          showDropdown('<div class="p-3 text-muted small text-center">Sin resultados</div>');
           return;
         }
         var html = '';
-        data.resultados.forEach(function(r) {
-          html += '<a href="' + r.url + '" class="buscar-item d-flex align-items-center gap-2 text-decoration-none text-reset">' +
-            '<span class="buscar-item-icon text-muted"><i class="bi ' + (ICONOS[r.tipo]||'bi-search') + '"></i></span>' +
-            '<div><div class="small fw-semibold">' + r.titulo + '</div>' +
-            '<div class="text-muted" style="font-size:.75rem">' + r.subtitulo + '</div></div>' +
-            '</a>';
+        data.resultados.forEach(function(r){
+          html += '<a href="' + r.url + '" class="buscar-item">' +
+            '<span class="buscar-item-icon"><i class="bi ' + (ICONOS[r.tipo]||'bi-search') + '"></i></span>' +
+            '<div><div style="font-weight:600;font-size:.82rem">' + r.titulo + '</div>' +
+            '<div style="font-size:.72rem;color:#888">' + r.subtitulo + '</div></div></a>';
         });
-        el.innerHTML = html;
+        showDropdown(html);
       });
   }
 })();

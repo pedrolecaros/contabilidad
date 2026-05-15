@@ -1479,9 +1479,9 @@ class TestMejoras20a30(unittest.TestCase):
         self.assertIn('cuenta', tipos)
 
     def test_r20_modal_en_base(self):
-        """Base template contiene el modal del buscador global."""
+        """Base template contiene el buscador global en el sidebar."""
         r = self.get(f'/empresa/{self.eid}/asientos')
-        self.assertIn(b'modal-buscar', r.data)
+        self.assertTrue(b'input-buscar-global' in r.data or b'buscar-dropdown' in r.data)
 
     # ── Punto 21: Dashboard ────────────────────────────────────────────────────
 
@@ -1498,10 +1498,9 @@ class TestMejoras20a30(unittest.TestCase):
     # ── Punto 22: Dark mode ────────────────────────────────────────────────────
 
     def test_r22_dark_mode_toggle_en_html(self):
-        """Base template contiene el toggle de dark mode."""
+        """Base template tiene buscador global en sidebar (dark mode eliminado)."""
         r = self.get(f'/empresa/{self.eid}/asientos')
-        self.assertIn(b'dark', r.data.lower())
-        self.assertIn(b'theme', r.data.lower())
+        self.assertIn(b'input-buscar-global', r.data)
 
     # ── Punto 23: Validación real-time ya existe ────────────────────────────────
 
