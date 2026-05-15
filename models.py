@@ -252,10 +252,30 @@ class VariablesMensuales(db.Model):
     periodo = db.Column(db.String(7), nullable=False, unique=True)  # YYYY-MM
     uf = db.Column(db.Float)               # UF del último día hábil del mes
     utm = db.Column(db.Float)              # UTM del mes
-    tope_imponible = db.Column(db.Float)   # 81 UF en pesos (tope remuneración imponible)
+    tope_imponible = db.Column(db.Float)   # 90 UF en pesos
     tope_gratificacion = db.Column(db.Float)  # 4.75 * IMM / 12 en pesos
     imm = db.Column(db.Float)             # Ingreso Mínimo Mensual
+    tasa_sis = db.Column(db.Float)        # SIS (empleador) en decimal, ej: 0.0162
+    tasas_afp_json = db.Column(db.Text)   # JSON {"Capital": 1.44, "Habitat": 1.27, ...} en %
     fecha_actualizacion = db.Column(db.DateTime, default=datetime.now)
+
+    def get_tasas_afp(self):
+        """Return AFP commissions as dict {name: decimal}, e.g. {'Habitat': 0.0127}."""
+        import json
+        if not self.tasas_afp_json:
+            return {}
+        try:
+            raw = json.loads(self.tasas_afp_json)
+            return {k: round(v / 100, 6) for k, v in raw.items()}
+        except Exception:
+            return {}
+
+
+class ValorUF(db.Model):
+    __tablename__ = 'valores_uf'
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.Date, nullable=False, unique=True)
+    valor = db.Column(db.Float, nullable=False)
 
 
 class ReglaClasificacion(db.Model):

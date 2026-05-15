@@ -144,7 +144,7 @@
 {% endmacro %}
 
 {{ tabla_rut(proveedores, 'COMPRAS',    'Proveedores (Cuentas por Pagar)', 'arrow-up-circle',   'danger',  saldo_proveedores, 'IVA CF') }}
-{{ tabla_rut(clientes,    'VENTAS',     'Clientes (Cuentas por Cobrar)',    'arrow-down-circle', 'success', saldo_clientes,    'IVA DF') }}
 {{ tabla_rut(honorarios,  'HONORARIOS', 'Honorarios (Retención pendiente)', 'person-badge',      'warning', saldo_honorarios,  'Retención') }}
+{{ tabla_rut(clientes,    'VENTAS',     'Clientes (Cuentas por Cobrar)',    'arrow-down-circle', 'success', saldo_clientes,    'IVA DF') }}
 
 {% endblock %}

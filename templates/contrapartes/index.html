@@ -1,74 +1,119 @@
 {% extends 'base.html' %}
-{% block title %}Proveedores / Clientes – {{ empresa.razon_social }}{% endblock %}
+{% block title %}Proveedores y Clientes – {{ empresa.razon_social }}{% endblock %}
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-people me-2"></i>Proveedores / Clientes</h5>
+  <h5 class="mb-0"><i class="bi bi-people me-2"></i>Proveedores y Clientes</h5>
   <div class="d-flex gap-2">
     <form method="post" action="{{ url_for('contrapartes.importar_desde_docs', eid=empresa.id) }}">
       <button class="btn btn-outline-secondary btn-sm" title="Crear contrapartes para todos los RUTs en documentos SII">
         <i class="bi bi-cloud-download me-1"></i>Importar desde SII
       </button>
     </form>
-    <a href="{{ url_for('contrapartes.nueva', eid=empresa.id) }}" class="btn btn-primary btn-sm">
-      <i class="bi bi-plus-lg me-1"></i>Nueva
+    <a href="{{ url_for('contrapartes.nueva', eid=empresa.id) }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Nuevo Manual
     </a>
   </div>
 </div>
 
-<!-- KPI: totales por cobrar / por pagar -->
-<div class="row g-2 mb-3">
-  {% set pend_prov = pend_por_libro.get('COMPRAS', 0) %}
-  {% set pend_cli  = pend_por_libro.get('VENTAS', 0) %}
-  {% set pend_hon  = pend_por_libro.get('HONORARIOS', 0) %}
-
-  <div class="col-12 col-md-4">
-    <div class="card border-0 bg-light px-3 py-2">
-      <div class="d-flex justify-content-between align-items-baseline">
-        <span class="small text-muted"><i class="bi bi-arrow-up-circle me-1 text-danger"></i>Por pagar (Proveedores)</span>
-        {% if saldo_cta_prov is not none %}
-          <span class="text-muted" style="font-size:.72rem" title="{{ nom_prov }}">cta {{ saldo_cta_prov|clp }}</span>
-        {% endif %}
-      </div>
-      <div class="fw-bold fs-5 {% if pend_prov > 0 %}text-danger{% else %}text-success{% endif %}">
-        {{ pend_prov|clp }}
-      </div>
-    </div>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible py-2">{{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
   </div>
+  {% endfor %}
+{% endwith %}
 
-  <div class="col-12 col-md-4">
-    <div class="card border-0 bg-light px-3 py-2">
-      <div class="d-flex justify-content-between align-items-baseline">
-        <span class="small text-muted"><i class="bi bi-arrow-down-circle me-1 text-success"></i>Por cobrar (Clientes)</span>
-        {% if saldo_cta_cli is not none %}
-          <span class="text-muted" style="font-size:.72rem" title="{{ nom_cli }}">cta {{ saldo_cta_cli|clp }}</span>
-        {% endif %}
-      </div>
-      <div class="fw-bold fs-5 {% if pend_cli > 0 %}text-success{% else %}text-muted{% endif %}">
-        {{ pend_cli|clp }}
-      </div>
-    </div>
-  </div>
+<!-- Vista toggle + filtro fechas -->
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <a href="{{ url_for('contrapartes.index', eid=empresa.id, vista='apar',
+             desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
+     class="btn btn-sm {{ 'btn-dark' if vista=='apar' else 'btn-outline-secondary' }}">
+    <i class="bi bi-receipt me-1"></i>Resumen AP/AR (SII)
+  </a>
+  <a href="{{ url_for('contrapartes.index', eid=empresa.id, vista='lista',
+             desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
+     class="btn btn-sm {{ 'btn-dark' if vista=='lista' else 'btn-outline-secondary' }}">
+    <i class="bi bi-list-ul me-1"></i>Listado de Contrapartes
+  </a>
 
-  {% if pend_hon or saldo_cta_hon is not none %}
-  <div class="col-12 col-md-4">
-    <div class="card border-0 bg-light px-3 py-2">
-      <div class="d-flex justify-content-between align-items-baseline">
-        <span class="small text-muted"><i class="bi bi-arrow-up-circle me-1 text-warning"></i>Por pagar (Honorarios)</span>
-        {% if saldo_cta_hon is not none %}
-          <span class="text-muted" style="font-size:.72rem" title="{{ nom_hon }}">cta {{ saldo_cta_hon|clp }}</span>
-        {% endif %}
-      </div>
-      <div class="fw-bold fs-5 {% if pend_hon > 0 %}text-warning{% else %}text-muted{% endif %}">
-        {{ pend_hon|clp }}
-      </div>
-    </div>
-  </div>
+  {% if vista == 'apar' %}
+  <form method="get" class="d-flex gap-1 ms-auto">
+    <input type="hidden" name="vista" value="apar">
+    <input type="date" name="desde" class="form-control form-control-sm" value="{{ desde.isoformat() }}">
+    <span class="pt-1 px-1">—</span>
+    <input type="date" name="hasta" class="form-control form-control-sm" value="{{ hasta.isoformat() }}">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrar</button>
+  </form>
   {% endif %}
 </div>
 
+
+{% if vista == 'apar' %}
+{# ══ AP/AR SUMMARY VIEW ══ #}
+
+{% macro tabla_apar(filas, tipo, titulo, icono, color, saldo_cta, nom_cta, label_iva) %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-{{ color }} {% if color == 'warning' %}text-dark{% else %}text-white{% endif %}
+              d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-{{ icono }} me-1"></i>{{ titulo }} <small class="opacity-75">({{ filas|length }} RUTs)</small></span>
+    {% if saldo_cta is not none %}
+    <span class="small">Saldo cta.: <strong>{{ saldo_cta|clp }}</strong>
+      {% if nom_cta %}<span class="opacity-75 ms-1">({{ nom_cta }})</span>{% endif %}
+    </span>
+    {% endif %}
+  </div>
+  {% if filas %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-secondary">
+        <tr>
+          <th>RUT</th><th>Nombre</th>
+          <th class="text-center">Docs</th>
+          <th class="text-end">Neto</th>
+          <th class="text-end">{{ label_iva }}</th>
+          <th class="text-end">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in filas %}
+        <tr>
+          <td class="small font-monospace">{{ f.rut_contraparte }}</td>
+          <td class="small">{{ (f.razon_social or '')[:50] }}</td>
+          <td class="text-center small">{{ f.ndocs }}</td>
+          <td class="text-end small">{{ f.total_neto|clp }}</td>
+          <td class="text-end small">{{ f.total_iva|clp }}</td>
+          <td class="text-end small fw-semibold">{{ f.total_bruto|clp }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="fw-bold table-light">
+        <tr>
+          <td colspan="3" class="text-end">TOTAL</td>
+          <td class="text-end">{{ filas|sum(attribute='total_neto')|clp }}</td>
+          <td class="text-end">{{ filas|sum(attribute='total_iva')|clp }}</td>
+          <td class="text-end">{{ filas|sum(attribute='total_bruto')|clp }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted small">Sin documentos en el período.</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{{ tabla_apar(proveedores, 'COMPRAS',    'Proveedores (Cuentas por Pagar)', 'arrow-up-circle',   'danger',  saldo_cta_prov, nom_prov, 'IVA CF') }}
+{{ tabla_apar(honorarios,  'HONORARIOS', 'Honorarios (Retención pendiente)', 'person-badge',      'warning', saldo_cta_hon,  nom_hon,  'Retención') }}
+{{ tabla_apar(clientes,    'VENTAS',     'Clientes (Cuentas por Cobrar)',    'arrow-down-circle', 'success', saldo_cta_cli,  nom_cli,  'IVA DF') }}
+
+
+{% else %}
+{# ══ CONTRAPARTES LIST VIEW ══ #}
+
 <!-- Filtros -->
 <form class="row g-2 mb-3" method="get">
+  <input type="hidden" name="vista" value="lista">
   <div class="col-auto">
     <select name="tipo" class="form-select form-select-sm" onchange="this.form.submit()">
       <option value="">Todos los tipos</option>
@@ -85,14 +130,6 @@
     </div>
   </div>
 </form>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-  <div class="alert alert-{{ cat }} alert-dismissible py-2">{{ msg }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-  </div>
-  {% endfor %}
-{% endwith %}
 
 {% if contrapartes %}
 <div class="table-responsive">
@@ -176,5 +213,7 @@
     <button class="btn btn-link p-0 ms-2">Importar desde SII</button>
   </form>
 </div>
+{% endif %}
+
 {% endif %}
 {% endblock %}

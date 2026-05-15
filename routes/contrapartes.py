@@ -25,7 +25,42 @@ def index(eid):
     empresa = Empresa.query.get_or_404(eid)
     tipo_filtro = request.args.get('tipo', '')
     buscar = request.args.get('q', '').strip()
+    vista = request.args.get('vista', 'apar')   # 'apar' | 'lista'
 
+    hoy = date.today()
+    desde_str = request.args.get('desde', date(hoy.year, 1, 1).isoformat())
+    hasta_str  = request.args.get('hasta', hoy.isoformat())
+    try:
+        desde = date.fromisoformat(desde_str)
+        hasta = date.fromisoformat(hasta_str)
+    except ValueError:
+        desde, hasta = date(hoy.year, 1, 1), hoy
+
+    # ── AP/AR summary from DocumentoSII ──
+    def _resumen_sii(tipo_libro):
+        return (db.session.query(
+            DocumentoSII.rut_contraparte,
+            func.max(DocumentoSII.razon_social_contraparte).label('razon_social'),
+            func.count(DocumentoSII.id).label('ndocs'),
+            func.sum(DocumentoSII.monto_neto).label('total_neto'),
+            func.sum(DocumentoSII.iva).label('total_iva'),
+            func.sum(DocumentoSII.total).label('total_bruto'),
+        )
+        .filter(
+            DocumentoSII.empresa_id == eid,
+            DocumentoSII.tipo_libro == tipo_libro,
+            DocumentoSII.fecha >= desde,
+            DocumentoSII.fecha <= hasta,
+        )
+        .group_by(DocumentoSII.rut_contraparte)
+        .order_by(func.sum(DocumentoSII.total).desc())
+        .all())
+
+    proveedores = _resumen_sii('COMPRAS')
+    honorarios  = _resumen_sii('HONORARIOS')
+    clientes    = _resumen_sii('VENTAS')
+
+    # ── Contrapartes list ──
     q = Contraparte.query.filter_by(empresa_id=eid)
     if tipo_filtro:
         q = q.filter_by(tipo=tipo_filtro)
@@ -37,35 +72,20 @@ def index(eid):
         )
     contrapartes = q.order_by(Contraparte.razon_social).all()
 
-    # Saldos pendientes por RUT (docs sin conciliar)
+    # Saldos pendientes por RUT
     rows_saldo = (db.session.query(
                       DocumentoSII.rut_contraparte,
                       func.count(DocumentoSII.id).label('ndocs'),
                       func.sum(DocumentoSII.total).label('total'),
                   )
-                  .filter(
-                      DocumentoSII.empresa_id == eid,
-                      DocumentoSII.conciliacion_id == None,
-                  )
+                  .filter(DocumentoSII.empresa_id == eid,
+                          DocumentoSII.conciliacion_id == None)
                   .group_by(DocumentoSII.rut_contraparte)
                   .all())
     saldos = {r.rut_contraparte: {'ndocs': r.ndocs, 'total': r.total or 0}
               for r in rows_saldo}
 
-    # Totales globales por tipo_libro (para la barra KPI)
-    tot_rows = (db.session.query(
-                    DocumentoSII.tipo_libro,
-                    func.sum(DocumentoSII.total).label('total'),
-                )
-                .filter(
-                    DocumentoSII.empresa_id == eid,
-                    DocumentoSII.conciliacion_id == None,
-                )
-                .group_by(DocumentoSII.tipo_libro)
-                .all())
-    pend_por_libro = {r.tipo_libro: (r.total or 0) for r in tot_rows}
-
-    # Saldos contables de las cuentas de control AP/AR
+    # Saldos contables de cuentas control
     def _saldo_cta(codigo):
         c = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo).first()
         return (c.nombre, round(c.saldo())) if c else (None, None)
@@ -76,9 +96,10 @@ def index(eid):
 
     return render_template('contrapartes/index.html',
                            empresa=empresa, contrapartes=contrapartes,
-                           tipo_filtro=tipo_filtro, buscar=buscar,
+                           tipo_filtro=tipo_filtro, buscar=buscar, vista=vista,
+                           desde=desde, hasta=hasta,
+                           proveedores=proveedores, honorarios=honorarios, clientes=clientes,
                            saldos=saldos,
-                           pend_por_libro=pend_por_libro,
                            saldo_cta_prov=saldo_cta_prov, nom_prov=nom_prov,
                            saldo_cta_cli=saldo_cta_cli,   nom_cli=nom_cli,
                            saldo_cta_hon=saldo_cta_hon,   nom_hon=nom_hon)

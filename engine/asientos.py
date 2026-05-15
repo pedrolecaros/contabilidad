@@ -68,6 +68,7 @@ def generar_asiento_compra(doc: DocumentoSII) -> Asiento:
     db.session.flush()
 
     lineas = []
+    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     if not es_nc:
         if gasto:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_gasto.id,
@@ -77,12 +78,12 @@ def generar_asiento_compra(doc: DocumentoSII) -> Asiento:
                                        debe=iva, haber=0, descripcion='IVA CF', orden=2))
         if total:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
-                                       debe=0, haber=total, descripcion='Proveedor', orden=3))
+                                       debe=0, haber=total, descripcion=contraparte or 'Proveedor', orden=3))
     else:
         # Nota de crédito: inverso
         if total:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
-                                       debe=total, haber=0, descripcion='Proveedor NC', orden=1))
+                                       debe=total, haber=0, descripcion=f'{contraparte} NC' if contraparte else 'Proveedor NC', orden=1))
         if gasto:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_gasto.id,
                                        debe=0, haber=gasto, descripcion='Reverso gasto NC', orden=2))
@@ -131,10 +132,11 @@ def generar_asiento_venta(doc: DocumentoSII) -> Asiento:
     db.session.add(asiento)
     db.session.flush()
 
+    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     lineas = []
     if not es_nc:
         lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_clientes.id,
-                                   debe=total, haber=0, descripcion='Cliente', orden=1))
+                                   debe=total, haber=0, descripcion=contraparte or 'Cliente', orden=1))
         if neto:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_ventas.id,
                                        debe=0, haber=neto, descripcion='Ingreso neto', orden=2))
@@ -149,7 +151,7 @@ def generar_asiento_venta(doc: DocumentoSII) -> Asiento:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_iva_df.id,
                                        debe=iva, haber=0, descripcion='Reverso IVA DF NC', orden=2))
         lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_clientes.id,
-                                   debe=0, haber=total, descripcion='Cliente NC', orden=3))
+                                   debe=0, haber=total, descripcion=f'{contraparte} NC' if contraparte else 'Cliente NC', orden=3))
 
     db.session.add_all(lineas)
     return asiento
@@ -187,11 +189,12 @@ def generar_asiento_honorario(doc: DocumentoSII) -> Asiento:
     db.session.add(asiento)
     db.session.flush()
 
+    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     lineas = [
         LineaAsiento(asiento_id=asiento.id, cuenta_id=c_honor.id,
-                     debe=bruto, haber=0, descripcion='Honorario bruto', orden=1),
+                     debe=bruto, haber=0, descripcion=contraparte or 'Honorario bruto', orden=1),
         LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
-                     debe=0, haber=liquido, descripcion='Líquido a pagar', orden=2),
+                     debe=0, haber=liquido, descripcion=f'Líquido {contraparte}' if contraparte else 'Líquido a pagar', orden=2),
         LineaAsiento(asiento_id=asiento.id, cuenta_id=c_reten.id,
                      debe=0, haber=retencion, descripcion='Retención 10.75%', orden=3),
     ]

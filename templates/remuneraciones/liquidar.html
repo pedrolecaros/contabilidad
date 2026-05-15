@@ -56,11 +56,20 @@
 
         <div class="col-12"><hr class="my-1"></div>
 
-        <div class="col-md-4">
+        <div class="col-md-3">
+          <label class="form-label">Días trabajados</label>
+          <input type="number" name="dias_trabajados" id="dias_trabajados"
+                 class="form-control" min="1" max="30" step="1"
+                 value="{{ dias_trabajados | default(30) }}"
+                 oninput="actualizarFactor(this.value)">
+          <div class="form-text" id="factor_label">30 días = 100% del sueldo</div>
+        </div>
+
+        <div class="col-md-3">
           <label class="form-label">Horas extra ($)</label>
           <input type="number" name="horas_extra" class="form-control" min="0" step="1" value="0">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label">Otros haberes variables ($)</label>
           <input type="number" name="otros" class="form-control" min="0" step="1" value="0">
         </div>
@@ -85,6 +94,13 @@
 
 {% else %}
 {# ── Paso 2: Preview calculada ── #}
+{% if dias_trabajados and dias_trabajados != 30 %}
+<div class="alert alert-warning py-2 mb-3" style="max-width:750px">
+  <i class="bi bi-calendar-check me-1"></i>
+  <strong>{{ dias_trabajados }} días trabajados</strong> — sueldo, colación y movilización prorrateados al
+  {{ '%.1f' % (dias_trabajados / 30 * 100) }}%.
+</div>
+{% endif %}
 <div class="row g-3" style="max-width:750px">
 
   {# Haberes #}
@@ -178,9 +194,10 @@
   {# Botones de acción #}
   <div class="col-12">
     <form method="post">
-      <input type="hidden" name="periodo"     value="{{ form_data.periodo }}">
-      <input type="hidden" name="horas_extra" value="{{ form_data.horas_extra }}">
-      <input type="hidden" name="otros"       value="{{ form_data.otros }}">
+      <input type="hidden" name="periodo"         value="{{ form_data.periodo }}">
+      <input type="hidden" name="horas_extra"     value="{{ form_data.horas_extra }}">
+      <input type="hidden" name="otros"           value="{{ form_data.otros }}">
+      <input type="hidden" name="dias_trabajados" value="{{ form_data.dias_trabajados | default(30) }}">
       <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Guardar Borrador
       </button>
@@ -236,6 +253,13 @@ async function cargarVariables(periodo) {
 
 function formatClp(n) {
   return Math.round(n).toLocaleString('es-CL');
+}
+
+function actualizarFactor(dias) {
+  const d = Math.min(30, Math.max(1, parseInt(dias) || 30));
+  const pct = (d / 30 * 100).toFixed(1);
+  const lbl = document.getElementById('factor_label');
+  if (lbl) lbl.textContent = `${d} días = ${pct}% del sueldo`;
 }
 </script>
 {% endblock %}

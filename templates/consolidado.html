@@ -74,6 +74,7 @@
       <span class="text-muted">Libros:</span>
       <span><span class="badge bg-success" style="font-size:.7rem">C✓</span> cargado y ok</span>
       <span><span class="badge text-dark" style="font-size:.7rem;background:#fd7e14">C<sup>2</sup></span> con pendientes</span>
+      <span><span class="badge bg-secondary" style="font-size:.7rem">C°</span> cargado sin registros</span>
       <span><span class="badge bg-light text-muted border" style="font-size:.7rem">C</span> no cargado</span>
     </div>
 
@@ -143,11 +144,17 @@
                       {{ short }}<sup>{{ lib['pending'] }}</sup>
                     </a>
                     {% endif %}
-                  {% elif lib['loaded'] and lib['pending'] == 0 %}
-                    {# Loaded, all clear #}
+                  {% elif lib['loaded'] and lib['n_docs'] > 0 and lib['pending'] == 0 %}
+                    {# Loaded with docs, all processed #}
                     <span class="badge bg-success" style="font-size:.65rem;"
                           title="{{ tipo }}: {{ lib['n_docs'] }} docs · Ok">
                       {{ short }}&#10003;
+                    </span>
+                  {% elif lib['loaded'] and lib['n_docs'] == 0 %}
+                    {# Loaded but SII returned no documents #}
+                    <span class="badge bg-secondary" style="font-size:.65rem;"
+                          title="{{ tipo }}: cargado pero sin registros en el período">
+                      {{ short }}°
                     </span>
                   {% else %}
                     {# Not loaded #}
@@ -383,6 +390,7 @@
     if (!r) return '<span class="text-muted">—</span>';
     if (!r.ok) return `<span class="text-danger small" title="${r.error||''}"><i class="bi bi-x-circle"></i> Error</span>`;
     if (r.aviso) return `<span class="text-muted small"><i class="bi bi-check2 text-success"></i> ${r.aviso}</span>`;
+    if (r.importados === 0) return `<span class="text-secondary small" title="El SII no tiene registros para este período"><i class="bi bi-dash-circle"></i> Sin registros</span>`;
     const errs = (r.errores||[]).length;
     return `<span class="text-success small"><i class="bi bi-check2-circle"></i> ${r.importados} docs${errs ? ' ·<span class="text-warning"> '+errs+' err</span>' : ''}</span>`;
   }

@@ -64,7 +64,7 @@
              target="_blank"
              title="Editar asiento N°{{ l.asiento.numero }}">{{ l.asiento.numero }}</a>
         </td>
-        <td class="small">{{ l.descripcion or l.asiento.descripcion or '' }}</td>
+        <td class="small">{{ l.asiento.descripcion or l.descripcion or '' }}</td>
         <td class="text-end small">{% if l.debe %}{{ l.debe|clp }}{% endif %}</td>
         <td class="text-end small">{% if l.haber %}{{ l.haber|clp }}{% endif %}</td>
         <td class="text-end small fw-semibold">{{ saldo[-1]|clp }}</td>

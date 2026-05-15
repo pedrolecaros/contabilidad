@@ -10,7 +10,7 @@
 <div class="table-responsive">
   <table class="table table-sm table-hover">
     <thead class="table-dark">
-      <tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Naturaleza</th><th></th></tr>
+      <tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Naturaleza</th><th class="text-center">Activa</th><th></th></tr>
     </thead>
     <tbody>
       {% for c in cuentas %}
@@ -20,10 +20,21 @@
           {% if c.es_titulo %}<strong>{% endif %}
           {{ c.nombre }}
           {% if c.es_titulo %}</strong>{% endif %}
-          {% if not c.activa %}<span class="badge bg-secondary ms-1 small">Inactiva</span>{% endif %}
         </td>
         <td><span class="badge bg-secondary small">{{ c.tipo }}</span></td>
         <td class="small text-muted">{{ c.naturaleza }}</td>
+        <td class="text-center">
+          {% if not c.es_titulo %}
+          <form method="post"
+                action="{{ url_for('cuentas.toggle_activa', eid=empresa.id, cid=c.id) }}"
+                class="d-inline">
+            <input type="checkbox" class="form-check-input"
+                   {% if c.activa %}checked{% endif %}
+                   onchange="this.form.submit()"
+                   title="{{ 'Activa — clic para desactivar' if c.activa else 'Inactiva — clic para activar' }}">
+          </form>
+          {% endif %}
+        </td>
         <td>
           <a href="{{ url_for('cuentas.editar', eid=empresa.id, cid=c.id) }}"
              class="btn btn-xs btn-sm btn-outline-secondary py-0 small">Editar</a>

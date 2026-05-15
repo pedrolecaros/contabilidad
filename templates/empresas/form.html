@@ -43,20 +43,6 @@
                 <span class="input-group-text">%</span>
               </div>
             </div>
-            <div class="col-7">
-              <label class="form-label small">Tipo</label>
-              <select name="tipo_participacion" class="form-select form-select-sm">
-                <option value="">— sin participación —</option>
-                <option value="DIRECTA"
-                  {% if empresa and empresa.tipo_participacion == 'DIRECTA' %}selected{% endif %}>
-                  Directa
-                </option>
-                <option value="INDIRECTA"
-                  {% if empresa and empresa.tipo_participacion == 'INDIRECTA' %}selected{% endif %}>
-                  Indirecta
-                </option>
-              </select>
-            </div>
           </div>
           <hr>
           <h6 class="text-muted small mb-2"><i class="bi bi-key me-1"></i>Acceso SII (opcional)</h6>

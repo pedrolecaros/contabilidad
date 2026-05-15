@@ -1,19 +1,22 @@
 {% extends 'base.html' %}
-{% block title %}Variables Mensuales{% endblock %}
+{% block title %}Indicadores Previsionales{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
-    <h4 class="mb-0"><i class="bi bi-calculator me-2"></i>Variables Mensuales</h4>
+    <h4 class="mb-0"><i class="bi bi-calculator me-2"></i>Indicadores Previsionales</h4>
     <div class="text-muted small mt-1">
-      <i class="bi bi-globe me-1"></i>Comunes a todas las empresas (UF, UTM, IMM)
+      <i class="bi bi-globe me-1"></i>UF, UTM, IMM, AFP, SIS — comunes a todas las empresas
     </div>
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-arrow-left me-1"></i>Inicio
     </a>
+    <a href="{{ url_for('remuneraciones.uf_tabla') }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-table me-1"></i>Tabla UF Diaria
+    </a>
     <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#modalNuevaVariable">
-      <i class="bi bi-plus-circle me-1"></i>Nueva Variable
+      <i class="bi bi-plus-circle me-1"></i>Nuevo Período
     </button>
   </div>
 </div>
@@ -27,9 +30,11 @@
           <th>Período</th>
           <th class="text-end">UF</th>
           <th class="text-end">UTM</th>
-          <th class="text-end">Tope Imponible</th>
-          <th class="text-end">Tope Gratif.</th>
           <th class="text-end">IMM</th>
+          <th class="text-end">Tope Imp.</th>
+          <th class="text-end">Tope Gratif.</th>
+          <th class="text-end">SIS</th>
+          <th class="text-center">AFP</th>
           <th class="text-muted small">Actualizado</th>
           <th></th>
         </tr>
@@ -38,16 +43,24 @@
         {% for v in vars_list %}
         <tr>
           <td><strong>{{ v.periodo }}</strong></td>
-          <td class="text-end">{{ '$%s' % (v.uf | clp) if v.uf else '—' }}</td>
-          <td class="text-end">{{ '$%s' % (v.utm | int | clp) if v.utm else '—' }}</td>
-          <td class="text-end">{{ '$%s' % (v.tope_imponible | int | clp) if v.tope_imponible else '—' }}</td>
-          <td class="text-end">{{ '$%s' % (v.tope_gratificacion | int | clp) if v.tope_gratificacion else '—' }}</td>
-          <td class="text-end">{{ '$%s' % (v.imm | int | clp) if v.imm else '—' }}</td>
+          <td class="text-end">{{ '$ %s' % (v.uf | clp) if v.uf else '—' }}</td>
+          <td class="text-end">{{ '$ %s' % (v.utm | int | clp) if v.utm else '—' }}</td>
+          <td class="text-end">{{ '$ %s' % (v.imm | int | clp) if v.imm else '—' }}</td>
+          <td class="text-end">{{ '$ %s' % (v.tope_imponible | int | clp) if v.tope_imponible else '—' }}</td>
+          <td class="text-end">{{ '$ %s' % (v.tope_gratificacion | int | clp) if v.tope_gratificacion else '—' }}</td>
+          <td class="text-end">{{ '%.2f%%' % (v.tasa_sis * 100) if v.tasa_sis else '—' }}</td>
+          <td class="text-center">
+            {% if v.tasas_afp_json %}
+              <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                      data-bs-toggle="collapse" data-bs-target="#afp_{{ v.id }}"
+                      title="Ver AFP">
+                <i class="bi bi-list-ul"></i>
+              </button>
+            {% else %}—{% endif %}
+          </td>
           <td class="text-muted small">{{ v.fecha_actualizacion | fecha_cl if v.fecha_actualizacion else '—' }}</td>
           <td class="text-end text-nowrap">
-            <button class="btn btn-outline-secondary btn-sm"
-                    onclick="editarVariable('{{ v.periodo }}', {{ v.uf or 0 }}, {{ v.utm or 0 }}, {{ v.tope_imponible or 0 }}, {{ v.tope_gratificacion or 0 }}, {{ v.imm or 0 }})"
-                    title="Editar">
+            <button class="btn btn-outline-secondary btn-sm" onclick="editarVariable('{{ v.id }}')" title="Editar">
               <i class="bi bi-pencil"></i>
             </button>
             <form method="post" action="{{ url_for('remuneraciones.variables_eliminar', periodo=v.periodo) }}"
@@ -57,80 +70,141 @@
             </form>
           </td>
         </tr>
+        {% if v.tasas_afp_json %}
+        <tr class="collapse" id="afp_{{ v.id }}">
+          <td colspan="10" class="bg-light pt-2 pb-2 ps-4">
+            <small><strong>Comisiones AFP</strong> (solo comisión, sin el 10% obligatorio):</small>
+            <div class="d-flex flex-wrap gap-2 mt-1">
+              {% set afp_data = v.tasas_afp_json | fromjson %}
+              {% for nombre, tasa in afp_data.items() %}
+              <span class="badge bg-secondary">{{ nombre }}: {{ '%.2f%%' % tasa }}</span>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
 {% else %}
-<div class="alert alert-info">No hay variables cargadas. Agrega el primer período.</div>
+<div class="alert alert-info">No hay indicadores cargados. Agrega el primer período.</div>
 {% endif %}
 
+<!-- Hidden data for JS editing -->
+<div id="vars-data" style="display:none">
+{% for v in vars_list %}
+<div data-id="{{ v.id }}" data-periodo="{{ v.periodo }}"
+     data-uf="{{ v.uf or '' }}" data-utm="{{ v.utm or '' }}"
+     data-imm="{{ v.imm or '' }}" data-tope-imponible="{{ v.tope_imponible or '' }}"
+     data-tope-gratificacion="{{ v.tope_gratificacion or '' }}"
+     data-tasa-sis="{{ '%.2f' % (v.tasa_sis * 100) if v.tasa_sis else '' }}"
+     data-tasas-afp="{{ v.tasas_afp_json or '{}' }}"></div>
+{% endfor %}
+</div>
+
 <!-- Modal Nueva/Editar Variable -->
-<div class="modal fade" id="modalNuevaVariable" tabindex="-1" aria-labelledby="modalNuevaVariableLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
+<div class="modal fade" id="modalNuevaVariable" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
     <div class="modal-content">
       <form method="post" action="{{ url_for('remuneraciones.variables_guardar') }}">
         <div class="modal-header">
-          <h5 class="modal-title" id="modalNuevaVariableLabel">
-            <i class="bi bi-calculator me-2"></i>Variables Mensuales
+          <h5 class="modal-title" id="modalLabel">
+            <i class="bi bi-calculator me-2"></i>Indicadores Previsionales
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="row g-3">
-            <div class="col-md-4">
+
+          <!-- Fetch button -->
+          <div class="alert alert-light border d-flex align-items-center gap-3 mb-3 py-2">
+            <i class="bi bi-cloud-download fs-5 text-info"></i>
+            <div class="flex-grow-1">
+              <strong>Obtener desde Previred</strong>
+              <div class="small text-muted">Consulta previred.com y completa UF, UTM, IMM, AFP y SIS automáticamente.</div>
+            </div>
+            <button type="button" class="btn btn-info btn-sm" onclick="fetchPrevired()">
+              <i class="bi bi-cloud-arrow-down me-1"></i>Actualizar
+            </button>
+            <span id="previred_status" class="small text-muted"></span>
+          </div>
+
+          <!-- Basic indicators -->
+          <h6 class="text-muted text-uppercase small fw-bold mb-2">Indicadores Básicos</h6>
+          <div class="row g-3 mb-3">
+            <div class="col-md-3">
               <label class="form-label">Período <span class="text-danger">*</span></label>
               <input type="month" name="periodo" id="var_periodo" class="form-control" required>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">UF del mes</label>
               <div class="input-group">
                 <span class="input-group-text">$</span>
                 <input type="number" name="uf" id="var_uf" class="form-control" min="0" step="0.01"
-                       placeholder="Ej: 37234.11">
+                       placeholder="Ej: 40.610,69" oninput="autoCalcularTopes()">
               </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">UTM del mes</label>
               <div class="input-group">
                 <span class="input-group-text">$</span>
                 <input type="number" name="utm" id="var_utm" class="form-control" min="0" step="1"
-                       placeholder="Ej: 68306">
+                       placeholder="Ej: 70.588">
               </div>
             </div>
-            <div class="col-md-4">
-              <label class="form-label">IMM (Ingreso Mínimo Mensual)</label>
+            <div class="col-md-3">
+              <label class="form-label">IMM</label>
               <div class="input-group">
                 <span class="input-group-text">$</span>
                 <input type="number" name="imm" id="var_imm" class="form-control" min="0" step="1"
-                       placeholder="Ej: 500000" oninput="autoCalcularTopes()">
+                       placeholder="Ej: 539.000" oninput="autoCalcularTopes()">
               </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">Tope Imponible (90 UF)</label>
               <div class="input-group">
                 <span class="input-group-text">$</span>
                 <input type="number" name="tope_imponible" id="var_tope_imponible" class="form-control" min="0" step="1">
               </div>
-              <div class="form-text">Se calcula automáticamente si ingresa UF.</div>
+              <div class="form-text">Calculado automático desde UF.</div>
             </div>
-            <div class="col-md-4">
-              <label class="form-label">Tope Gratificación (4.75 × IMM / 12)</label>
+            <div class="col-md-3">
+              <label class="form-label">Tope Gratificación (4.75×IMM/12)</label>
               <div class="input-group">
                 <span class="input-group-text">$</span>
                 <input type="number" name="tope_gratificacion" id="var_tope_gratificacion" class="form-control" min="0" step="1">
               </div>
-              <div class="form-text">Se calcula automáticamente si ingresa IMM.</div>
+              <div class="form-text">Calculado automático desde IMM.</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Tasa SIS (%)</label>
+              <div class="input-group">
+                <input type="number" name="tasa_sis" id="var_tasa_sis" class="form-control" min="0" step="0.01"
+                       placeholder="Ej: 1.62">
+                <span class="input-group-text">%</span>
+              </div>
+              <div class="form-text">Seguro Invalidez y Sobrevivencia (empleador).</div>
             </div>
           </div>
 
-          <div class="mt-3">
-            <button type="button" class="btn btn-outline-info btn-sm" onclick="fetchPrevired()">
-              <i class="bi bi-cloud-download me-1"></i>Obtener UF/UTM automático
-            </button>
-            <span id="previred_status" class="ms-2 small text-muted"></span>
+          <!-- AFP commissions -->
+          <h6 class="text-muted text-uppercase small fw-bold mb-2">Comisiones AFP <small class="text-muted fw-normal">(solo comisión, sin el 10% obligatorio)</small></h6>
+          <div class="row g-2">
+            {% set afp_defaults = {'Capital': 1.44, 'Cuprum': 1.44, 'Habitat': 1.27, 'Modelo': 0.58, 'PlanVital': 1.16, 'ProVida': 1.45, 'Uno': 0.46} %}
+            {% for nombre, default in afp_defaults.items() %}
+            <div class="col-md-3 col-6">
+              <label class="form-label small">{{ nombre }}</label>
+              <div class="input-group input-group-sm">
+                <input type="number" name="afp_{{ nombre }}" id="afp_{{ nombre }}"
+                       class="form-control" min="0" step="0.01"
+                       placeholder="{{ default }}">
+                <span class="input-group-text">%</span>
+              </div>
+            </div>
+            {% endfor %}
           </div>
+
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -148,59 +222,71 @@
 {% block scripts %}
 <script>
 function autoCalcularTopes() {
-  const uf = parseFloat(document.getElementById('var_uf').value) || 0;
+  const uf  = parseFloat(document.getElementById('var_uf').value)  || 0;
   const imm = parseFloat(document.getElementById('var_imm').value) || 0;
-  if (uf > 0) {
-    document.getElementById('var_tope_imponible').value = Math.round(uf * 90);
-  }
-  if (imm > 0) {
-    document.getElementById('var_tope_gratificacion').value = Math.round(imm * 4.75 / 12);
-  }
+  if (uf  > 0) document.getElementById('var_tope_imponible').value    = Math.round(uf * 90);
+  if (imm > 0) document.getElementById('var_tope_gratificacion').value = Math.round(imm * 4.75 / 12);
 }
 
-document.getElementById('var_uf').addEventListener('input', function() {
-  const uf = parseFloat(this.value) || 0;
-  if (uf > 0) {
-    document.getElementById('var_tope_imponible').value = Math.round(uf * 90);
-  }
-});
+function editarVariable(id) {
+  const el = document.querySelector(`#vars-data [data-id="${id}"]`);
+  if (!el) return;
+  document.getElementById('var_periodo').value           = el.dataset.periodo;
+  document.getElementById('var_uf').value                = el.dataset.uf;
+  document.getElementById('var_utm').value               = el.dataset.utm;
+  document.getElementById('var_imm').value               = el.dataset.imm;
+  document.getElementById('var_tope_imponible').value    = el.dataset.topeImponible;
+  document.getElementById('var_tope_gratificacion').value = el.dataset.topeGratificacion;
+  document.getElementById('var_tasa_sis').value          = el.dataset.tasaSis;
 
-function editarVariable(periodo, uf, utm, tope_imponible, tope_gratificacion, imm) {
-  document.getElementById('var_periodo').value = periodo;
-  document.getElementById('var_uf').value = uf || '';
-  document.getElementById('var_utm').value = utm || '';
-  document.getElementById('var_imm').value = imm || '';
-  document.getElementById('var_tope_imponible').value = tope_imponible || '';
-  document.getElementById('var_tope_gratificacion').value = tope_gratificacion || '';
-  const modal = new bootstrap.Modal(document.getElementById('modalNuevaVariable'));
-  modal.show();
+  // AFP commissions
+  try {
+    const afpData = JSON.parse(el.dataset.tasasAfp || '{}');
+    for (const [nombre, tasa] of Object.entries(afpData)) {
+      const inp = document.getElementById(`afp_${nombre}`);
+      if (inp) inp.value = tasa;
+    }
+  } catch(e) {}
+
+  new bootstrap.Modal(document.getElementById('modalNuevaVariable')).show();
 }
 
 async function fetchPrevired() {
   const statusEl = document.getElementById('previred_status');
-  statusEl.textContent = 'Consultando indicadores...';
+  statusEl.textContent = 'Consultando previred.com…';
+  statusEl.className = 'small text-muted';
   try {
     const periodo = document.getElementById('var_periodo').value;
     const url = '{{ url_for("remuneraciones.variables_fetch_previred") }}'
       + (periodo ? '?periodo=' + encodeURIComponent(periodo) : '');
-    const resp = await fetch(url);
-    const data = await resp.json();
-    if (data.ok) {
-      if (data.periodo) document.getElementById('var_periodo').value = data.periodo;
-      if (data.uf) document.getElementById('var_uf').value = data.uf;
-      if (data.utm) document.getElementById('var_utm').value = data.utm;
-      if (data.imm) document.getElementById('var_imm').value = data.imm;
-      if (data.tope_imponible) document.getElementById('var_tope_imponible').value = data.tope_imponible;
-      if (data.tope_gratificacion) document.getElementById('var_tope_gratificacion').value = data.tope_gratificacion;
-      statusEl.textContent = 'Datos obtenidos. Revisa antes de guardar.';
-      statusEl.className = 'ms-2 small text-success';
-    } else {
-      statusEl.textContent = 'No se pudieron obtener datos: ' + (data.error || 'error desconocido');
-      statusEl.className = 'ms-2 small text-danger';
+    const resp  = await fetch(url);
+    const data  = await resp.json();
+    if (!data.ok) {
+      statusEl.textContent = 'Error: ' + (data.error || 'desconocido');
+      statusEl.className = 'small text-danger';
+      return;
     }
-  } catch (e) {
+
+    if (data.periodo) document.getElementById('var_periodo').value            = data.periodo;
+    if (data.uf)      document.getElementById('var_uf').value                  = data.uf;
+    if (data.utm)     document.getElementById('var_utm').value                 = data.utm;
+    if (data.imm)     document.getElementById('var_imm').value                 = data.imm;
+    if (data.tope_imponible)    document.getElementById('var_tope_imponible').value    = data.tope_imponible;
+    if (data.tope_gratificacion) document.getElementById('var_tope_gratificacion').value = data.tope_gratificacion;
+    if (data.tasa_sis) document.getElementById('var_tasa_sis').value           = data.tasa_sis;
+
+    if (data.tasas_afp) {
+      for (const [nombre, tasa] of Object.entries(data.tasas_afp)) {
+        const inp = document.getElementById(`afp_${nombre}`);
+        if (inp) inp.value = tasa;
+      }
+    }
+
+    statusEl.textContent = '✓ Datos obtenidos desde previred.com. Revisa y guarda.';
+    statusEl.className = 'small text-success';
+  } catch(e) {
     statusEl.textContent = 'Error de conexión.';
-    statusEl.className = 'ms-2 small text-danger';
+    statusEl.className = 'small text-danger';
   }
 }
 </script>

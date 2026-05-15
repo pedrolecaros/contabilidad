@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from models import db, Empresa, Empleado, Liquidacion, VariablesMensuales
+from models import db, Empresa, Empleado, Liquidacion, VariablesMensuales, ValorUF
 from engine import remuneraciones as motor
 
 bp = Blueprint('remuneraciones', __name__)
@@ -71,6 +71,7 @@ def liquidar(eid, emp_id):
         periodo = request.form.get('periodo', '').strip()
         horas_extra = float(request.form.get('horas_extra', 0) or 0)
         otros = float(request.form.get('otros', 0) or 0)
+        dias_trabajados = max(1, min(30, int(request.form.get('dias_trabajados', 30) or 30)))
         accion = request.form.get('accion', 'calcular')
 
         if not periodo:
@@ -79,7 +80,8 @@ def liquidar(eid, emp_id):
             periodo_default = f'{hoy.year}-{hoy.month:02d}'
             vars_mes = VariablesMensuales.query.filter_by(periodo=periodo_default).first()
             return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
-                                   vars_mes=vars_mes, periodo_default=periodo_default)
+                                   vars_mes=vars_mes, periodo_default=periodo_default,
+                                   dias_trabajados=30)
 
         vars = VariablesMensuales.query.filter_by(periodo=periodo).first()
         if not vars:
@@ -88,24 +90,45 @@ def liquidar(eid, emp_id):
             periodo_default = f'{hoy.year}-{hoy.month:02d}'
             vars_mes = VariablesMensuales.query.filter_by(periodo=periodo_default).first()
             return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
-                                   vars_mes=vars_mes, periodo_default=periodo_default)
+                                   vars_mes=vars_mes, periodo_default=periodo_default,
+                                   dias_trabajados=dias_trabajados)
+
+        # Prorate if not full month
+        from types import SimpleNamespace
+        factor = dias_trabajados / 30.0
+        if factor != 1.0:
+            emp_calc = SimpleNamespace(
+                sueldo_base=round(emp.sueldo_base * factor),
+                bono_colacion=round((getattr(emp, 'bono_colacion', 0) or 0) * factor),
+                bono_movilizacion=round((getattr(emp, 'bono_movilizacion', 0) or 0) * factor),
+                otros_haberes=getattr(emp, 'otros_haberes', 0) or 0,
+                afp=emp.afp, tasa_afp_comision=emp.tasa_afp_comision,
+                tipo_salud=emp.tipo_salud, isapre=emp.isapre,
+                monto_isapre=getattr(emp, 'monto_isapre', 0) or 0,
+                monto_isapre_uf=getattr(emp, 'monto_isapre_uf', 0) or 0,
+                tasa_mutual=getattr(emp, 'tasa_mutual', 0.0093) or 0.0093,
+                tipo_sueldo=getattr(emp, 'tipo_sueldo', 'BRUTO'),
+            )
+        else:
+            emp_calc = emp
 
         resultado = motor.calcular(
-            emp,
+            emp_calc,
             utm=vars.utm,
             uf=vars.uf,
             tope_gratificacion=vars.tope_gratificacion,
             tope_imponible=vars.tope_imponible,
             horas_extra=horas_extra,
             otros=otros,
+            tasa_sis=vars.tasa_sis or None,
         )
 
         if accion == 'calcular':
-            # Mostrar preview sin guardar
             return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
                                    vars_mes=vars, periodo_default=periodo,
-                                   preview=resultado,
-                                   form_data={'periodo': periodo, 'horas_extra': horas_extra, 'otros': otros})
+                                   preview=resultado, dias_trabajados=dias_trabajados,
+                                   form_data={'periodo': periodo, 'horas_extra': horas_extra,
+                                              'otros': otros, 'dias_trabajados': dias_trabajados})
 
         # accion == 'borrador' o 'emitir' → guardar
         existe = Liquidacion.query.filter_by(empleado_id=emp_id, periodo=periodo).first()
@@ -120,8 +143,10 @@ def liquidar(eid, emp_id):
                 setattr(liq, campo, valor)
         db.session.add(liq)
         db.session.commit()
-        msg = f'Liquidación {periodo} emitida.' if estado == 'EMITIDA' else f'Borrador {periodo} guardado.'
-        flash(msg, 'success')
+        if accion == 'emitir':
+            # Go directly to the printable PDF view
+            return redirect(url_for('remuneraciones.imprimir', eid=eid, liq_id=liq.id))
+        flash(f'Borrador {periodo} guardado.', 'success')
         return redirect(url_for('remuneraciones.detalle', eid=eid, liq_id=liq.id))
 
     # GET
@@ -129,7 +154,8 @@ def liquidar(eid, emp_id):
     periodo_default = f'{hoy.year}-{hoy.month:02d}'
     vars_mes = VariablesMensuales.query.filter_by(periodo=periodo_default).first()
     return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
-                           vars_mes=vars_mes, periodo_default=periodo_default)
+                           vars_mes=vars_mes, periodo_default=periodo_default,
+                           dias_trabajados=30)
 
 
 @bp.route('/empresa/<int:eid>/remuneraciones/liquidacion/<int:liq_id>')
@@ -424,12 +450,28 @@ def variables_guardar():
         v = VariablesMensuales(periodo=periodo)
         db.session.add(v)
 
-    def _f(name): return float(request.form.get(name, 0) or 0)
+    import json as _json
+    def _f(name): return float(request.form.get(name, 0) or 0) or None
     v.uf = _f('uf')
     v.utm = _f('utm')
     v.tope_imponible = _f('tope_imponible')
     v.tope_gratificacion = _f('tope_gratificacion')
     v.imm = _f('imm')
+    raw_sis = request.form.get('tasa_sis', '').strip()
+    v.tasa_sis = float(raw_sis) / 100 if raw_sis else None
+
+    # AFP commissions (submitted as afp_<Name> in %)
+    AFP_NAMES = ['Capital', 'Cuprum', 'Habitat', 'Modelo', 'PlanVital', 'ProVida', 'Uno']
+    tasas = {}
+    for nombre in AFP_NAMES:
+        raw = request.form.get(f'afp_{nombre}', '').strip()
+        if raw:
+            try:
+                tasas[nombre] = round(float(raw.replace(',', '.')), 2)
+            except ValueError:
+                pass
+    v.tasas_afp_json = _json.dumps(tasas) if tasas else None
+
     from datetime import datetime
     v.fecha_actualizacion = datetime.now()
     db.session.commit()
@@ -452,6 +494,13 @@ def variables_get(eid, periodo):
     v = VariablesMensuales.query.filter_by(periodo=periodo).first()
     if not v:
         return jsonify({'ok': False})
+    import json as _json
+    tasas_afp = {}
+    if v.tasas_afp_json:
+        try:
+            tasas_afp = _json.loads(v.tasas_afp_json)
+        except Exception:
+            pass
     return jsonify({
         'ok': True,
         'periodo': v.periodo,
@@ -460,56 +509,199 @@ def variables_get(eid, periodo):
         'tope_imponible': v.tope_imponible,
         'tope_gratificacion': v.tope_gratificacion,
         'imm': v.imm,
+        'tasa_sis': round(v.tasa_sis * 100, 4) if v.tasa_sis else None,
+        'tasas_afp': tasas_afp,
     })
 
 
 @bp.route('/remuneraciones/variables/fetch-indicadores')
 def variables_fetch_previred():
-    """Obtiene UF y UTM del mes desde mindicador.cl (API JSON gratuita)."""
+    """Obtiene todos los indicadores previsionales desde previred.com."""
     try:
-        import requests
-        import calendar
         from datetime import date
-
         periodo = request.args.get('periodo', '')
         if not periodo:
             hoy = date.today()
             periodo = hoy.strftime('%Y-%m')
-
-        anio, mes = int(periodo[:4]), int(periodo[5:7])
-        ultimo_dia = calendar.monthrange(anio, mes)[1]
-
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        base = 'https://mindicador.cl/api'
-
-        # UF: valor del último día del mes
-        r_uf = requests.get(f'{base}/uf/{ultimo_dia:02d}-{mes:02d}-{anio}',
-                            timeout=10, headers=headers)
-        uf_data = r_uf.json()
-        uf = uf_data.get('serie', [{}])[0].get('valor') if r_uf.status_code == 200 else None
-
-        # UTM: valor del mes (usar día 01)
-        r_utm = requests.get(f'{base}/utm/01-{mes:02d}-{anio}',
-                             timeout=10, headers=headers)
-        utm_data = r_utm.json()
-        utm = utm_data.get('serie', [{}])[0].get('valor') if r_utm.status_code == 200 else None
-
-        result = {
-            'ok': True,
-            'periodo': periodo,
-            'uf': uf,
-            'utm': utm,
-            'imm': None,
-        }
-        # Topes derivados
-        if uf:
-            result['tope_imponible'] = round(uf * 90)   # 90 UF tope imponible
-        if result.get('imm'):
-            result['tope_gratificacion'] = round(result['imm'] * 4.75 / 12)
-
+        result = _scrape_previred(periodo)
         return jsonify(result)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+
+
+def _scrape_previred(periodo: str) -> dict:
+    """Scrape previred.com/indicadores-previsionales/ and return all indicator data."""
+    import requests as req
+    from bs4 import BeautifulSoup
+    import re
+
+    headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
+    r = req.get('https://www.previred.com/indicadores-previsionales/',
+                timeout=15, headers=headers)
+    if r.status_code != 200:
+        return {'ok': False, 'error': f'HTTP {r.status_code}'}
+
+    soup = BeautifulSoup(r.text, 'html.parser')
+    lines = [l.strip() for l in soup.get_text().split('\n') if l.strip()]
+
+    def clp(s):
+        return float(s.replace('$', '').replace('\xa0', '').replace('.', '').replace(',', '.').strip())
+
+    def pct(s):
+        return float(s.replace('%', '').replace(',', '.').strip())
+
+    AFP_NAMES = ['Capital', 'Cuprum', 'Habitat', 'PlanVital', 'ProVida', 'Modelo', 'Uno']
+    result = {'ok': True, 'periodo': periodo, 'tasas_afp': {}}
+
+    anio, mes = int(periodo[:4]), int(periodo[5:7])
+
+    for i, l in enumerate(lines):
+        # UF: take the first "Al DD de MONTH del YYYY:" match (most current on the page)
+        if not result.get('uf'):
+            uf_match = re.match(r'Al \d+ de \w+ del \d{4}:', l)
+            if uf_match and i + 1 < len(lines):
+                try:
+                    result['uf'] = clp(lines[i + 1])
+                except Exception:
+                    pass
+
+        # AFP commissions: line is AFP name, next is "11,44%" (10% mandatory + commission)
+        if l in AFP_NAMES and i + 1 < len(lines):
+            try:
+                total_pct = pct(lines[i + 1])
+                result['tasas_afp'][l] = round(total_pct - 10.0, 2)
+            except Exception:
+                pass
+
+        # UTM: look for "VALOR" → "UTM" → "UTA" → period → value
+        if l == 'UTM' and i + 2 < len(lines):
+            try:
+                result['utm'] = clp(lines[i + 2])
+            except Exception:
+                pass
+
+        # IMM: "Trab. Dependientes e Independientes:" → amount
+        if 'Dependientes e Independientes' in l and i + 1 < len(lines):
+            try:
+                result['imm'] = clp(lines[i + 1])
+            except Exception:
+                pass
+
+        # SIS: "Tasa SIS" → "1,62%"
+        if l == 'Tasa SIS' and i + 1 < len(lines):
+            try:
+                result['tasa_sis'] = round(pct(lines[i + 1]) / 100, 6)
+            except Exception:
+                pass
+
+    # Derived topes
+    if result.get('uf'):
+        result['tope_imponible'] = round(result['uf'] * 90)
+    if result.get('imm'):
+        result['tope_gratificacion'] = round(result['imm'] * 4.75 / 12)
+
+    return result
+
+
+# ── Tabla UF diaria ──────────────────────────────────────────────────────────
+
+@bp.route('/remuneraciones/uf-tabla')
+def uf_tabla():
+    from datetime import date
+    hoy = date.today()
+    anio = request.args.get('anio', hoy.year, type=int)
+    mes  = request.args.get('mes',  hoy.month, type=int)
+    from datetime import date as dt
+    desde = dt(anio, mes, 1)
+    import calendar
+    ultimo = calendar.monthrange(anio, mes)[1]
+    hasta = dt(anio, mes, ultimo)
+    filas = (ValorUF.query
+             .filter(ValorUF.fecha >= desde, ValorUF.fecha <= hasta)
+             .order_by(ValorUF.fecha)
+             .all())
+    return render_template('remuneraciones/uf_tabla.html',
+                           filas=filas, anio=anio, mes=mes, hoy=hoy)
+
+
+@bp.route('/remuneraciones/uf-tabla/actualizar', methods=['POST'])
+def uf_actualizar():
+    """Descarga los valores de UF del mes desde mindicador.cl y los guarda."""
+    from datetime import date
+    import requests as req, calendar
+    hoy = date.today()
+    anio = request.form.get('anio', hoy.year, type=int)
+    mes  = request.form.get('mes',  hoy.month, type=int)
+    ultimo = calendar.monthrange(anio, mes)[1]
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        r = req.get(f'https://mindicador.cl/api/uf', timeout=15, headers=headers)
+        if r.status_code != 200:
+            flash(f'Error al consultar mindicador.cl: HTTP {r.status_code}', 'danger')
+            return redirect(url_for('remuneraciones.uf_tabla', anio=anio, mes=mes))
+        serie = r.json().get('serie', [])
+        actualizados = 0
+        for item in serie:
+            raw_fecha = item.get('fecha', '')[:10]  # YYYY-MM-DD
+            try:
+                from datetime import date as dt
+                fecha = dt.fromisoformat(raw_fecha)
+                if fecha.year == anio and fecha.month == mes:
+                    valor = float(item['valor'])
+                    existing = ValorUF.query.filter_by(fecha=fecha).first()
+                    if existing:
+                        existing.valor = valor
+                    else:
+                        db.session.add(ValorUF(fecha=fecha, valor=valor))
+                    actualizados += 1
+            except Exception:
+                pass
+        db.session.commit()
+        flash(f'{actualizados} valores UF actualizados para {mes:02d}/{anio}.', 'success')
+    except Exception as e:
+        flash(f'Error: {e}', 'danger')
+    return redirect(url_for('remuneraciones.uf_tabla', anio=anio, mes=mes))
+
+
+@bp.route('/remuneraciones/uf-tabla/guardar', methods=['POST'])
+def uf_guardar():
+    """Guarda o actualiza un valor UF manual."""
+    from datetime import date as dt
+    raw = request.form.get('fecha', '').strip()
+    valor_s = request.form.get('valor', '').strip().replace(',', '.')
+    try:
+        fecha = dt.fromisoformat(raw)
+        valor = float(valor_s)
+    except (ValueError, TypeError):
+        flash('Fecha o valor inválido.', 'danger')
+        return redirect(url_for('remuneraciones.uf_tabla'))
+    existing = ValorUF.query.filter_by(fecha=fecha).first()
+    if existing:
+        existing.valor = valor
+    else:
+        db.session.add(ValorUF(fecha=fecha, valor=valor))
+    db.session.commit()
+    flash(f'UF {fecha} = ${valor:,.2f} guardada.', 'success')
+    return redirect(url_for('remuneraciones.uf_tabla', anio=fecha.year, mes=fecha.month))
+
+
+@bp.route('/remuneraciones/uf/get')
+def uf_get_valor():
+    """Retorna el valor UF para una fecha (JSON). Usado por otras secciones."""
+    from datetime import date as dt
+    raw = request.args.get('fecha', '')
+    try:
+        fecha = dt.fromisoformat(raw)
+    except (ValueError, TypeError):
+        return jsonify({'ok': False, 'error': 'fecha inválida'})
+    # Busca la fecha exacta; si no existe, retorna la más reciente anterior
+    uf = (ValorUF.query
+          .filter(ValorUF.fecha <= fecha)
+          .order_by(ValorUF.fecha.desc())
+          .first())
+    if uf:
+        return jsonify({'ok': True, 'fecha': str(uf.fecha), 'valor': uf.valor})
+    return jsonify({'ok': False, 'error': 'Sin datos UF para esa fecha'})
 
 
 def _poblar(emp, form):

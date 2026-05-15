@@ -46,6 +46,16 @@ def create_app(config_override=None):
         except Exception:
             return str(value)
 
+    @app.template_filter('fromjson')
+    def fmt_fromjson(value):
+        import json
+        if not value:
+            return {}
+        try:
+            return json.loads(value)
+        except Exception:
+            return {}
+
     return app
 
 

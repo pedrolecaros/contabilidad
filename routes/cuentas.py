@@ -52,3 +52,11 @@ def editar(eid, cid):
         flash('Cuenta actualizada', 'success')
         return redirect(url_for('cuentas.lista', eid=eid))
     return render_template('cuentas/form.html', empresa=empresa, cuenta=cuenta)
+
+
+@bp.route('/empresa/<int:eid>/cuentas/<int:cid>/toggle-activa', methods=['POST'])
+def toggle_activa(eid, cid):
+    cuenta = Cuenta.query.filter_by(id=cid, empresa_id=eid).first_or_404()
+    cuenta.activa = not cuenta.activa
+    db.session.commit()
+    return redirect(url_for('cuentas.lista', eid=eid))
