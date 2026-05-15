@@ -229,6 +229,38 @@
 
 {% block scripts %}
 <script>
+const AFP_NAMES = ['Capital', 'Cuprum', 'Habitat', 'Modelo', 'PlanVital', 'ProVida', 'Uno'];
+
+function cargarPeriodo(periodo) {
+  const el = document.querySelector(`#vars-data [data-periodo="${periodo}"]`);
+  const fields = {
+    var_uf: 'uf', var_utm: 'utm', var_imm: 'imm',
+    var_tope_imponible: 'topeImponible',
+    var_tope_gratificacion: 'topeGratificacion',
+    var_tasa_sis: 'tasaSis',
+  };
+  AFP_NAMES.forEach(n => { const i = document.getElementById(`afp_${n}`); if (i) i.value = ''; });
+  if (el) {
+    for (const [id, key] of Object.entries(fields)) {
+      document.getElementById(id).value = el.dataset[key] || '';
+    }
+    try {
+      const afp = JSON.parse(el.dataset.tasasAfp || '{}');
+      for (const [n, t] of Object.entries(afp)) {
+        const i = document.getElementById(`afp_${n}`); if (i) i.value = t;
+      }
+    } catch(e) {}
+  } else {
+    for (const id of Object.keys(fields)) document.getElementById(id).value = '';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('var_periodo').addEventListener('change', function() {
+    cargarPeriodo(this.value);
+  });
+});
+
 function autoCalcularTopes() {
   const uf  = parseFloat(document.getElementById('var_uf').value)  || 0;
   const imm = parseFloat(document.getElementById('var_imm').value) || 0;
