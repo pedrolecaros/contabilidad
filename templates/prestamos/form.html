@@ -118,28 +118,40 @@
         </div>
 
         <!-- Acreedor/Deudor -->
-        <div class="col-md-8">
-          <label class="form-label fw-semibold">Acreedor / Deudor</label>
-          <input type="text" name="acreedor_deudor" class="form-control"
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Acreedor / Deudor — Nombre</label>
+          <input type="text" name="acreedor_deudor" id="acreedor_deudor" class="form-control"
                  placeholder="Banco, persona, institución…"
-                 value="{{ prestamo.acreedor_deudor if prestamo and prestamo.acreedor_deudor else '' }}">
+                 value="{{ prestamo.acreedor_deudor if prestamo and prestamo.acreedor_deudor else '' }}"
+                 list="contrapartes-list">
+          <datalist id="contrapartes-list">
+            {% for cp in contrapartes %}
+            <option value="{{ cp.razon_social }}" data-rut="{{ cp.rut }}">{{ cp.rut }}</option>
+            {% endfor %}
+          </datalist>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">RUT Acreedor / Deudor</label>
+          <input type="text" name="acreedor_rut" id="acreedor_rut" class="form-control"
+                 placeholder="12.345.678-9"
+                 value="{{ prestamo.acreedor_rut if prestamo and prestamo.acreedor_rut else '' }}">
         </div>
 
         <!-- Empresa relacionada -->
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label fw-semibold">Empresa relacionada</label>
-          <select name="empresa_relacionada_id" class="form-select">
+          <select name="empresa_relacionada_id" id="empresa_relacionada_id" class="form-select">
             <option value="">— Ninguna —</option>
             {% for emp in empresas_rel %}
             {% if emp.id != empresa.id %}
-            <option value="{{ emp.id }}"
+            <option value="{{ emp.id }}" data-rut="{{ emp.rut }}"
               {% if prestamo and prestamo.empresa_relacionada_id == emp.id %}selected{% endif %}>
               {{ emp.nombre_fantasia or emp.razon_social }}
             </option>
             {% endif %}
             {% endfor %}
           </select>
-          <div class="form-text">Selecciona si el préstamo es intercompany</div>
+          <div class="form-text">Se detecta automáticamente por RUT</div>
         </div>
 
         <!-- Activo (edit mode only) -->
@@ -205,5 +217,44 @@ function toggleNcuotas() {
 }
 // Run on load
 toggleNcuotas();
+
+// Auto-fill RUT from datalist selection and auto-detect empresa relacionada
+(function() {
+  var contrapartesData = {
+    {% for cp in contrapartes %}
+    {{ cp.razon_social | tojson }}: {{ cp.rut | tojson }},
+    {% endfor %}
+  };
+  var empresasRut = {
+    {% for emp in empresas_rel %}{% if emp.id != empresa.id %}
+    {{ emp.rut | tojson }}: "{{ emp.id }}",
+    {% endif %}{% endfor %}
+  };
+
+  var nameInput = document.getElementById('acreedor_deudor');
+  var rutInput = document.getElementById('acreedor_rut');
+  var empSel = document.getElementById('empresa_relacionada_id');
+
+  function syncRutAndEmpresa(name) {
+    var rut = contrapartesData[name];
+    if (rut) {
+      rutInput.value = rut;
+      var empId = empresasRut[rut] || '';
+      if (empSel) empSel.value = empId;
+    }
+  }
+
+  if (nameInput) {
+    nameInput.addEventListener('change', function() { syncRutAndEmpresa(this.value); });
+  }
+
+  // When RUT typed manually, try to detect empresa relacionada
+  if (rutInput) {
+    rutInput.addEventListener('blur', function() {
+      var empId = empresasRut[this.value] || '';
+      if (empSel && empId) empSel.value = empId;
+    });
+  }
+})();
 </script>
 {% endblock %}

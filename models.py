@@ -296,7 +296,8 @@ class Prestamo(db.Model):
     fecha_inicio = db.Column(db.Date, nullable=False)
     n_cuotas = db.Column(db.Integer, nullable=True)       # None = LIBRE
     periodicidad = db.Column(db.String(10), default='MENSUAL')  # MENSUAL|TRIMESTRAL|ANUAL|LIBRE
-    acreedor_deudor = db.Column(db.String(200))           # bank or person name
+    acreedor_deudor = db.Column(db.String(200))
+    acreedor_rut = db.Column(db.String(20))
     activo = db.Column(db.Boolean, default=True)
     notas = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.now)

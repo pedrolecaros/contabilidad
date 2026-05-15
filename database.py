@@ -56,6 +56,7 @@ def _migrar(app):
 )""",
         "ALTER TABLE empresas ADD COLUMN contribuyente_iva INTEGER DEFAULT 1",
         "ALTER TABLE empresas ADD COLUMN tasa_ppm REAL DEFAULT 1.0",
+        'ALTER TABLE prestamos ADD COLUMN acreedor_rut VARCHAR(20)',
         'ALTER TABLE cuotas_prestamo ADD COLUMN asiento_id INTEGER REFERENCES asientos(id)',
         'ALTER TABLE cuotas_prestamo ADD COLUMN uf_valor_pago REAL',
         'ALTER TABLE cuotas_prestamo ADD COLUMN cuota_total_pesos REAL',

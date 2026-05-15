@@ -1,7 +1,7 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento
+from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte
 from engine.asientos import generar_asiento_cuota_prestamo
 
 bp = Blueprint('prestamos', __name__)
@@ -14,6 +14,21 @@ def _pmt(capital, tasa, n):
     if tasa == 0 or n == 0:
         return capital / n if n else 0
     return capital * tasa / (1 - (1 + tasa) ** (-n))
+
+
+def _resolver_empresa_relacionada(eid, emp_rel_id_str, acreedor_rut):
+    """Returns empresa_relacionada_id: explicit form value, or auto-detected from RUT."""
+    emp_rel_id = None
+    if emp_rel_id_str:
+        try:
+            emp_rel_id = int(emp_rel_id_str)
+        except (ValueError, TypeError):
+            pass
+    if not emp_rel_id and acreedor_rut:
+        emp = Empresa.query.filter_by(rut=acreedor_rut).first()
+        if emp and emp.id != eid:
+            emp_rel_id = emp.id
+    return emp_rel_id
 
 
 def _periodicidad_delta(periodicidad):
@@ -193,18 +208,17 @@ def nuevo(eid):
             except (ValueError, TypeError):
                 n_cuotas = None
 
-        emp_rel_id = request.form.get('empresa_relacionada_id') or None
-        if emp_rel_id:
-            try:
-                emp_rel_id = int(emp_rel_id)
-            except (ValueError, TypeError):
-                emp_rel_id = None
+        acreedor_rut = request.form.get('acreedor_rut', '').strip() or None
+        emp_rel_id = _resolver_empresa_relacionada(
+            eid, request.form.get('empresa_relacionada_id'), acreedor_rut)
 
         if not nombre:
             flash('El nombre es obligatorio', 'danger')
+            contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
             return render_template('prestamos/form.html',
                                    empresa=empresa, prestamo=None,
-                                   empresas_rel=empresas_rel, titulo='Nuevo Préstamo')
+                                   empresas_rel=empresas_rel, contrapartes=contrapartes,
+                                   titulo='Nuevo Préstamo')
 
         prestamo = Prestamo(
             empresa_id=eid,
@@ -212,25 +226,28 @@ def nuevo(eid):
             tipo=tipo,
             moneda=moneda,
             monto_original=monto_original,
-            tasa_interes_anual=tasa / 100.0,  # store as decimal
+            tasa_interes_anual=tasa / 100.0,
             fecha_inicio=fecha_inicio,
             n_cuotas=n_cuotas,
             periodicidad=periodicidad,
             acreedor_deudor=request.form.get('acreedor_deudor', '').strip() or None,
+            acreedor_rut=acreedor_rut,
             empresa_relacionada_id=emp_rel_id,
             activo=True,
             notas=request.form.get('notas', '').strip() or None,
         )
         db.session.add(prestamo)
-        db.session.flush()  # get id before generating cuotas
+        db.session.flush()
         _generar_cuotas(prestamo)
         db.session.commit()
         flash(f'Préstamo "{nombre}" creado', 'success')
         return redirect(url_for('prestamos.detalle', eid=eid, pid=prestamo.id))
 
+    contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
     return render_template('prestamos/form.html',
                            empresa=empresa, prestamo=None,
-                           empresas_rel=empresas_rel, titulo='Nuevo Préstamo')
+                           empresas_rel=empresas_rel, contrapartes=contrapartes,
+                           titulo='Nuevo Préstamo')
 
 
 # ── Detalle ───────────────────────────────────────────────────────────────────
@@ -291,6 +308,7 @@ def editar(eid, pid):
         prestamo.periodicidad = request.form.get('periodicidad', 'MENSUAL')
         prestamo.activo = bool(request.form.get('activo'))
         prestamo.acreedor_deudor = request.form.get('acreedor_deudor', '').strip() or None
+        prestamo.acreedor_rut = request.form.get('acreedor_rut', '').strip() or None
         prestamo.notas = request.form.get('notas', '').strip() or None
 
         try:
@@ -321,15 +339,9 @@ def editar(eid, pid):
         else:
             prestamo.n_cuotas = None
 
-        emp_rel_id = request.form.get('empresa_relacionada_id') or None
-        if emp_rel_id:
-            try:
-                emp_rel_id = int(emp_rel_id)
-            except (ValueError, TypeError):
-                emp_rel_id = None
-        prestamo.empresa_relacionada_id = emp_rel_id
+        prestamo.empresa_relacionada_id = _resolver_empresa_relacionada(
+            eid, request.form.get('empresa_relacionada_id'), prestamo.acreedor_rut)
 
-        # Regenerate cuotas (only for fixed-schedule loans)
         if prestamo.periodicidad != 'LIBRE' and prestamo.n_cuotas:
             _generar_cuotas(prestamo)
 
@@ -337,9 +349,11 @@ def editar(eid, pid):
         flash('Préstamo actualizado', 'success')
         return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
 
+    contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
     return render_template('prestamos/form.html',
                            empresa=empresa, prestamo=prestamo,
-                           empresas_rel=empresas_rel, titulo='Editar Préstamo')
+                           empresas_rel=empresas_rel, contrapartes=contrapartes,
+                           titulo='Editar Préstamo')
 
 
 # ── Eliminar ──────────────────────────────────────────────────────────────────

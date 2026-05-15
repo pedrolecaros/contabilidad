@@ -73,10 +73,13 @@
             <div class="text-muted">N° cuotas</div>
             <div class="fw-semibold">{{ prestamo.n_cuotas or '—' }}</div>
           </div>
-          {% if prestamo.acreedor_deudor %}
+          {% if prestamo.acreedor_deudor or prestamo.acreedor_rut %}
           <div class="col-md-6">
             <div class="text-muted">Acreedor / Deudor</div>
-            <div class="fw-semibold">{{ prestamo.acreedor_deudor }}</div>
+            <div class="fw-semibold">{{ prestamo.acreedor_deudor or '—' }}</div>
+            {% if prestamo.acreedor_rut %}
+            <div class="text-muted small">RUT {{ prestamo.acreedor_rut }}</div>
+            {% endif %}
           </div>
           {% endif %}
           {% if prestamo.empresa_relacionada %}

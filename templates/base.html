@@ -41,17 +41,11 @@
       </div>
       <hr class="text-secondary my-1">
 
-      <div class="nav-section">Operaciones</div>
+      <div class="nav-section">Contabilidad</div>
       <ul class="nav flex-column">
         <li><a class="nav-link {% if 'importar' in request.endpoint %}active{% endif %}"
                href="{{ url_for('importar.index', eid=empresa.id) }}">
           <i class="bi bi-upload me-2"></i>Importar</a></li>
-        <li><a class="nav-link {% if request.endpoint=='asientos.nuevo' %}active{% endif %}"
-               href="{{ url_for('asientos.nuevo', eid=empresa.id) }}">
-          <i class="bi bi-plus-circle me-2"></i>Nuevo Asiento</a></li>
-        <li><a class="nav-link {% if request.endpoint=='asientos.lista' %}active{% endif %}"
-               href="{{ url_for('asientos.lista', eid=empresa.id) }}">
-          <i class="bi bi-journal-text me-2"></i>Asientos</a></li>
         <li><a class="nav-link {% if 'pendientes' in request.endpoint %}active{% endif %}"
                href="{{ url_for('pendientes.index', eid=empresa.id) }}">
           <i class="bi bi-clock-history me-2"></i>Pendientes
@@ -62,6 +56,19 @@
         <li><a class="nav-link {% if 'conciliacion' in request.endpoint %}active{% endif %}"
                href="{{ url_for('conciliacion.index', eid=empresa.id) }}">
           <i class="bi bi-arrow-left-right me-2"></i>Conciliación</a></li>
+        <li><a class="nav-link {% if request.endpoint=='asientos.nuevo' %}active{% endif %}"
+               href="{{ url_for('asientos.nuevo', eid=empresa.id) }}">
+          <i class="bi bi-plus-circle me-2"></i>Nuevo Asiento</a></li>
+        <li><a class="nav-link {% if request.endpoint=='asientos.lista' %}active{% endif %}"
+               href="{{ url_for('asientos.lista', eid=empresa.id) }}">
+          <i class="bi bi-journal-text me-2"></i>Asientos</a></li>
+        <li><a class="nav-link {% if 'validacion' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('validacion.index', eid=empresa.id) }}">
+          <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>
+      </ul>
+
+      <div class="nav-section mt-2">Módulos</div>
+      <ul class="nav flex-column">
         <li><a class="nav-link {% if 'contrapartes' in request.endpoint %}active{% endif %}"
                href="{{ url_for('contrapartes.index', eid=empresa.id) }}">
           <i class="bi bi-people me-2"></i>Proveedores / Clientes</a></li>
@@ -71,25 +78,12 @@
         <li><a class="nav-link {% if 'prestamos' in request.endpoint %}active{% endif %}"
                href="{{ url_for('prestamos.lista', eid=empresa.id) }}">
           <i class="bi bi-bank me-2"></i>Préstamos</a></li>
+        <li><a class="nav-link {% if 'activos' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('activos.lista', eid=empresa.id) }}">
+          <i class="bi bi-boxes me-2"></i>Activos Fijos</a></li>
         <li><a class="nav-link {% if 'f29' in request.endpoint %}active{% endif %}"
                href="{{ url_for('f29.index', eid=empresa.id) }}">
           <i class="bi bi-file-earmark-text me-2"></i>F29</a></li>
-        <li><a class="nav-link {% if 'activos' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('activos.lista', eid=empresa.id) }}">
-          <i class="bi bi-building me-2"></i>Activos Fijos</a></li>
-        <li><a class="nav-link {% if 'validacion' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('validacion.index', eid=empresa.id) }}">
-          <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>
-      </ul>
-
-      <div class="nav-section mt-2">Configuración</div>
-      <ul class="nav flex-column">
-        <li><a class="nav-link {% if 'cuentas' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('cuentas.lista', eid=empresa.id) }}">
-          <i class="bi bi-list-nested me-2"></i>Plan de Cuentas</a></li>
-        <li><a class="nav-link {% if request.endpoint in ('empresas.editar',) %}active{% endif %}"
-               href="{{ url_for('empresas.editar', eid=empresa.id) }}">
-          <i class="bi bi-building-gear me-2"></i>Empresa</a></li>
       </ul>
 
       <div class="nav-section mt-2">Reportes</div>
@@ -106,18 +100,28 @@
         <li><a class="nav-link {% if request.endpoint=='reportes.resultado' %}active{% endif %}"
                href="{{ url_for('reportes.resultado', eid=empresa.id) }}">
           <i class="bi bi-graph-up me-2"></i>Resultado</a></li>
+        <li><a class="nav-link {% if request.endpoint=='reportes.efe' %}active{% endif %}"
+               href="{{ url_for('reportes.efe', eid=empresa.id) }}">
+          <i class="bi bi-cash-stack me-2"></i>Flujo de Efectivo</a></li>
         <li><a class="nav-link {% if request.endpoint=='reportes.ap_ar' %}active{% endif %}"
                href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}">
-          <i class="bi bi-bar-chart-steps me-2"></i>Reporte AP/AR</a></li>
+          <i class="bi bi-bar-chart-steps me-2"></i>AP / AR</a></li>
         <li><a class="nav-link {% if request.endpoint=='reportes.aging' %}active{% endif %}"
                href="{{ url_for('reportes.aging', eid=empresa.id) }}">
           <i class="bi bi-hourglass-split me-2"></i>Antigüedad Saldos</a></li>
         <li><a class="nav-link {% if request.endpoint=='reportes.ajuste_uf' %}active{% endif %}"
                href="{{ url_for('reportes.ajuste_uf', eid=empresa.id) }}">
           <i class="bi bi-currency-exchange me-2"></i>Ajuste UF</a></li>
-        <li><a class="nav-link {% if request.endpoint=='reportes.efe' %}active{% endif %}"
-               href="{{ url_for('reportes.efe', eid=empresa.id) }}">
-          <i class="bi bi-arrow-left-right me-2"></i>Flujo de Efectivo</a></li>
+      </ul>
+
+      <div class="nav-section mt-2">Configuración</div>
+      <ul class="nav flex-column">
+        <li><a class="nav-link {% if 'cuentas' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('cuentas.lista', eid=empresa.id) }}">
+          <i class="bi bi-list-nested me-2"></i>Plan de Cuentas</a></li>
+        <li><a class="nav-link {% if request.endpoint in ('empresas.editar',) %}active{% endif %}"
+               href="{{ url_for('empresas.editar', eid=empresa.id) }}">
+          <i class="bi bi-building-gear me-2"></i>Empresa</a></li>
       </ul>
     </nav>
     <main class="col-md-10 main-content">
