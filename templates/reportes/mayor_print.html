@@ -77,7 +77,7 @@
     <tr>
       <td style="text-align:center">{{ l.asiento.fecha.strftime('%d/%m/%Y') }}</td>
       <td style="text-align:center">{{ l.asiento.numero }}</td>
-      <td style="padding-left:6px">{{ l.asiento.descripcion or l.descripcion or '' }}</td>
+      <td style="padding-left:6px">{{ l.descripcion or l.asiento.descripcion or '' }}</td>
       <td class="num">{% if l.debe %}{{ '{:,.0f}'.format(l.debe).replace(',','.') }}{% endif %}</td>
       <td class="num">{% if l.haber %}{{ '{:,.0f}'.format(l.haber).replace(',','.') }}{% endif %}</td>
       <td class="saldo-num">{{ '{:,.0f}'.format(saldo[-1]).replace(',','.') }}</td>

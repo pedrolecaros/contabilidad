@@ -814,6 +814,244 @@ class TestF29(unittest.TestCase):
         self.assertIn(b'190.000', r.data)
 
 
+class TestEmpresaForm(unittest.TestCase):
+    """Item 11: Nueva empresa sin campo tipo directa/indirecta."""
+
+    def setUp(self):
+        from app import create_app
+        from config import Config
+        class TestConfig(Config):
+            TESTING = True
+            SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+            WTF_CSRF_ENABLED = False
+            SECRET_KEY = 'test'
+        self.app_obj = create_app(TestConfig)
+        self.client = self.app_obj.test_client()
+        with self.app_obj.app_context():
+            from models import db
+            db.create_all()
+
+    def _post_empresa(self, rut, razon, extra=None):
+        data = {'rut': rut, 'razon_social': razon,
+                'contribuyente_iva': 'on', 'tasa_ppm': '1.0'}
+        if extra:
+            data.update(extra)
+        return self.client.post('/empresas/nueva', data=data, follow_redirects=True)
+
+    def test_e01_crear_sin_tipo_participacion(self):
+        """Empresa se crea sin tipo_participacion (queda None)."""
+        r = self._post_empresa('12.345.678-9', 'Sin Tipo SpA')
+        self.assertEqual(r.status_code, 200)
+        with self.app_obj.app_context():
+            from models import Empresa
+            e = Empresa.query.filter_by(razon_social='Sin Tipo SpA').first()
+            self.assertIsNotNone(e)
+            self.assertIsNone(e.tipo_participacion)
+
+    def test_e02_tipo_ignorado_aunque_enviado(self):
+        """Aunque se envíe tipo_participacion en POST, NO se guarda."""
+        r = self._post_empresa('11.222.333-4', 'Con Tipo SpA',
+                               extra={'tipo_participacion': 'DIRECTA'})
+        self.assertEqual(r.status_code, 200)
+        with self.app_obj.app_context():
+            from models import Empresa
+            e = Empresa.query.filter_by(razon_social='Con Tipo SpA').first()
+            self.assertIsNotNone(e)
+            self.assertIsNone(e.tipo_participacion)
+
+    def test_e03_form_sin_campo_tipo(self):
+        """GET /empresas/nueva no contiene 'DIRECTA', 'INDIRECTA' ni tipo_participacion."""
+        r = self.client.get('/empresas/nueva')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(b'DIRECTA', r.data)
+        self.assertNotIn(b'INDIRECTA', r.data)
+        self.assertNotIn(b'tipo_participacion', r.data)
+
+    def test_e04_editar_no_modifica_tipo(self):
+        """Editar empresa no toca tipo_participacion."""
+        self._post_empresa('55.666.777-8', 'Empresa Edit SpA')
+        with self.app_obj.app_context():
+            from models import Empresa, db
+            e = Empresa.query.filter_by(razon_social='Empresa Edit SpA').first()
+            eid = e.id
+        r = self.client.post(f'/empresa/{eid}/editar', data={
+            'rut': '55.666.777-8', 'razon_social': 'Empresa Edit SpA Mod',
+            'contribuyente_iva': 'on', 'tasa_ppm': '1.5',
+            'tipo_participacion': 'INDIRECTA',
+        }, follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+        with self.app_obj.app_context():
+            from models import Empresa
+            e = Empresa.query.get(eid)
+            self.assertIsNone(e.tipo_participacion)
+
+
+class TestAsientoDescripciones(unittest.TestCase):
+    """Item 12: Descripción detallada en libro mayor/diario para cuentas CxC/CxP."""
+
+    def setUp(self):
+        from app import create_app
+        from config import Config
+        class TestConfig(Config):
+            TESTING = True
+            SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+            WTF_CSRF_ENABLED = False
+            SECRET_KEY = 'test'
+        self.app_obj = create_app(TestConfig)
+        with self.app_obj.app_context():
+            from models import db, Empresa
+            from database import sembrar_plan_cuentas
+            db.create_all()
+            e = Empresa(rut='99.888.777-6', razon_social='Test Desc SpA', activa=True)
+            db.session.add(e)
+            db.session.flush()
+            self.eid = e.id
+            sembrar_plan_cuentas(e.id)
+            db.session.commit()
+
+    def _doc(self, tipo_libro='COMPRAS', contraparte='Empresa Test', rut_cont='76.111.222-3'):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            empresa_id=self.eid,
+            tipo_libro=tipo_libro,
+            tipo_dte='33',
+            folio=999,
+            fecha=date(2025, 4, 1),
+            fecha_emision=date(2025, 4, 1),
+            razon_social_contraparte=contraparte,
+            rut_contraparte=rut_cont,
+            monto_neto=100_000,
+            monto_exento=0,
+            iva=19_000,
+            total=119_000,
+        )
+
+    def test_d01_compra_proveedor_linea_muestra_contraparte(self):
+        """Compra: línea Proveedores (2.1.01) muestra nombre de contraparte."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_compra
+            from models import db
+            a = generar_asiento_compra(self._doc(contraparte='Gran Proveedor Ltda.'))
+            db.session.flush()
+            prov = next(l for l in a.lineas if l.cuenta.codigo == '2.1.01')
+            self.assertIn('Gran Proveedor Ltda.', prov.descripcion)
+            db.session.rollback()
+
+    def test_d02_compra_sin_contraparte_no_none_en_desc(self):
+        """Compra sin nombre contraparte: asiento.descripcion NO contiene 'None'."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_compra
+            from models import db
+            a = generar_asiento_compra(self._doc(contraparte=None, rut_cont=None))
+            db.session.flush()
+            self.assertNotIn('None', a.descripcion)
+            db.session.rollback()
+
+    def test_d03_compra_linea_gasto_muestra_contraparte(self):
+        """Compra: línea de Gasto (5.2.17) también muestra nombre de contraparte."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_compra
+            from models import db
+            a = generar_asiento_compra(self._doc(contraparte='Proveedor Gasto SA'))
+            db.session.flush()
+            gasto = next(l for l in a.lineas if l.cuenta.codigo == '5.2.17')
+            self.assertIn('Proveedor Gasto SA', gasto.descripcion)
+            db.session.rollback()
+
+    def test_d04_venta_clientes_linea_muestra_contraparte(self):
+        """Venta: línea Clientes (1.1.03) muestra nombre de contraparte."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_venta
+            from models import db
+            a = generar_asiento_venta(self._doc(tipo_libro='VENTAS', contraparte='Cliente Top SpA'))
+            db.session.flush()
+            cli = next(l for l in a.lineas if l.cuenta.codigo == '1.1.03')
+            self.assertIn('Cliente Top SpA', cli.descripcion)
+            db.session.rollback()
+
+    def test_d05_venta_sin_contraparte_no_none_en_desc(self):
+        """Venta sin nombre contraparte: asiento.descripcion NO contiene 'None'."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_venta
+            from models import db
+            a = generar_asiento_venta(self._doc(tipo_libro='VENTAS', contraparte=None, rut_cont=None))
+            db.session.flush()
+            self.assertNotIn('None', a.descripcion)
+            db.session.rollback()
+
+    def test_d06_venta_linea_ventas_muestra_contraparte(self):
+        """Venta: línea de Ventas (4.1.01) también muestra nombre de contraparte."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_venta
+            from models import db
+            a = generar_asiento_venta(self._doc(tipo_libro='VENTAS', contraparte='Cliente Ventas SpA'))
+            db.session.flush()
+            ventas = next(l for l in a.lineas if l.cuenta.codigo.startswith('4.1.0'))
+            self.assertIn('Cliente Ventas SpA', ventas.descripcion)
+            db.session.rollback()
+
+    def test_d07_banco_lineas_tienen_descripcion(self):
+        """Asiento bancario genérico: todas las líneas tienen descripción no vacía."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_banco
+            from models import db, Cuenta, MovimientoBanco
+            c_gasto = Cuenta.query.filter_by(empresa_id=self.eid, codigo='5.2.17').first()
+            mov = MovimientoBanco(empresa_id=self.eid, fecha=date(2025, 4, 1),
+                                  descripcion='PAGO PROVEEDOR XYZ', cargo=50_000, abono=0)
+            db.session.add(mov)
+            db.session.flush()
+            a = generar_asiento_banco(mov, c_gasto.id)
+            db.session.flush()
+            for l in a.lineas:
+                self.assertTrue(l.descripcion and l.descripcion.strip(),
+                                f'Línea sin descripción: cuenta {l.cuenta.codigo}')
+            db.session.rollback()
+
+    def test_d08_pago_proveedor_lineas_tienen_descripcion(self):
+        """Asiento pago_proveedor: todas las líneas tienen descripción."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_pago_proveedor
+            from models import db, MovimientoBanco
+            mov = MovimientoBanco(empresa_id=self.eid, fecha=date(2025, 4, 1),
+                                  descripcion='TRANSFERENCIA PROVEEDOR', cargo=119_000, abono=0)
+            db.session.add(mov)
+            db.session.flush()
+            a = generar_asiento_pago_proveedor(mov)
+            db.session.flush()
+            for l in a.lineas:
+                self.assertTrue(l.descripcion and l.descripcion.strip(),
+                                f'Línea sin descripción: cuenta {l.cuenta.codigo}')
+            db.session.rollback()
+
+    def test_d09_cobro_cliente_lineas_tienen_descripcion(self):
+        """Asiento cobro_cliente: todas las líneas tienen descripción."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_cobro_cliente
+            from models import db, MovimientoBanco
+            mov = MovimientoBanco(empresa_id=self.eid, fecha=date(2025, 4, 1),
+                                  descripcion='ABONO CLIENTE ABC', cargo=0, abono=119_000)
+            db.session.add(mov)
+            db.session.flush()
+            a = generar_asiento_cobro_cliente(mov)
+            db.session.flush()
+            for l in a.lineas:
+                self.assertTrue(l.descripcion and l.descripcion.strip(),
+                                f'Línea sin descripción: cuenta {l.cuenta.codigo}')
+            db.session.rollback()
+
+    def test_d10_honorario_sin_contraparte_no_none(self):
+        """Honorario sin contraparte: asiento.descripcion NO contiene 'None'."""
+        with self.app_obj.app_context():
+            from engine.asientos import generar_asiento_honorario
+            from models import db
+            doc = self._doc(tipo_libro='HONORARIOS', contraparte=None, rut_cont=None)
+            doc.monto_neto = 100_000
+            a = generar_asiento_honorario(doc)
+            db.session.flush()
+            self.assertNotIn('None', a.descripcion)
+            db.session.rollback()
+
+
 if __name__ == '__main__':
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -823,6 +1061,8 @@ if __name__ == '__main__':
     suite.addTests(loader.loadTestsFromTestCase(TestPMT))
     suite.addTests(loader.loadTestsFromTestCase(TestPrestamosFlask))
     suite.addTests(loader.loadTestsFromTestCase(TestF29))
+    suite.addTests(loader.loadTestsFromTestCase(TestEmpresaForm))
+    suite.addTests(loader.loadTestsFromTestCase(TestAsientoDescripciones))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

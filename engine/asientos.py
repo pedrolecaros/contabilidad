@@ -56,11 +56,12 @@ def generar_asiento_compra(doc: DocumentoSII) -> Asiento:
     # Gasto = total - IVA recuperable (absorbe IVA no recuperable si lo hay)
     gasto = total - iva
 
+    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     asiento = Asiento(
         empresa_id=emp_id,
         fecha=doc.fecha,
         numero=_proximo_numero(emp_id),
-        descripcion=f"Factura compra {doc.tipo_dte} N°{doc.folio} - {doc.razon_social_contraparte}",
+        descripcion=f"Factura compra {doc.tipo_dte} N°{doc.folio}" + (f" - {contraparte}" if contraparte else ""),
         origen='LIBRO_COMPRAS',
         estado='BORRADOR',
     )
@@ -68,11 +69,10 @@ def generar_asiento_compra(doc: DocumentoSII) -> Asiento:
     db.session.flush()
 
     lineas = []
-    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     if not es_nc:
         if gasto:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_gasto.id,
-                                       debe=gasto, haber=0, descripcion='Gasto', orden=1))
+                                       debe=gasto, haber=0, descripcion=contraparte or 'Gasto', orden=1))
         if iva:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_iva_cf.id,
                                        debe=iva, haber=0, descripcion='IVA CF', orden=2))
@@ -121,25 +121,25 @@ def generar_asiento_venta(doc: DocumentoSII) -> Asiento:
     iva = abs(doc.iva)
     total = abs(doc.total)
 
+    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     asiento = Asiento(
         empresa_id=emp_id,
         fecha=doc.fecha,
         numero=_proximo_numero(emp_id),
-        descripcion=f"Factura venta {doc.tipo_dte} N°{doc.folio} - {doc.razon_social_contraparte}",
+        descripcion=f"Factura venta {doc.tipo_dte} N°{doc.folio}" + (f" - {contraparte}" if contraparte else ""),
         origen='LIBRO_VENTAS',
         estado='BORRADOR',
     )
     db.session.add(asiento)
     db.session.flush()
 
-    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     lineas = []
     if not es_nc:
         lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_clientes.id,
                                    debe=total, haber=0, descripcion=contraparte or 'Cliente', orden=1))
         if neto:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_ventas.id,
-                                       debe=0, haber=neto, descripcion='Ingreso neto', orden=2))
+                                       debe=0, haber=neto, descripcion=contraparte or 'Ingreso neto', orden=2))
         if iva:
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_iva_df.id,
                                        debe=0, haber=iva, descripcion='IVA DF', orden=3))
@@ -178,18 +178,17 @@ def generar_asiento_honorario(doc: DocumentoSII) -> Asiento:
     retencion = round(bruto * TASA_RETENCION_HONORARIOS)
     liquido = bruto - retencion
 
+    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     asiento = Asiento(
         empresa_id=emp_id,
         fecha=doc.fecha,
         numero=_proximo_numero(emp_id),
-        descripcion=f"Honorarios N°{doc.folio} - {doc.razon_social_contraparte}",
+        descripcion=f"Honorarios N°{doc.folio}" + (f" - {contraparte}" if contraparte else ""),
         origen='HONORARIOS',
         estado='BORRADOR',
     )
     db.session.add(asiento)
     db.session.flush()
-
-    contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
     lineas = [
         LineaAsiento(asiento_id=asiento.id, cuenta_id=c_honor.id,
                      debe=bruto, haber=0, descripcion=contraparte or 'Honorario bruto', orden=1),
@@ -226,19 +225,20 @@ def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int) -> A
     db.session.add(asiento)
     db.session.flush()
 
+    desc = (mov.descripcion or '')[:80]
     if mov.cargo > 0:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_contra.id,
-                         debe=mov.cargo, haber=0, orden=1),
+                         debe=mov.cargo, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=0, haber=mov.cargo, orden=2),
+                         debe=0, haber=mov.cargo, descripcion=desc, orden=2),
         ]
     else:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=mov.abono, haber=0, orden=1),
+                         debe=mov.abono, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_contra.id,
-                         debe=0, haber=mov.abono, orden=2),
+                         debe=0, haber=mov.abono, descripcion=desc, orden=2),
         ]
 
     db.session.add_all(lineas)
@@ -324,19 +324,20 @@ def generar_asiento_pago_proveedor(mov: MovimientoBanco) -> Asiento:
     db.session.add(asiento)
     db.session.flush()
 
+    desc = (mov.descripcion or '')[:80]
     if (mov.cargo or 0) > 0:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
-                         debe=monto, haber=0, orden=1),
+                         debe=monto, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=0, haber=monto, orden=2),
+                         debe=0, haber=monto, descripcion=desc, orden=2),
         ]
     else:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=monto, haber=0, orden=1),
+                         debe=monto, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
-                         debe=0, haber=monto, orden=2),
+                         debe=0, haber=monto, descripcion=desc, orden=2),
         ]
     db.session.add_all(lineas)
     return asiento
@@ -366,19 +367,20 @@ def generar_asiento_cobro_cliente(mov: MovimientoBanco) -> Asiento:
     db.session.add(asiento)
     db.session.flush()
 
+    desc = (mov.descripcion or '')[:80]
     if (mov.abono or 0) > 0:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=monto, haber=0, orden=1),
+                         debe=monto, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_cli.id,
-                         debe=0, haber=monto, orden=2),
+                         debe=0, haber=monto, descripcion=desc, orden=2),
         ]
     else:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_cli.id,
-                         debe=monto, haber=0, orden=1),
+                         debe=monto, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=0, haber=monto, orden=2),
+                         debe=0, haber=monto, descripcion=desc, orden=2),
         ]
     db.session.add_all(lineas)
     return asiento

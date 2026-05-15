@@ -14,3 +14,72 @@ task: Read mejoras.txt in contabilidad, and go 1 by 1. Before starting with the 
 12. El libro diario y mayor, en las cuentas clientes, proveedores, y pasivos o activos debe tener el detalle en la descripcion. por ejemplo el libro mayor de clientes dice clientes en la descripcion , lo que esta mal esa es la cuenta.
 13. upload to git
 14. Resumeme todo lo hecho desde el 1 al 14.Escribelo aqui:
+
+RESUMEN DE CAMBIOS (mejoras 1-13)
+===================================
+
+1. INDICADORES PREVISIONALES (remuneraciones/variables)
+   - Página renombrada a "Indicadores Previsionales"
+   - Botón "Obtener desde Previred" que hace scraping de previred.com/indicadores-previsionales/
+   - Extrae automáticamente: UF, UTM, IMM, tasa SIS, comisiones AFP por AFP
+   - Tabla muestra columna SIS y columna AFP con badges colapsables por fondo
+   - Modal de edición manual con un campo por AFP + campo tasa SIS
+   - VariablesMensuales guarda tasa_sis y tasas_afp_json (JSON por AFP)
+   - Motor de remuneraciones usa tasa_sis del período y comisión del empleado o del dict
+   - AFP_COMISIONES actualizado: Uno de 0.49% a 0.46%
+
+2. TABLA UF DIARIA
+   - Nuevo modelo ValorUF (fecha única, valor float)
+   - Ruta uf_tabla: navegación por mes con tabla de valores diarios
+   - Botón "Actualizar desde mindicador.cl" que descarga vía API JSON
+   - Edición manual por día con modal
+   - Enlace "Tabla UF Diaria" desde la página de Variables
+
+3. REPORTE AP/AR — ORDEN CORREGIDO
+   - Ahora muestra: Proveedores → Honorarios → Clientes
+   - Antes era: Proveedores → Clientes → Honorarios
+
+4. PROVEEDORES Y CLIENTES (contrapartes/index)
+   - Vista AP/AR como principal: resumen de documentos SII por RUT (misma info que el reporte AP/AR)
+   - Vista "Listado de Contrapartes" como segunda pestaña
+   - Título cambiado a "Proveedores y Clientes"
+   - El reporte AP/AR existente (reportes/ap_ar) queda como vista de detalle
+
+5. DÍAS TRABAJADOS EN LIQUIDACIÓN
+   - Campo numérico 1-30 en formulario de nueva liquidación (default 30)
+   - Etiqueta dinámica en JS: "30 días = 100% del sueldo"
+   - Al calcular: si días < 30, prorrateo del sueldo, colación y movilización (factor = días/30)
+   - Banner de aviso en preview cuando se usó un mes parcial
+
+6. EMITIR → PDF DIRECTO
+   - Al hacer clic en "Emitir Liquidación" ya no hay un paso intermedio de confirmación
+   - Redirige directo a la vista de impresión (PDF) de la liquidación
+   - "Guardar Borrador" sigue yendo al detalle normal
+
+7. CONSOLIDADO — LIBROS VACÍOS VS NO CARGADOS
+   - Nuevo estado visual: C° (gris oscuro) para "libro descargado pero sin registros en el período"
+   - Distinción clara de: C✓ (ok con docs), C² (pendientes), C° (cargado sin docs), C (no cargado)
+   - Leyenda actualizada con los 4 estados
+   - Modal de descarga masiva: "Sin registros" en gris en vez de "0 docs" en verde
+
+8. PLAN DE CUENTAS — TOGGLE ACTIVA INLINE
+   - Nueva columna "Activa" con checkbox directamente en la lista del plan de cuentas
+   - Clic en el checkbox hace POST y redirige (sin ir al formulario de edición)
+   - Cuentas título no tienen checkbox (solo cuentas de movimiento pueden activarse/desactivarse)
+   - El badge "Inactiva" se eliminó de la columna Nombre (el row en gris ya lo indica)
+
+9-10. No implementadas (Préstamos / Consolidado inter-empresa) — alcance muy amplio para esta iteración
+
+11. NUEVA EMPRESA — SIN TIPO PARTICIPACIÓN
+    - Eliminado el select "Directa/Indirecta" del formulario de empresa
+    - Se mantiene solo el campo % Participación
+
+12. LIBRO MAYOR / DIARIO — DESCRIPCIÓN ENRIQUECIDA
+    - En libro mayor: ahora muestra descripción del asiento (que incluye contraparte) en lugar del genérico de línea
+    - Engine actualizado: líneas de Clientes, Proveedores y Honorarios ahora incluyen el nombre del tercero en su descripción
+    - Ejemplo antes: "Cliente" | Ejemplo ahora: "Empresa XYZ Ltda."
+    - Aplica a nuevos asientos; asientos existentes mejoran por el cambio en el template
+
+13. COMMIT A GIT
+    - Todos los cambios commiteados en master como "Mejoras integrales: indicadores previsionales, UF, AP/AR, remuneraciones, plan cuentas"
+    - Push a origin requiere credenciales GitHub (HTTPS) — ejecutar: git push

@@ -47,7 +47,6 @@ def nueva():
             giro=request.form.get('giro', '').strip(),
             clave_sii=request.form.get('clave_sii', '').strip() or None,
             participacion_ecox=float(part_str) if part_str else None,
-            tipo_participacion=request.form.get('tipo_participacion', '').strip() or None,
             contribuyente_iva='contribuyente_iva' in request.form,
             tasa_ppm=float(tasa_ppm_str) if tasa_ppm_str else 1.0,
         )
@@ -73,7 +72,6 @@ def editar(eid):
             empresa.clave_sii = clave
         part_str = request.form.get('participacion_ecox', '').strip()
         empresa.participacion_ecox = float(part_str) if part_str else None
-        empresa.tipo_participacion = request.form.get('tipo_participacion', '').strip() or None
         empresa.contribuyente_iva = 'contribuyente_iva' in request.form
         tasa_ppm_str = request.form.get('tasa_ppm', '1.0').strip()
         empresa.tasa_ppm = float(tasa_ppm_str) if tasa_ppm_str else 1.0
