@@ -1,6 +1,8 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, Response
 from datetime import date
 import calendar
+import csv
+import io
 from models import db, Empresa, Cuenta, LineaAsiento, Asiento, DocumentoSII
 from sqlalchemy import func, case
 from collections import defaultdict
@@ -194,29 +196,57 @@ def resultado(eid):
     empresa = Empresa.query.get_or_404(eid)
     desde, hasta = _rango_fechas()
 
+    # Optional comparison period
+    comparar_desde_str = request.args.get('comparar_desde', '')
+    comparar_hasta_str = request.args.get('comparar_hasta', '')
+    comparar_desde = comparar_hasta = None
+    if comparar_desde_str and comparar_hasta_str:
+        try:
+            comparar_desde = date.fromisoformat(comparar_desde_str)
+            comparar_hasta = date.fromisoformat(comparar_hasta_str)
+        except ValueError:
+            pass
+
     cuentas = (Cuenta.query
                .filter_by(empresa_id=eid, activa=True)
                .filter(Cuenta.tipo.in_(['INGRESO', 'GASTO']))
                .order_by(Cuenta.codigo).all())
 
-    total_ingresos = 0.0
-    total_gastos = 0.0
-    filas = []
-    for c in cuentas:
-        saldo = c.saldo(desde=desde, hasta=hasta)
-        filas.append({'cuenta': c, 'saldo': saldo})
-        if not c.es_titulo:
-            if c.tipo == 'INGRESO':
-                total_ingresos += saldo
-            else:
-                total_gastos += saldo
+    def _calcular_filas(d_desde, d_hasta):
+        tot_ing = 0.0
+        tot_gas = 0.0
+        fs = []
+        for c in cuentas:
+            saldo = c.saldo(desde=d_desde, hasta=d_hasta)
+            fs.append({'cuenta': c, 'saldo': saldo})
+            if not c.es_titulo:
+                if c.tipo == 'INGRESO':
+                    tot_ing += saldo
+                else:
+                    tot_gas += saldo
+        return fs, tot_ing, tot_gas
 
+    filas, total_ingresos, total_gastos = _calcular_filas(desde, hasta)
     resultado_neto = total_ingresos - total_gastos
+
+    filas_cmp = []
+    total_ingresos_cmp = total_gastos_cmp = resultado_neto_cmp = None
+    if comparar_desde and comparar_hasta:
+        filas_cmp, total_ingresos_cmp, total_gastos_cmp = _calcular_filas(comparar_desde, comparar_hasta)
+        resultado_neto_cmp = total_ingresos_cmp - total_gastos_cmp
+
+    # Build comparison dict keyed by cuenta.id
+    cmp_por_cuenta = {f['cuenta'].id: f['saldo'] for f in filas_cmp} if filas_cmp else {}
 
     return render_template('reportes/resultado.html', empresa=empresa,
                            filas=filas, total_ingresos=total_ingresos,
                            total_gastos=total_gastos, resultado_neto=resultado_neto,
-                           desde=desde, hasta=hasta)
+                           desde=desde, hasta=hasta,
+                           comparar_desde=comparar_desde, comparar_hasta=comparar_hasta,
+                           cmp_por_cuenta=cmp_por_cuenta,
+                           total_ingresos_cmp=total_ingresos_cmp,
+                           total_gastos_cmp=total_gastos_cmp,
+                           resultado_neto_cmp=resultado_neto_cmp)
 
 
 @bp.route('/empresa/<int:eid>/reportes/ap-ar')
@@ -466,6 +496,224 @@ def mayor_imprimir(eid):
                            cuenta_sel=cuenta_sel, movimientos=movimientos,
                            saldo_inicial=saldo_inicial, desde=desde, hasta=hasta,
                            now=datetime.now())
+
+
+@bp.route('/empresa/<int:eid>/reportes/mayor/csv')
+def mayor_csv(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    desde, hasta = _rango_fechas()
+    cuenta_id = request.args.get('cuenta_id', type=int)
+    cuenta_sel = Cuenta.query.get(cuenta_id) if cuenta_id else None
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['Empresa', empresa.razon_social])
+    writer.writerow(['Período', f'{desde.isoformat()} al {hasta.isoformat()}'])
+    writer.writerow([])
+
+    if cuenta_sel:
+        writer.writerow(['Cuenta', f'{cuenta_sel.codigo} – {cuenta_sel.nombre}'])
+        writer.writerow([])
+        writer.writerow(['Fecha', 'N° Asiento', 'Descripción', 'Debe', 'Haber', 'Saldo'])
+
+        # Saldo inicial
+        si = (db.session.query(
+                  func.sum(LineaAsiento.debe).label('debe'),
+                  func.sum(LineaAsiento.haber).label('haber'),
+              )
+              .join(Asiento)
+              .filter(
+                  LineaAsiento.cuenta_id == cuenta_id,
+                  Asiento.estado == 'CONFIRMADO',
+                  Asiento.fecha < desde,
+              )
+              .first())
+        si_debe = si.debe or 0.0
+        si_haber = si.haber or 0.0
+        if cuenta_sel.naturaleza == 'DEUDORA':
+            saldo = si_debe - si_haber
+        else:
+            saldo = si_haber - si_debe
+        writer.writerow([desde.isoformat(), '', 'Saldo inicial', '', '', round(saldo)])
+
+        movimientos = (LineaAsiento.query
+                       .join(Asiento)
+                       .filter(
+                           LineaAsiento.cuenta_id == cuenta_id,
+                           Asiento.estado == 'CONFIRMADO',
+                           Asiento.fecha >= desde,
+                           Asiento.fecha <= hasta,
+                       )
+                       .order_by(Asiento.fecha, Asiento.numero)
+                       .all())
+        for l in movimientos:
+            if cuenta_sel.naturaleza == 'DEUDORA':
+                saldo += (l.debe or 0) - (l.haber or 0)
+            else:
+                saldo += (l.haber or 0) - (l.debe or 0)
+            writer.writerow([
+                l.asiento.fecha.isoformat(),
+                l.asiento.numero,
+                l.descripcion or l.asiento.descripcion or '',
+                round(l.debe or 0),
+                round(l.haber or 0),
+                round(saldo),
+            ])
+    else:
+        writer.writerow(['Sin cuenta seleccionada'])
+
+    output.seek(0)
+    nombre = f'mayor_{cuenta_sel.codigo if cuenta_sel else "sin_cuenta"}_{desde}_{hasta}.csv'
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{nombre}"'},
+    )
+
+
+@bp.route('/empresa/<int:eid>/reportes/diario/csv')
+def diario_csv(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    desde, hasta = _rango_fechas()
+    asientos = (Asiento.query
+                .filter_by(empresa_id=eid, estado='CONFIRMADO')
+                .filter(Asiento.fecha >= desde, Asiento.fecha <= hasta)
+                .order_by(Asiento.numero)
+                .all())
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['Empresa', empresa.razon_social])
+    writer.writerow(['Período', f'{desde.isoformat()} al {hasta.isoformat()}'])
+    writer.writerow([])
+    writer.writerow(['N° Asiento', 'Fecha', 'Descripción Asiento', 'Código Cuenta', 'Cuenta', 'Descripción Línea', 'Debe', 'Haber'])
+
+    for a in asientos:
+        for l in a.lineas:
+            writer.writerow([
+                a.numero,
+                a.fecha.isoformat(),
+                a.descripcion or '',
+                l.cuenta.codigo,
+                l.cuenta.nombre,
+                l.descripcion or '',
+                round(l.debe or 0),
+                round(l.haber or 0),
+            ])
+
+    output.seek(0)
+    nombre = f'diario_{desde}_{hasta}.csv'
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{nombre}"'},
+    )
+
+
+@bp.route('/empresa/<int:eid>/reportes/balance/csv')
+def balance_csv(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    desde, hasta = _rango_fechas()
+    sumas = _sumas_balance(eid, desde, hasta)
+    cuentas = (Cuenta.query
+               .filter_by(empresa_id=eid, activa=True)
+               .order_by(Cuenta.codigo).all())
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['Empresa', empresa.razon_social])
+    writer.writerow(['Período', f'{desde.isoformat()} al {hasta.isoformat()}'])
+    writer.writerow([])
+    writer.writerow(['Código', 'Cuenta', 'Tipo', 'Sumas Débito', 'Sumas Crédito',
+                     'Saldo Deudor', 'Saldo Acreedor',
+                     'Balance Activo', 'Balance Pasivo/Patr.',
+                     'ER Pérdidas', 'ER Ganancias'])
+
+    for c in cuentas:
+        if c.es_titulo:
+            continue
+        sd, sh = sumas.get(c.id, (0.0, 0.0))
+        sald = max(sd - sh, 0)
+        sala = max(sh - sd, 0)
+        if c.tipo in ('GASTO', 'INGRESO'):
+            erd, erh, bgd, bgh = sald, sala, 0.0, 0.0
+        else:
+            erd, erh, bgd, bgh = 0.0, 0.0, sald, sala
+        if sd or sh:
+            writer.writerow([
+                c.codigo, c.nombre, c.tipo,
+                round(sd), round(sh),
+                round(sald), round(sala),
+                round(bgd), round(bgh),
+                round(erd), round(erh),
+            ])
+
+    output.seek(0)
+    nombre = f'balance_{desde}_{hasta}.csv'
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{nombre}"'},
+    )
+
+
+@bp.route('/empresa/<int:eid>/reportes/flujo-iva')
+def flujo_iva(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    if not empresa.contribuyente_iva:
+        flash('Esta empresa no está configurada como contribuyente de IVA.', 'warning')
+        return redirect(url_for('reportes.balance', eid=eid))
+
+    desde, hasta = _rango_fechas()
+
+    # Group by month: year-month
+    rows = (db.session.query(
+                func.strftime('%Y-%m', DocumentoSII.fecha).label('mes'),
+                DocumentoSII.tipo_libro,
+                func.sum(DocumentoSII.iva).label('total_iva'),
+            )
+            .filter(
+                DocumentoSII.empresa_id == eid,
+                DocumentoSII.tipo_libro.in_(['VENTAS', 'COMPRAS']),
+                DocumentoSII.fecha >= desde,
+                DocumentoSII.fecha <= hasta,
+            )
+            .group_by(func.strftime('%Y-%m', DocumentoSII.fecha), DocumentoSII.tipo_libro)
+            .order_by(func.strftime('%Y-%m', DocumentoSII.fecha))
+            .all())
+
+    # Build month-by-month breakdown
+    meses = {}
+    for r in rows:
+        mes = r.mes or 'Sin fecha'
+        if mes not in meses:
+            meses[mes] = {'debito': 0.0, 'credito': 0.0}
+        if r.tipo_libro == 'VENTAS':
+            meses[mes]['debito'] += r.total_iva or 0.0
+        elif r.tipo_libro == 'COMPRAS':
+            meses[mes]['credito'] += r.total_iva or 0.0
+
+    filas = []
+    for mes, vals in sorted(meses.items()):
+        saldo = vals['debito'] - vals['credito']
+        filas.append({
+            'mes': mes,
+            'debito': vals['debito'],
+            'credito': vals['credito'],
+            'saldo': saldo,
+        })
+
+    total_debito = sum(f['debito'] for f in filas)
+    total_credito = sum(f['credito'] for f in filas)
+    total_saldo = total_debito - total_credito
+
+    return render_template('reportes/flujo_iva.html',
+                           empresa=empresa,
+                           desde=desde, hasta=hasta,
+                           filas=filas,
+                           total_debito=total_debito,
+                           total_credito=total_credito,
+                           total_saldo=total_saldo)
 
 
 @bp.route('/empresa/<int:eid>/ajuste-uf', methods=['GET', 'POST'])

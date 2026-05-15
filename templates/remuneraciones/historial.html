@@ -27,46 +27,167 @@
 </div>
 
 {% if liqs %}
-<div class="card shadow-sm">
+
+{# ── Vista comparativa ── #}
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <strong>Tabla comparativa</strong>
+    <button class="btn btn-outline-secondary btn-sm" type="button"
+            data-bs-toggle="collapse" data-bs-target="#tabla-detalle"
+            aria-expanded="false" aria-controls="tabla-detalle">
+      <i class="bi bi-list-ul me-1"></i>Ver detalle por liquidación
+    </button>
+  </div>
   <div class="table-responsive">
-    <table class="table table-hover table-sm mb-0">
+    <table class="table table-hover table-sm table-bordered mb-0 align-middle">
       <thead class="table-dark">
         <tr>
-          <th>Período</th>
-          <th class="text-end">Total Haberes</th>
-          <th class="text-end">Descuentos</th>
-          <th class="text-end">Líquido</th>
-          <th class="text-end">Costo Empresa</th>
-          <th>Estado</th>
-          <th></th>
+          <th class="text-nowrap">Período</th>
+          <th class="text-end text-nowrap">Sueldo Base</th>
+          <th class="text-end text-nowrap">Gratificación</th>
+          <th class="text-end text-nowrap">Otros Haberes</th>
+          <th class="text-end text-nowrap">Total Haberes</th>
+          <th class="text-end text-nowrap">AFP</th>
+          <th class="text-end text-nowrap">Salud</th>
+          <th class="text-end text-nowrap">Imp. Renta</th>
+          <th class="text-end text-nowrap">Total Desc.</th>
+          <th class="text-end text-nowrap fw-bold">Líquido</th>
+          <th class="text-end text-nowrap">Costo Empresa</th>
+          <th class="text-nowrap">Estado</th>
         </tr>
       </thead>
       <tbody>
+        {% set ns = namespace(
+            sum_sueldo=0, sum_grati=0, sum_otros=0, sum_haberes=0,
+            sum_afp=0, sum_salud=0, sum_imp=0, sum_desc=0,
+            sum_liq=0, sum_costo=0, count=liqs|length
+        ) %}
         {% for l in liqs %}
+        {% set ns.sum_sueldo   = ns.sum_sueldo   + (l.sueldo_base      | float) %}
+        {% set ns.sum_grati    = ns.sum_grati    + (l.gratificacion     | float) %}
+        {% set ns.sum_otros    = ns.sum_otros    + (l.otros_haberes     | float) %}
+        {% set ns.sum_haberes  = ns.sum_haberes  + (l.total_haberes     | float) %}
+        {% set ns.sum_afp      = ns.sum_afp      + (l.afp               | float) %}
+        {% set ns.sum_salud    = ns.sum_salud    + (l.salud             | float) %}
+        {% set ns.sum_imp      = ns.sum_imp      + (l.impuesto_renta    | float) %}
+        {% set ns.sum_desc     = ns.sum_desc     + (l.total_descuentos  | float) %}
+        {% set ns.sum_liq      = ns.sum_liq      + (l.liquido           | float) %}
+        {% set ns.sum_costo    = ns.sum_costo    + (l.costo_empresa     | float) %}
         <tr>
-          <td><strong>{{ l.periodo }}</strong></td>
-          <td class="text-end">$ {{ num(l.total_haberes) }}</td>
-          <td class="text-end text-danger">$ {{ num(l.total_descuentos) }}</td>
-          <td class="text-end text-success"><strong>$ {{ num(l.liquido) }}</strong></td>
-          <td class="text-end">$ {{ num(l.costo_empresa) }}</td>
-          <td><span class="badge {{ 'bg-success' if l.estado == 'EMITIDA' else 'bg-warning text-dark' }}">{{ l.estado }}</span></td>
-          <td class="text-end text-nowrap">
-            <a href="{{ url_for('remuneraciones.detalle', eid=empresa.id, liq_id=l.id) }}"
-               class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i></a>
-            <a href="{{ url_for('remuneraciones.imprimir', eid=empresa.id, liq_id=l.id) }}"
-               class="btn btn-outline-secondary btn-sm" target="_blank"><i class="bi bi-printer"></i></a>
-            <form method="post" action="{{ url_for('remuneraciones.eliminar_liq', eid=empresa.id, liq_id=l.id) }}"
-                  style="display:inline"
-                  onsubmit="return confirm('¿Eliminar liquidación {{ l.periodo }}?')">
-              <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
-            </form>
+          <td class="text-nowrap"><strong>{{ l.periodo }}</strong></td>
+          <td class="text-end text-nowrap">$ {{ num(l.sueldo_base) }}</td>
+          <td class="text-end text-nowrap">$ {{ num(l.gratificacion) }}</td>
+          <td class="text-end text-nowrap">$ {{ num(l.otros_haberes) }}</td>
+          <td class="text-end text-nowrap">$ {{ num(l.total_haberes) }}</td>
+          <td class="text-end text-nowrap text-danger">$ {{ num(l.afp) }}</td>
+          <td class="text-end text-nowrap text-danger">$ {{ num(l.salud) }}</td>
+          <td class="text-end text-nowrap text-danger">$ {{ num(l.impuesto_renta) }}</td>
+          <td class="text-end text-nowrap text-danger">$ {{ num(l.total_descuentos) }}</td>
+          <td class="text-end text-nowrap text-success fw-bold">$ {{ num(l.liquido) }}</td>
+          <td class="text-end text-nowrap">$ {{ num(l.costo_empresa) }}</td>
+          <td class="text-nowrap">
+            <span class="badge {{ 'bg-success' if l.estado == 'EMITIDA' else 'bg-warning text-dark' }}">{{ l.estado }}</span>
           </td>
         </tr>
         {% endfor %}
       </tbody>
+      <tfoot class="table-secondary fw-bold">
+        <tr>
+          <td class="text-nowrap">
+            TOTAL&nbsp;/&nbsp;<span class="fw-normal text-muted small">PROM.</span>
+          </td>
+          <td class="text-end text-nowrap">
+            $ {{ num(ns.sum_sueldo) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_sueldo / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap">
+            $ {{ num(ns.sum_grati) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_grati / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap">
+            $ {{ num(ns.sum_otros) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_otros / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap">
+            $ {{ num(ns.sum_haberes) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_haberes / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap text-danger">
+            $ {{ num(ns.sum_afp) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_afp / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap text-danger">
+            $ {{ num(ns.sum_salud) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_salud / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap text-danger">
+            $ {{ num(ns.sum_imp) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_imp / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap text-danger">
+            $ {{ num(ns.sum_desc) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_desc / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap text-success">
+            $ {{ num(ns.sum_liq) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_liq / ns.count) }}</span>
+          </td>
+          <td class="text-end text-nowrap">
+            $ {{ num(ns.sum_costo) }}<br>
+            <span class="fw-normal text-muted small">$ {{ num(ns.sum_costo / ns.count) }}</span>
+          </td>
+          <td>{{ ns.count }} meses</td>
+        </tr>
+      </tfoot>
     </table>
   </div>
 </div>
+
+{# ── Detalle por liquidación (colapsable) ── #}
+<div class="collapse" id="tabla-detalle">
+  <div class="card shadow-sm">
+    <div class="card-header py-2"><strong>Detalle por liquidación</strong></div>
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Período</th>
+            <th class="text-end">Total Haberes</th>
+            <th class="text-end">Descuentos</th>
+            <th class="text-end">Líquido</th>
+            <th class="text-end">Costo Empresa</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in liqs %}
+          <tr>
+            <td><strong>{{ l.periodo }}</strong></td>
+            <td class="text-end">$ {{ num(l.total_haberes) }}</td>
+            <td class="text-end text-danger">$ {{ num(l.total_descuentos) }}</td>
+            <td class="text-end text-success"><strong>$ {{ num(l.liquido) }}</strong></td>
+            <td class="text-end">$ {{ num(l.costo_empresa) }}</td>
+            <td><span class="badge {{ 'bg-success' if l.estado == 'EMITIDA' else 'bg-warning text-dark' }}">{{ l.estado }}</span></td>
+            <td class="text-end text-nowrap">
+              <a href="{{ url_for('remuneraciones.detalle', eid=empresa.id, liq_id=l.id) }}"
+                 class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i></a>
+              <a href="{{ url_for('remuneraciones.imprimir', eid=empresa.id, liq_id=l.id) }}"
+                 class="btn btn-outline-secondary btn-sm" target="_blank"><i class="bi bi-printer"></i></a>
+              <form method="post" action="{{ url_for('remuneraciones.eliminar_liq', eid=empresa.id, liq_id=l.id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('¿Eliminar liquidación {{ l.periodo }}?')">
+                <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 {% else %}
 <div class="alert alert-info">No hay liquidaciones para este empleado.</div>
 {% endif %}

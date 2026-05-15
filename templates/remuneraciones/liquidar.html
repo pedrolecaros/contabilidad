@@ -19,9 +19,27 @@
   </a>
 </div>
 
+{% if ultima_liq %}
+<div id="ultima-liq-data" style="display:none"
+     data-horas="{{ ultima_liq.horas_extra }}"
+     data-colacion="{{ ultima_liq.bono_colacion }}"
+     data-movilizacion="{{ ultima_liq.bono_movilizacion }}"
+     data-otros="{{ ultima_liq.otros_haberes }}"
+     data-periodo="{{ ultima_liq.periodo }}">
+</div>
+{% endif %}
+
 {% if not preview %}
 {# ── Paso 1: Formulario de entrada ── #}
 <div class="card shadow-sm" style="max-width:700px">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="small text-muted">Ingrese los datos variables del período</span>
+    {% if ultima_liq %}
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-copiar-anterior">
+      <i class="bi bi-clipboard me-1"></i>Copiar del mes anterior ({{ ultima_liq.periodo }})
+    </button>
+    {% endif %}
+  </div>
   <div class="card-body">
     <form method="post">
       <div class="row g-3">
@@ -272,5 +290,38 @@ function actualizarFactor(dias) {
   const lbl = document.getElementById('factor_label');
   if (lbl) lbl.textContent = `${d} días = ${pct}% del sueldo`;
 }
+
+// Copiar del mes anterior
+document.addEventListener('DOMContentLoaded', function () {
+  const btn = document.getElementById('btn-copiar-anterior');
+  if (!btn) return;
+  const dataDiv = document.getElementById('ultima-liq-data');
+  if (!dataDiv) return;
+
+  btn.addEventListener('click', function () {
+    const horas        = dataDiv.dataset.horas        || '0';
+    const colacion     = dataDiv.dataset.colacion     || '0';
+    const movilizacion = dataDiv.dataset.movilizacion || '0';
+    const otros        = dataDiv.dataset.otros        || '0';
+
+    const fHoras = document.querySelector('input[name="horas_extra"]');
+    const fOtros = document.querySelector('input[name="otros"]');
+    const fDias  = document.getElementById('dias_trabajados');
+
+    if (fHoras) fHoras.value = horas;
+    if (fOtros) fOtros.value = otros;
+    if (fDias)  { fDias.value = 30; actualizarFactor(30); }
+
+    // Show confirmation note
+    let nota = document.getElementById('nota-copiado');
+    if (!nota) {
+      nota = document.createElement('div');
+      nota.id = 'nota-copiado';
+      nota.className = 'alert alert-success py-2 small mt-2';
+      nota.innerHTML = '<i class="bi bi-check-circle me-1"></i>Valores del período anterior cargados. Verifica antes de confirmar.';
+      btn.closest('.card-header').insertAdjacentElement('afterend', nota);
+    }
+  });
+});
 </script>
 {% endblock %}

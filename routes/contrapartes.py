@@ -14,6 +14,36 @@ TIPO_LIBRO_MAP = {
 }
 
 
+def _validar_rut_dv(rut: str) -> bool:
+    """Valida el dígito verificador de un RUT chileno usando módulo 11."""
+    try:
+        rut_clean = rut.strip().upper().replace('.', '').replace(' ', '')
+        if not rut_clean:
+            return True
+        if '-' in rut_clean:
+            body, dv = rut_clean.rsplit('-', 1)
+        else:
+            body, dv = rut_clean[:-1], rut_clean[-1]
+        body = body.lstrip('0') or '0'
+        if not body.isdigit():
+            return False
+        digits = [int(c) for c in body]
+        factors = [2, 3, 4, 5, 6, 7]
+        total = 0
+        for i, d in enumerate(reversed(digits)):
+            total += d * factors[i % 6]
+        remainder = 11 - (total % 11)
+        if remainder == 11:
+            expected = '0'
+        elif remainder == 10:
+            expected = 'K'
+        else:
+            expected = str(remainder)
+        return dv == expected
+    except Exception:
+        return True
+
+
 def _periodo(mes_str):
     desde = date.fromisoformat(mes_str + '-01')
     ultimo = calendar.monthrange(desde.year, desde.month)[1]
@@ -115,6 +145,8 @@ def nueva(eid):
         if not rut or not razon_social:
             flash('RUT y razón social son obligatorios', 'danger')
         else:
+            if not _validar_rut_dv(rut):
+                flash(f'Advertencia: RUT {rut} tiene dígito verificador inválido', 'warning')
             c = Contraparte(
                 empresa_id=eid,
                 rut=rut,
@@ -145,6 +177,8 @@ def editar(eid, cid):
 
     if request.method == 'POST':
         cp.rut = request.form.get('rut', '').strip()
+        if not _validar_rut_dv(cp.rut):
+            flash(f'Advertencia: RUT {cp.rut} tiene dígito verificador inválido', 'warning')
         cp.razon_social = request.form.get('razon_social', '').strip()
         cp.tipo = request.form.get('tipo', 'PROVEEDOR')
         cp.email = request.form.get('email', '').strip() or None

@@ -62,6 +62,13 @@
               </div>
               <div class="form-text">Tasa por defecto en el F29</div>
             </div>
+            <div class="col-md-6">
+              <label class="form-label small">Régimen Tributario</label>
+              <select name="regimen" class="form-select form-select-sm">
+                <option value="GENERAL" {% if not empresa or empresa.regimen != 'PYME' %}selected{% endif %}>Régimen General</option>
+                <option value="PYME" {% if empresa and empresa.regimen == 'PYME' %}selected{% endif %}>PYME (14 ter)</option>
+              </select>
+            </div>
           </div>
           <hr>
           <h6 class="text-muted small mb-2"><i class="bi bi-diagram-3 me-1"></i>Participación Ecox (opcional)</h6>
@@ -92,6 +99,28 @@
             </div>
             <div class="form-text">Se usa para descargar libros del SII automáticamente. Se guarda en la base de datos local.</div>
           </div>
+          <hr>
+          <h6 class="text-muted small mb-2"><i class="bi bi-image me-1"></i>Logo e imagen</h6>
+          <div class="mb-3">
+            <label class="form-label">Logo URL</label>
+            <input type="text" name="logo_url" class="form-control"
+                   value="{{ empresa.logo_url if empresa and empresa.logo_url else '' }}"
+                   placeholder="URL de la imagen del logo (o ruta relativa)">
+            <div class="form-text">Se mostrará en liquidaciones impresas. Deje en blanco si no hay logo.</div>
+          </div>
+          {% if not empresa %}
+          <hr>
+          <h6 class="text-muted small mb-2"><i class="bi bi-list-ul me-1"></i>Plan de Cuentas</h6>
+          <div class="mb-3">
+            <label class="form-label small">Plan de Cuentas</label>
+            <select name="origen_plan" class="form-select form-select-sm">
+              <option value="">PCGA Chile (por defecto)</option>
+              {% for e in otras_empresas %}
+              <option value="{{ e.id }}">Copiar de: {{ e.razon_social }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary">
               {% if empresa %}Guardar cambios{% else %}Crear empresa{% endif %}

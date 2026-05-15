@@ -461,6 +461,12 @@ def generar_asiento_cuota_prestamo(cuota) -> Asiento:
 def confirmar_asiento(asiento: Asiento):
     if not asiento.cuadrado:
         raise ValueError(f"Asiento no cuadra: Debe={asiento.total_debe} Haber={asiento.total_haber}")
+    for linea in asiento.lineas:
+        cuenta = Cuenta.query.get(linea.cuenta_id)
+        if cuenta and not cuenta.activa:
+            raise ValueError(f"La cuenta '{cuenta.nombre}' ({cuenta.codigo}) está inactiva")
+        if cuenta and cuenta.es_titulo:
+            raise ValueError(f"La cuenta '{cuenta.nombre}' ({cuenta.codigo}) es de título y no puede recibir movimientos")
     asiento.estado = 'CONFIRMADO'
 
 

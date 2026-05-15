@@ -183,8 +183,11 @@ def nuevo(eid):
             flash(f'Asiento N°{numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f})', 'warning')
         return redirect(url_for('asientos.detalle', eid=eid, aid=asiento.id))
 
+    ultimo_asiento = Asiento.query.filter_by(empresa_id=eid, estado='CONFIRMADO').order_by(Asiento.fecha.desc()).first()
+    fecha_default = ultimo_asiento.fecha.isoformat() if ultimo_asiento else date.today().isoformat()
     return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
-                           cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]')
+                           cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]',
+                           fecha_default=fecha_default)
 
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/editar', methods=['GET', 'POST'])

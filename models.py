@@ -18,6 +18,8 @@ class Empresa(db.Model):
     tipo_participacion  = db.Column(db.String(10))    # DIRECTA / INDIRECTA
     contribuyente_iva = db.Column(db.Boolean, default=True)  # False → IVA compras es gasto
     tasa_ppm = db.Column(db.Float, default=1.0)              # % PPM (ej: 1.0 = 1%)
+    regimen = db.Column(db.String(10), default='GENERAL')    # PYME | GENERAL
+    logo_url = db.Column(db.String(500))
 
     cuentas = db.relationship('Cuenta', backref='empresa', lazy='dynamic')
     asientos = db.relationship('Asiento', backref='empresa', lazy='dynamic')

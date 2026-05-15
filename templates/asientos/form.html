@@ -25,12 +25,12 @@
     {% endif %}
     <div class="card shadow-sm">
       <div class="card-body">
-        <form method="post" id="formAsiento">
+        <form method="post" id="formAsiento" class="warn-unsaved">
           <div class="row g-3 mb-4">
             <div class="col-md-3">
               <label class="form-label fw-semibold">Fecha <span class="text-danger">*</span></label>
               <input type="date" name="fecha" id="campoFecha" class="form-control"
-                     value="{{ asiento.fecha.isoformat() if asiento else '' }}" required>
+                     value="{{ asiento.fecha.isoformat() if asiento else (fecha_default or '') }}" required>
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Descripción <span class="text-danger">*</span></label>
@@ -134,10 +134,10 @@ function agregarLinea(datos) {
                value="${lineaDesc}"
                data-auto="${esAuto}"
                placeholder="Detalle"></td>
-    <td><input type="number" name="debe[]" class="form-control form-control-sm text-end monto"
-               min="0" step="1" value="${datos ? (datos.debe||0) : 0}"></td>
-    <td><input type="number" name="haber[]" class="form-control form-control-sm text-end monto"
-               min="0" step="1" value="${datos ? (datos.haber||0) : 0}"></td>
+    <td><input type="text" name="debe[]" class="form-control form-control-sm text-end monto monto-input"
+               inputmode="numeric" value="${datos ? (datos.debe||0) : 0}"></td>
+    <td><input type="text" name="haber[]" class="form-control form-control-sm text-end monto monto-input"
+               inputmode="numeric" value="${datos ? (datos.haber||0) : 0}"></td>
     <td class="text-center">
       <button type="button" class="btn btn-sm btn-link text-danger p-0"
               title="Eliminar esta línea"
@@ -162,6 +162,17 @@ function agregarLinea(datos) {
     maxOptions: 200,
   });
 
+  // Aplicar Cleave a los nuevos campos de monto
+  tr.querySelectorAll('.monto-input').forEach(function(el) {
+    new Cleave(el, {
+      numeral: true,
+      numeralThousandsGroupStyle: 'thousand',
+      numeralDecimalMark: ',',
+      delimiter: '.',
+      numeralPositiveOnly: true,
+    });
+  });
+
   tr.querySelectorAll('.monto').forEach(i => i.addEventListener('input', actualizarTotales));
   actualizarTotales();
 }
@@ -178,10 +189,15 @@ function fmt(n) {
   return Math.round(n).toLocaleString('es-CL');
 }
 
+function parseMonto(v) {
+  // Cleave usa punto como separador de miles y coma como decimal
+  return parseFloat((v||'0').replace(/\./g,'').replace(',','.')) || 0;
+}
+
 function actualizarTotales() {
   let debe = 0, haber = 0;
-  document.querySelectorAll('input[name="debe[]"]').forEach(i => debe += parseFloat(i.value||0));
-  document.querySelectorAll('input[name="haber[]"]').forEach(i => haber += parseFloat(i.value||0));
+  document.querySelectorAll('input[name="debe[]"]').forEach(i => debe += parseMonto(i.value));
+  document.querySelectorAll('input[name="haber[]"]').forEach(i => haber += parseMonto(i.value));
   document.getElementById('totalDebe').textContent  = fmt(debe);
   document.getElementById('totalHaber').textContent = fmt(haber);
   const diff   = Math.abs(debe - haber);

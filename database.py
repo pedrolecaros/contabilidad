@@ -81,6 +81,8 @@ def _migrar(app):
         "ALTER TABLE empleados ADD COLUMN apv_monto REAL DEFAULT 0.0",
         "ALTER TABLE empleados ADD COLUMN apv_tipo VARCHAR(1) DEFAULT 'A'",
         "ALTER TABLE liquidaciones ADD COLUMN apv REAL DEFAULT 0.0",
+        "ALTER TABLE empresas ADD COLUMN regimen VARCHAR(10) DEFAULT 'GENERAL'",
+        'ALTER TABLE empresas ADD COLUMN logo_url VARCHAR(500)',
         """CREATE TABLE IF NOT EXISTS activos_fijos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),
@@ -138,4 +140,38 @@ def sembrar_plan_cuentas(empresa_id):
             nivel=nivel,
         )
         db.session.add(cuenta)
+    db.session.commit()
+
+
+def copiar_plan_cuentas(empresa_origen_id, empresa_destino_id):
+    """Copia el plan de cuentas de empresa_origen a empresa_destino.
+    Respeta la jerarquía de cuentas padre-hijo mapeando los ids antiguos a los nuevos."""
+    existente = Cuenta.query.filter_by(empresa_id=empresa_destino_id).first()
+    if existente:
+        return
+
+    cuentas_origen = (Cuenta.query
+                      .filter_by(empresa_id=empresa_origen_id)
+                      .order_by(Cuenta.nivel, Cuenta.codigo)
+                      .all())
+
+    # Mapa de id_antiguo -> nueva Cuenta (para resolver cuenta_padre_id)
+    id_map = {}
+
+    for c in cuentas_origen:
+        nueva = Cuenta(
+            empresa_id=empresa_destino_id,
+            codigo=c.codigo,
+            nombre=c.nombre,
+            tipo=c.tipo,
+            naturaleza=c.naturaleza,
+            es_titulo=c.es_titulo,
+            nivel=c.nivel,
+        )
+        if c.cuenta_padre_id and c.cuenta_padre_id in id_map:
+            nueva.cuenta_padre_id = id_map[c.cuenta_padre_id].id
+        db.session.add(nueva)
+        db.session.flush()  # para obtener nueva.id antes del commit
+        id_map[c.id] = nueva
+
     db.session.commit()

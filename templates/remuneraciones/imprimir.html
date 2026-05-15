@@ -29,6 +29,9 @@
 <body>
 
 <div class="empresa-head">
+  {% if empresa.logo_url %}
+  <img src="{{ empresa.logo_url }}" alt="Logo" style="max-height:70px;max-width:200px;object-fit:contain">
+  {% endif %}
   <h2>{{ empresa.razon_social }}</h2>
   <div class="sub">RUT: {{ empresa.rut }} &nbsp;|&nbsp; {{ empresa.giro or '' }}</div>
 </div>

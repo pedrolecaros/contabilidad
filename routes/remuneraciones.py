@@ -167,9 +167,13 @@ def liquidar(eid, emp_id):
     hoy = date.today()
     periodo_default = f'{hoy.year}-{hoy.month:02d}'
     vars_mes = VariablesMensuales.query.filter_by(periodo=periodo_default).first()
+    ultima_liq = (Liquidacion.query
+                  .filter_by(empresa_id=eid, empleado_id=emp_id)
+                  .order_by(Liquidacion.periodo.desc())
+                  .first())
     return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
                            vars_mes=vars_mes, periodo_default=periodo_default,
-                           dias_trabajados=30)
+                           dias_trabajados=30, ultima_liq=ultima_liq)
 
 
 @bp.route('/empresa/<int:eid>/remuneraciones/liquidacion/<int:liq_id>')

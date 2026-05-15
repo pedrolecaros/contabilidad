@@ -12,21 +12,73 @@
 {% block content %}
 <h5 class="mb-3"><i class="bi bi-graph-up me-2"></i>Estado de Resultados</h5>
 
-<form class="row g-2 mb-4" method="get">
+<form class="row g-2 mb-1 align-items-center" method="get">
+  <div class="col-auto">
+    <label class="form-label mb-0 small fw-semibold">Período</label>
+  </div>
   <div class="col-auto">
     <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
   </div>
+  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
   <div class="col-auto">
     <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto ms-3">
+    <label class="form-label mb-0 small fw-semibold text-muted">Comparar con</label>
+  </div>
+  <div class="col-auto">
+    <input type="date" name="comparar_desde"
+           value="{{ comparar_desde.isoformat() if comparar_desde else '' }}"
+           class="form-control form-control-sm" placeholder="Desde anterior">
+  </div>
+  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
+  <div class="col-auto">
+    <input type="date" name="comparar_hasta"
+           value="{{ comparar_hasta.isoformat() if comparar_hasta else '' }}"
+           class="form-control form-control-sm" placeholder="Hasta anterior">
   </div>
   <div class="col-auto">
     <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
   </div>
 </form>
 
-<div style="max-width: 700px">
+{% if comparar_desde %}
+<div class="mb-3 small text-muted">
+  <i class="bi bi-info-circle me-1"></i>
+  Comparando <strong>{{ desde.strftime('%d/%m/%Y') }} – {{ hasta.strftime('%d/%m/%Y') }}</strong>
+  vs. <strong>{{ comparar_desde.strftime('%d/%m/%Y') }} – {{ comparar_hasta.strftime('%d/%m/%Y') }}</strong>
+</div>
+{% else %}
+<div class="mb-3"></div>
+{% endif %}
+
+{% macro dif_badge(actual, anterior) %}
+  {% if anterior is not none %}
+    {% set diff = actual - anterior %}
+    {% set pct = (diff / anterior * 100) if anterior != 0 else none %}
+    <span class="{{ 'text-success' if diff >= 0 else 'text-danger' }} small">
+      {% if diff >= 0 %}+{% endif %}{{ diff|clp }}
+      {% if pct is not none %}
+        ({% if pct >= 0 %}+{% endif %}{{ '{:.1f}'.format(pct) }}%)
+      {% endif %}
+    </span>
+  {% endif %}
+{% endmacro %}
+
+<div style="max-width:{{ '980px' if comparar_desde else '700px' }}">
   <table class="table table-sm">
+    <thead>
+      <tr class="table-secondary small">
+        <th>Cuenta</th>
+        <th class="text-end">{{ desde.strftime('%d/%m/%Y') }} – {{ hasta.strftime('%d/%m/%Y') }}</th>
+        {% if comparar_desde %}
+        <th class="text-end">{{ comparar_desde.strftime('%d/%m/%Y') }} – {{ comparar_hasta.strftime('%d/%m/%Y') }}</th>
+        <th class="text-end">Diferencia $ / %</th>
+        {% endif %}
+      </tr>
+    </thead>
     <tbody>
+      {# ── INGRESOS ── #}
       {% for f in filas %}
         {% if f.cuenta.tipo == 'INGRESO' and (f.saldo != 0 or f.cuenta.es_titulo) %}
         <tr class="{{ 'titulo-cuenta' if f.cuenta.es_titulo }}">
@@ -35,16 +87,34 @@
             {% else %}{{ f.cuenta.nombre }}{% endif %}
           </td>
           <td class="text-end">{% if not f.cuenta.es_titulo %}{{ f.saldo|clp }}{% endif %}</td>
+          {% if comparar_desde %}
+          <td class="text-end text-muted">
+            {% if not f.cuenta.es_titulo %}
+              {{ (cmp_por_cuenta.get(f.cuenta.id, 0))|clp }}
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if not f.cuenta.es_titulo %}
+              {{ dif_badge(f.saldo, cmp_por_cuenta.get(f.cuenta.id, 0)) }}
+            {% endif %}
+          </td>
+          {% endif %}
         </tr>
         {% endif %}
       {% endfor %}
 
       <tr class="table-success fw-semibold">
-        <td>TOTAL INGRESOS</td><td class="text-end">{{ total_ingresos|clp }}</td>
+        <td>TOTAL INGRESOS</td>
+        <td class="text-end">{{ total_ingresos|clp }}</td>
+        {% if comparar_desde %}
+        <td class="text-end text-muted">{{ total_ingresos_cmp|clp }}</td>
+        <td class="text-end">{{ dif_badge(total_ingresos, total_ingresos_cmp) }}</td>
+        {% endif %}
       </tr>
 
-      <tr><td colspan="2" class="py-2"></td></tr>
+      <tr><td colspan="{{ 4 if comparar_desde else 2 }}" class="py-2"></td></tr>
 
+      {# ── GASTOS ── #}
       {% for f in filas %}
         {% if f.cuenta.tipo == 'GASTO' and (f.saldo != 0 or f.cuenta.es_titulo) %}
         <tr class="{{ 'titulo-cuenta' if f.cuenta.es_titulo }}">
@@ -53,12 +123,47 @@
             {% else %}{{ f.cuenta.nombre }}{% endif %}
           </td>
           <td class="text-end text-danger">{% if not f.cuenta.es_titulo %}{{ f.saldo|clp }}{% endif %}</td>
+          {% if comparar_desde %}
+          <td class="text-end text-muted">
+            {% if not f.cuenta.es_titulo %}
+              {{ (cmp_por_cuenta.get(f.cuenta.id, 0))|clp }}
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if not f.cuenta.es_titulo %}
+              {# For gastos: higher spend = negative variation #}
+              {% set diff = f.saldo - cmp_por_cuenta.get(f.cuenta.id, 0) %}
+              {% set ant = cmp_por_cuenta.get(f.cuenta.id, 0) %}
+              {% set pct = (diff / ant * 100) if ant != 0 else none %}
+              <span class="{{ 'text-danger' if diff > 0 else 'text-success' }} small">
+                {% if diff >= 0 %}+{% endif %}{{ diff|clp }}
+                {% if pct is not none %}
+                  ({% if pct >= 0 %}+{% endif %}{{ '{:.1f}'.format(pct) }}%)
+                {% endif %}
+              </span>
+            {% endif %}
+          </td>
+          {% endif %}
         </tr>
         {% endif %}
       {% endfor %}
 
       <tr class="table-danger fw-semibold">
-        <td>TOTAL GASTOS</td><td class="text-end">{{ total_gastos|clp }}</td>
+        <td>TOTAL GASTOS</td>
+        <td class="text-end">{{ total_gastos|clp }}</td>
+        {% if comparar_desde %}
+        <td class="text-end text-muted">{{ total_gastos_cmp|clp }}</td>
+        <td class="text-end">
+          {% set diff = total_gastos - total_gastos_cmp %}
+          {% set pct = (diff / total_gastos_cmp * 100) if total_gastos_cmp != 0 else none %}
+          <span class="{{ 'text-danger' if diff > 0 else 'text-success' }} small">
+            {% if diff >= 0 %}+{% endif %}{{ diff|clp }}
+            {% if pct is not none %}
+              ({% if pct >= 0 %}+{% endif %}{{ '{:.1f}'.format(pct) }}%)
+            {% endif %}
+          </span>
+        </td>
+        {% endif %}
       </tr>
 
       <tr class="table-dark fw-bold fs-6">
@@ -66,6 +171,14 @@
         <td class="text-end {{ 'text-success' if resultado_neto >= 0 else 'text-danger' }}">
           {{ resultado_neto|clp }}
         </td>
+        {% if comparar_desde %}
+        <td class="text-end text-muted fw-bold">
+          <span class="{{ 'text-success' if resultado_neto_cmp >= 0 else 'text-danger' }}">
+            {{ resultado_neto_cmp|clp }}
+          </span>
+        </td>
+        <td class="text-end">{{ dif_badge(resultado_neto, resultado_neto_cmp) }}</td>
+        {% endif %}
       </tr>
     </tbody>
   </table>
