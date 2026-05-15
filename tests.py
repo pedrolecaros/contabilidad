@@ -1400,6 +1400,243 @@ class TestVacaciones(unittest.TestCase):
             self.assertIsNone(VacacionEmpleado.query.get(vid))
 
 
+class TestMejoras20a30(unittest.TestCase):
+    """Tests for UX improvements points 20-30."""
+
+    def setUp(self):
+        import app as app_module
+        self.app = app_module.create_app()
+        self.app.config['TESTING'] = True
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            from models import db, Empresa, Asiento, LineaAsiento, Cuenta
+            db.create_all()
+            emp = Empresa.query.filter_by(rut='55.555.555-5').first()
+            if not emp:
+                emp = Empresa(rut='55.555.555-5', razon_social='UXTest SpA')
+                db.session.add(emp)
+                db.session.commit()
+            self.eid = emp.id
+            # Ensure at least one cuenta exists for this empresa
+            c1 = Cuenta.query.filter_by(empresa_id=self.eid, es_titulo=False, activa=True).first()
+            if not c1:
+                c1 = Cuenta(empresa_id=self.eid, codigo='1.1.01', nombre='Caja',
+                            tipo='ACTIVO', naturaleza='DEUDORA', nivel=3, es_titulo=False, activa=True)
+                db.session.add(c1)
+                db.session.commit()
+            # Create a test asiento
+            a = Asiento.query.filter_by(empresa_id=self.eid).first()
+            if not a:
+                a = Asiento(empresa_id=self.eid, fecha=date(2025, 1, 15),
+                            numero=1, descripcion='Test factura proveedor X',
+                            origen='MANUAL', estado='CONFIRMADO')
+                db.session.add(a)
+                db.session.flush()
+                db.session.add(LineaAsiento(asiento_id=a.id, cuenta_id=c1.id,
+                                            debe=100000, haber=0, orden=1))
+                db.session.add(LineaAsiento(asiento_id=a.id, cuenta_id=c1.id,
+                                            debe=0, haber=100000, orden=2))
+                db.session.commit()
+            self.aid = a.id
+
+    def get(self, url):
+        return self.client.get(url, follow_redirects=True)
+
+    def post(self, url, data):
+        return self.client.post(url, data=data, follow_redirects=True)
+
+    # ── Punto 20: Buscador global ──────────────────────────────────────────────
+
+    def test_r20_buscar_endpoint_existe(self):
+        """GET /empresa/<eid>/buscar?q=... devuelve JSON."""
+        r = self.client.get(f'/empresa/{self.eid}/buscar?q=Test')
+        self.assertEqual(r.status_code, 200)
+        import json
+        data = json.loads(r.data)
+        self.assertIn('resultados', data)
+
+    def test_r20_buscar_asiento_por_numero(self):
+        """Buscar por número de asiento devuelve el asiento."""
+        r = self.client.get(f'/empresa/{self.eid}/buscar?q=1')
+        import json
+        data = json.loads(r.data)
+        tipos = [x['tipo'] for x in data['resultados']]
+        self.assertIn('asiento', tipos)
+
+    def test_r20_buscar_asiento_por_descripcion(self):
+        """Buscar por texto en descripción encuentra el asiento."""
+        r = self.client.get(f'/empresa/{self.eid}/buscar?q=factura')
+        import json
+        data = json.loads(r.data)
+        self.assertTrue(any(x['tipo'] == 'asiento' for x in data['resultados']))
+
+    def test_r20_buscar_cuenta_por_codigo(self):
+        """Buscar por código de cuenta devuelve la cuenta."""
+        r = self.client.get(f'/empresa/{self.eid}/buscar?q=1.1')
+        import json
+        data = json.loads(r.data)
+        tipos = [x['tipo'] for x in data['resultados']]
+        self.assertIn('cuenta', tipos)
+
+    def test_r20_modal_en_base(self):
+        """Base template contiene el modal del buscador global."""
+        r = self.get(f'/empresa/{self.eid}/asientos')
+        self.assertIn(b'modal-buscar', r.data)
+
+    # ── Punto 21: Dashboard ────────────────────────────────────────────────────
+
+    def test_r21_dashboard_ruta_existe(self):
+        """GET /empresa/<eid>/dashboard devuelve 200."""
+        r = self.get(f'/empresa/{self.eid}/dashboard')
+        self.assertEqual(r.status_code, 200)
+
+    def test_r21_dashboard_muestra_indicadores(self):
+        """Dashboard muestra indicadores clave."""
+        r = self.get(f'/empresa/{self.eid}/dashboard')
+        self.assertIn(b'pendiente', r.data.lower())
+
+    # ── Punto 22: Dark mode ────────────────────────────────────────────────────
+
+    def test_r22_dark_mode_toggle_en_html(self):
+        """Base template contiene el toggle de dark mode."""
+        r = self.get(f'/empresa/{self.eid}/asientos')
+        self.assertIn(b'dark', r.data.lower())
+        self.assertIn(b'theme', r.data.lower())
+
+    # ── Punto 23: Validación real-time ya existe ────────────────────────────────
+
+    def test_r23_form_tiene_totales_realtime(self):
+        """Form de asiento tiene elementos de total en tiempo real."""
+        r = self.get(f'/empresa/{self.eid}/asientos/nuevo')
+        self.assertTrue(b'totalDebe' in r.data or b'total-debe' in r.data)
+        self.assertTrue(b'totalHaber' in r.data or b'total-haber' in r.data)
+
+    def test_r23_form_tiene_badge_cuadrado(self):
+        """Form de asiento tiene badge de cuadratura."""
+        r = self.get(f'/empresa/{self.eid}/asientos/nuevo')
+        self.assertTrue(
+            b'cuadrado' in r.data.lower() or b'cuadra' in r.data.lower()
+        )
+
+    # ── Punto 24: Autocomplete cuentas con saldo ──────────────────────────────
+
+    def test_r24_api_cuentas_endpoint(self):
+        """GET /empresa/<eid>/api/cuentas devuelve JSON con codigo/nombre/saldo."""
+        r = self.client.get(f'/empresa/{self.eid}/api/cuentas')
+        self.assertEqual(r.status_code, 200)
+        import json
+        data = json.loads(r.data)
+        self.assertIsInstance(data, list)
+        if data:
+            self.assertIn('codigo', data[0])
+            self.assertIn('nombre', data[0])
+            self.assertIn('saldo', data[0])
+
+    # ── Punto 25: Filtros avanzados asientos ─────────────────────────────────
+
+    def test_r25_filtro_descripcion(self):
+        """GET /asientos?descripcion=<text> filtra por descripción."""
+        r = self.get(f'/empresa/{self.eid}/asientos?descripcion=factura')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'factura', r.data.lower())
+
+    def test_r25_filtro_fecha(self):
+        """GET /asientos?desde=&hasta= filtra por rango de fechas."""
+        r = self.get(f'/empresa/{self.eid}/asientos?desde=2025-01-01&hasta=2025-01-31')
+        self.assertEqual(r.status_code, 200)
+
+    def test_r25_filtro_descripcion_vacio(self):
+        """Filtrar por descripción que no existe retorna 0 asientos."""
+        r = self.get(f'/empresa/{self.eid}/asientos?descripcion=xyzxyzxyz999')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(b'factura', r.data.lower())
+
+    # ── Punto 26: Importar múltiples archivos ─────────────────────────────────
+
+    def test_r26_import_form_acepta_multiple(self):
+        """El formulario de importación acepta múltiples archivos."""
+        r = self.get(f'/empresa/{self.eid}/importar')
+        self.assertIn(b'multiple', r.data)
+
+    def test_r26_import_multi_endpoint(self):
+        """GET /empresa/<eid>/importar devuelve 200."""
+        r = self.get(f'/empresa/{self.eid}/importar')
+        self.assertEqual(r.status_code, 200)
+
+    # ── Punto 28: Historial de cambios en asientos ────────────────────────────
+
+    def test_r28_modelo_auditoria_existe(self):
+        """AsientoAudit model tiene los campos requeridos."""
+        with self.app.app_context():
+            from models import AsientoAudit
+            a = AsientoAudit(asiento_id=self.aid, accion='CREAR',
+                             descripcion='creado')
+            self.assertEqual(a.accion, 'CREAR')
+
+    def test_r28_detalle_muestra_historial(self):
+        """Página de detalle de asiento muestra sección de historial."""
+        r = self.get(f'/empresa/{self.eid}/asientos/{self.aid}')
+        self.assertIn(b'historial', r.data.lower())
+
+    def test_r28_crear_asiento_genera_audit(self):
+        """Al crear un asiento se registra entrada en AsientoAudit."""
+        with self.app.app_context():
+            from models import db, Asiento, AsientoAudit, Cuenta
+            a = Asiento(empresa_id=self.eid, fecha=date(2025, 2, 1),
+                        numero=99, descripcion='Auditado',
+                        origen='MANUAL', estado='BORRADOR')
+            db.session.add(a)
+            db.session.flush()
+            # Trigger audit logging
+            from engine.auditoria import registrar_auditoria
+            registrar_auditoria(a, 'CREAR')
+            db.session.commit()
+            audit = AsientoAudit.query.filter_by(asiento_id=a.id).first()
+            self.assertIsNotNone(audit)
+            self.assertEqual(audit.accion, 'CREAR')
+
+    # ── Punto 29: Balance con comparación ─────────────────────────────────────
+
+    def test_r29_balance_acepta_periodo_comparar(self):
+        """Balance acepta parámetro comparar= y devuelve 200."""
+        r = self.get(
+            f'/empresa/{self.eid}/reportes/balance'
+            f'?desde=2025-01-01&hasta=2025-01-31'
+            f'&comparar_desde=2024-01-01&comparar_hasta=2024-01-31'
+        )
+        self.assertEqual(r.status_code, 200)
+
+    def test_r29_balance_muestra_columna_comparacion(self):
+        """Cuando hay parámetro comparar=, el balance muestra columna diferencia."""
+        r = self.get(
+            f'/empresa/{self.eid}/reportes/balance'
+            f'?desde=2025-01-01&hasta=2025-01-31'
+            f'&comparar_desde=2024-01-01&comparar_hasta=2024-01-31'
+        )
+        self.assertIn(b'Anterior', r.data)
+
+    # ── Punto 30: Preview PDF liquidación ─────────────────────────────────────
+
+    def test_r30_liquidacion_tiene_preview(self):
+        """El formulario de liquidación tiene botón/modal de preview."""
+        with self.app.app_context():
+            from models import db, Empleado, Liquidacion
+            emp = Empleado.query.filter_by(empresa_id=self.eid).first()
+            if not emp:
+                emp = Empleado(empresa_id=self.eid, rut='22.222.222-2',
+                               nombre='Pedro Test', sueldo_base=500000,
+                               activo=True, afp='Habitat',
+                               tasa_afp_comision=0.0127,
+                               tipo_salud='FONASA', tasa_mutual=0.0093)
+                db.session.add(emp)
+                db.session.commit()
+            emp_id = emp.id
+        r = self.get(f'/empresa/{self.eid}/remuneraciones/{emp_id}/liquidar')
+        self.assertTrue(
+            b'preview' in r.data.lower() or b'imprimir' in r.data.lower()
+        )
+
+
 if __name__ == '__main__':
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -1413,6 +1650,7 @@ if __name__ == '__main__':
     suite.addTests(loader.loadTestsFromTestCase(TestAsientoDescripciones))
     suite.addTests(loader.loadTestsFromTestCase(TestPrestamosAsientos))
     suite.addTests(loader.loadTestsFromTestCase(TestVacaciones))
+    suite.addTests(loader.loadTestsFromTestCase(TestMejoras20a30))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

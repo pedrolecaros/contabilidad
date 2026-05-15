@@ -79,6 +79,25 @@
 <!-- ── Importación manual ──────────────────────────────────────────────────── -->
 <p class="text-muted small mb-3">Formatos soportados: <strong>CSV, XLS, XLSX</strong>.</p>
 
+<!-- Importación múltiple (drag & drop) -->
+<div class="card shadow-sm mb-4 border-secondary">
+  <div class="card-header fw-semibold">
+    <i class="bi bi-files me-1"></i>Importar varios archivos a la vez
+  </div>
+  <div class="card-body">
+    <div id="drop-zone" class="border border-2 border-dashed rounded p-4 text-center text-muted"
+         style="border-style:dashed!important;cursor:pointer;"
+         onclick="document.getElementById('multi-file-input').click()">
+      <i class="bi bi-cloud-upload fs-2 d-block mb-2"></i>
+      Arrastra aquí los archivos CSV/XLS o haz clic para seleccionar varios
+      <div class="small mt-1">El sistema detecta automáticamente el tipo (compras, ventas, honorarios, banco)</div>
+    </div>
+    <input type="file" id="multi-file-input" multiple accept=".csv,.xls,.xlsx" style="display:none">
+    <div id="multi-file-list" class="mt-3"></div>
+    <div id="multi-file-progress" class="mt-2"></div>
+  </div>
+</div>
+
 <div class="row g-3">
 
   <!-- Compras -->
@@ -624,6 +643,84 @@ function mostrarResultadoBatch(results, errorGlobal, tipos) {
   activoPolling = false;
   setBotones(false);
   progresoOcultar();
+})();
+
+// ── Multi-file drag & drop ────────────────────────────────────────────────────
+(function(){
+  var EID = {{ empresa.id }};
+  var URLS = {
+    compras:    '{{ url_for("importar.subir", eid=empresa.id, tipo="compras") }}',
+    ventas:     '{{ url_for("importar.subir", eid=empresa.id, tipo="ventas") }}',
+    honorarios: '{{ url_for("importar.subir", eid=empresa.id, tipo="honorarios") }}',
+    banco:      '{{ url_for("importar.subir", eid=empresa.id, tipo="banco") }}',
+  };
+
+  function detectarTipo(nombre) {
+    nombre = nombre.toLowerCase();
+    if (nombre.includes('compra') || nombre.includes('rcv')) return 'compras';
+    if (nombre.includes('venta') || nombre.includes('dte') || nombre.includes('rcv_v')) return 'ventas';
+    if (nombre.includes('honor') || nombre.includes('rh')) return 'honorarios';
+    if (nombre.includes('banco') || nombre.includes('cartola') || nombre.includes('bci') ||
+        nombre.includes('santander') || nombre.includes('chile') || nombre.includes('scotiabank') ||
+        nombre.includes('itau') || nombre.includes('estado')) return 'banco';
+    return null;
+  }
+
+  function procesarArchivos(files) {
+    var list = document.getElementById('multi-file-list');
+    var prog = document.getElementById('multi-file-progress');
+    list.innerHTML = '';
+    prog.innerHTML = '';
+    Array.from(files).forEach(function(file) {
+      var tipo = detectarTipo(file.name);
+      var badge = tipo
+        ? '<span class="badge bg-success ms-2">' + tipo + '</span>'
+        : '<span class="badge bg-warning text-dark ms-2">sin detectar</span>';
+      list.innerHTML += '<div class="d-flex align-items-center gap-2 mb-1 small">' +
+        '<i class="bi bi-file-earmark-text"></i><span>' + file.name + '</span>' + badge +
+        (tipo ? '' : ' <span class="text-muted">(se omitirá)</span>') + '</div>';
+    });
+    if (!Array.from(files).some(function(f){ return detectarTipo(f.name); })) return;
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-primary btn-sm mt-2';
+    btn.textContent = 'Importar todos';
+    btn.addEventListener('click', function(){
+      var promises = [];
+      btn.disabled = true;
+      prog.innerHTML = '<div class="text-muted small">Importando…</div>';
+      Array.from(files).forEach(function(file) {
+        var tipo = detectarTipo(file.name);
+        if (!tipo) return;
+        var fd = new FormData();
+        fd.append('archivo', file);
+        promises.push(
+          fetch(URLS[tipo], { method: 'POST', body: fd })
+            .then(function(r){ return r.text(); })
+            .then(function(){ return {file: file.name, ok: true}; })
+            .catch(function(){ return {file: file.name, ok: false}; })
+        );
+      });
+      Promise.all(promises).then(function(results){
+        var ok = results.filter(function(r){ return r.ok; }).length;
+        prog.innerHTML = '<div class="alert alert-success py-1 small mt-2">' +
+          ok + ' archivo(s) importados correctamente. <a href="">Recargar</a></div>';
+        setTimeout(function(){ window.location.reload(); }, 1500);
+      });
+    });
+    list.appendChild(btn);
+  }
+
+  var dz = document.getElementById('drop-zone');
+  var fi = document.getElementById('multi-file-input');
+  if (dz && fi) {
+    dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('bg-light'); });
+    dz.addEventListener('dragleave', function(){ dz.classList.remove('bg-light'); });
+    dz.addEventListener('drop', function(e){
+      e.preventDefault(); dz.classList.remove('bg-light');
+      procesarArchivos(e.dataTransfer.files);
+    });
+    fi.addEventListener('change', function(){ procesarArchivos(this.files); });
+  }
 })();
 </script>
 {% endblock %}

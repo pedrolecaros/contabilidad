@@ -32,24 +32,58 @@
   </div>
 
   <!-- Filtros servidor -->
-  <form class="d-flex gap-2" method="get" id="formFiltros">
-    <select name="origen" class="form-select form-select-sm">
-      <option value="">Todos los orígenes</option>
-      <option value="MANUAL"        {% if origen=='MANUAL' %}selected{% endif %}>Manual</option>
-      <option value="LIBRO_COMPRAS" {% if origen=='LIBRO_COMPRAS' %}selected{% endif %}>Libro Compras</option>
-      <option value="LIBRO_VENTAS"  {% if origen=='LIBRO_VENTAS' %}selected{% endif %}>Libro Ventas</option>
-      <option value="HONORARIOS"    {% if origen=='HONORARIOS' %}selected{% endif %}>Honorarios</option>
-      <option value="BANCO"         {% if origen=='BANCO' %}selected{% endif %}>Banco</option>
-    </select>
-    <select name="estado" class="form-select form-select-sm">
-      <option value="">Todos los estados</option>
-      <option value="BORRADOR"   {% if estado=='BORRADOR' %}selected{% endif %}>Borrador</option>
-      <option value="CONFIRMADO" {% if estado=='CONFIRMADO' %}selected{% endif %}>Confirmado</option>
-      <option value="ANULADO"    {% if estado=='ANULADO' %}selected{% endif %}>Anulado</option>
-    </select>
-    <button type="submit" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-funnel me-1"></i>Filtrar
-    </button>
+  <form class="row g-2 align-items-center" method="get" id="formFiltros">
+    <div class="col-auto">
+      <select name="origen" class="form-select form-select-sm">
+        <option value="">Todos los orígenes</option>
+        <option value="MANUAL"        {% if origen=='MANUAL' %}selected{% endif %}>Manual</option>
+        <option value="LIBRO_COMPRAS" {% if origen=='LIBRO_COMPRAS' %}selected{% endif %}>Compras</option>
+        <option value="LIBRO_VENTAS"  {% if origen=='LIBRO_VENTAS' %}selected{% endif %}>Ventas</option>
+        <option value="HONORARIOS"    {% if origen=='HONORARIOS' %}selected{% endif %}>Honorarios</option>
+        <option value="BANCO"         {% if origen=='BANCO' %}selected{% endif %}>Banco</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Todos los estados</option>
+        <option value="BORRADOR"   {% if estado=='BORRADOR' %}selected{% endif %}>Borrador</option>
+        <option value="CONFIRMADO" {% if estado=='CONFIRMADO' %}selected{% endif %}>Confirmado</option>
+        <option value="ANULADO"    {% if estado=='ANULADO' %}selected{% endif %}>Anulado</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <input type="date" name="desde" class="form-control form-control-sm"
+             value="{{ desde_str }}" placeholder="Desde" title="Fecha desde">
+    </div>
+    <div class="col-auto">
+      <input type="date" name="hasta" class="form-control form-control-sm"
+             value="{{ hasta_str }}" placeholder="Hasta" title="Fecha hasta">
+    </div>
+    <div class="col-auto">
+      <input type="text" name="descripcion" class="form-control form-control-sm"
+             value="{{ descripcion }}" placeholder="Descripción…" style="width:160px">
+    </div>
+    <div class="col-auto">
+      <select name="cuenta_id" class="form-select form-select-sm" style="max-width:200px">
+        <option value="">Todas las cuentas</option>
+        {% for c in cuentas_filtro %}
+        <option value="{{ c.id }}" {% if cuenta_id == c.id %}selected{% endif %}>
+          {{ c.codigo }} {{ c.nombre }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-funnel me-1"></i>Filtrar
+      </button>
+      {% if origen or estado or descripcion or desde_str or hasta_str or cuenta_id %}
+      <a href="{{ url_for('asientos.lista', eid=empresa.id) }}"
+         class="btn btn-sm btn-outline-danger ms-1" title="Limpiar filtros">
+        <i class="bi bi-x"></i>
+      </a>
+      {% endif %}
+    </div>
   </form>
 
   <span class="text-muted small ms-auto" id="contadorFiltrado" style="display:none"></span>

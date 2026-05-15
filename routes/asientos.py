@@ -1,8 +1,9 @@
 import json
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from datetime import date
 from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion
 from engine.asientos import confirmar_asiento, anular_asiento
+from engine.auditoria import registrar_auditoria
 
 bp = Blueprint('asientos', __name__)
 
@@ -46,15 +47,34 @@ TIPOS_CONC_LABEL = {
 @bp.route('/empresa/<int:eid>/asientos')
 def lista(eid):
     empresa = Empresa.query.get_or_404(eid)
-    page   = request.args.get('page', 1, type=int)
-    origen = request.args.get('origen', '')
-    estado = request.args.get('estado', '')
+    page        = request.args.get('page', 1, type=int)
+    origen      = request.args.get('origen', '')
+    estado      = request.args.get('estado', '')
+    descripcion = request.args.get('descripcion', '').strip()
+    desde_str   = request.args.get('desde', '')
+    hasta_str   = request.args.get('hasta', '')
+    cuenta_id   = request.args.get('cuenta_id', type=int)
 
     q = Asiento.query.filter_by(empresa_id=eid)
     if origen:
         q = q.filter_by(origen=origen)
     if estado:
         q = q.filter_by(estado=estado)
+    if descripcion:
+        q = q.filter(Asiento.descripcion.ilike(f'%{descripcion}%'))
+    if desde_str:
+        try:
+            q = q.filter(Asiento.fecha >= date.fromisoformat(desde_str))
+        except ValueError:
+            pass
+    if hasta_str:
+        try:
+            q = q.filter(Asiento.fecha <= date.fromisoformat(hasta_str))
+        except ValueError:
+            pass
+    if cuenta_id:
+        sub = db.session.query(LineaAsiento.asiento_id).filter_by(cuenta_id=cuenta_id).subquery()
+        q = q.filter(Asiento.id.in_(sub))
 
     asientos = q.order_by(Asiento.fecha.desc(), Asiento.numero.desc()).paginate(page=page, per_page=50)
 
@@ -84,8 +104,12 @@ def lista(eid):
         for c in Conciliacion.query.filter(Conciliacion.id.in_(set(conc_x_asiento.values()))).all():
             conc_objs[c.id] = c
 
+    cuentas_filtro = (Cuenta.query.filter_by(empresa_id=eid, es_titulo=False, activa=True)
+                      .order_by(Cuenta.codigo).all())
     return render_template('asientos/lista.html', empresa=empresa, asientos=asientos,
                            origen=origen, estado=estado,
+                           descripcion=descripcion, desde_str=desde_str, hasta_str=hasta_str,
+                           cuenta_id=cuenta_id, cuentas_filtro=cuentas_filtro,
                            lineas_x_asiento=lineas_x_asiento,
                            conc_x_asiento=conc_x_asiento,
                            conc_objs=conc_objs,
@@ -145,13 +169,16 @@ def nuevo(eid):
         db.session.flush()
         _guardar_lineas(asiento.id, request.form)
         if accion == 'borrador':
+            registrar_auditoria(asiento, 'CREAR', f'Asiento N°{numero} guardado como borrador')
             db.session.commit()
             flash(f'Asiento N°{numero} guardado como borrador', 'info')
         elif asiento.cuadrado:
             asiento.estado = 'CONFIRMADO'
+            registrar_auditoria(asiento, 'CREAR', f'Asiento N°{numero} creado y confirmado')
             db.session.commit()
             flash(f'Asiento N°{numero} creado y confirmado', 'success')
         else:
+            registrar_auditoria(asiento, 'CREAR', f'Asiento N°{numero} guardado en borrador (no cuadra)')
             db.session.commit()
             flash(f'Asiento N°{numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f})', 'warning')
         return redirect(url_for('asientos.detalle', eid=eid, aid=asiento.id))
@@ -182,13 +209,16 @@ def editar(eid, aid):
         asiento.estado = 'BORRADOR'
         _guardar_lineas(asiento.id, request.form)
         if accion == 'borrador':
+            registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado y guardado como borrador')
             db.session.commit()
             flash(f'Asiento N°{asiento.numero} guardado como borrador', 'info')
         elif asiento.cuadrado:
             asiento.estado = 'CONFIRMADO'
+            registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado y confirmado')
             db.session.commit()
             flash(f'Asiento N°{asiento.numero} actualizado y confirmado', 'success')
         else:
+            registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado (no cuadra)')
             db.session.commit()
             flash(f'Asiento N°{asiento.numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f})', 'warning')
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
@@ -244,10 +274,12 @@ def detalle(eid, aid):
 
     conc_mes = asiento.fecha.strftime('%Y-%m') if asiento.fecha else None
 
+    audits = asiento.audits.order_by(None).order_by(db.text('creado_en ASC')).all()
     return render_template('asientos/detalle.html', empresa=empresa, asiento=asiento,
                            prev_id=prev_a.id if prev_a else None,
                            next_id=next_a.id if next_a else None,
                            conc=conc, conc_mes=conc_mes,
+                           audits=audits,
                            origenes_conc=ORIGENES_CONC,
                            origenes_sii=ORIGENES_SII,
                            tipos_conc_label=TIPOS_CONC_LABEL)
@@ -258,6 +290,7 @@ def confirmar(eid, aid):
     asiento = Asiento.query.get_or_404(aid)
     try:
         confirmar_asiento(asiento)
+        registrar_auditoria(asiento, 'CONFIRMAR')
         db.session.commit()
         flash(f'Asiento N°{asiento.numero} confirmado', 'success')
     except ValueError as e:
@@ -269,6 +302,7 @@ def confirmar(eid, aid):
 def anular(eid, aid):
     asiento = Asiento.query.get_or_404(aid)
     anular_asiento(asiento)
+    registrar_auditoria(asiento, 'ANULAR')
     db.session.commit()
     flash(f'Asiento N°{asiento.numero} anulado', 'warning')
     return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
@@ -284,3 +318,37 @@ def recuperar(eid, aid):
     db.session.commit()
     flash(f'Asiento N°{asiento.numero} recuperado como borrador', 'success')
     return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
+
+
+@bp.route('/empresa/<int:eid>/api/cuentas')
+def api_cuentas(eid):
+    """JSON: lista de cuentas con saldo actual para Tom Select."""
+    Empresa.query.get_or_404(eid)
+    cuentas = (Cuenta.query
+               .filter_by(empresa_id=eid, es_titulo=False, activa=True)
+               .order_by(Cuenta.codigo).all())
+
+    # Saldo por cuenta (suma lineas confirmadas)
+    from sqlalchemy import func
+    saldos = dict(
+        db.session.query(LineaAsiento.cuenta_id,
+                         func.sum(LineaAsiento.debe) - func.sum(LineaAsiento.haber))
+        .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+        .filter(Asiento.empresa_id == eid, Asiento.estado == 'CONFIRMADO')
+        .group_by(LineaAsiento.cuenta_id).all()
+    )
+
+    result = []
+    for c in cuentas:
+        saldo_raw = saldos.get(c.id, 0) or 0
+        if c.naturaleza == 'ACREEDORA':
+            saldo_raw = -saldo_raw
+        result.append({
+            'id': c.id,
+            'codigo': c.codigo,
+            'nombre': c.nombre,
+            'tipo': c.tipo or '',
+            'saldo': round(saldo_raw),
+            'label': f'{c.codigo} — {c.nombre}',
+        })
+    return jsonify(result)

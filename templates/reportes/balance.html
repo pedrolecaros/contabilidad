@@ -143,13 +143,30 @@
   </a>
 </div>
 
-<form class="row g-2 mb-3" method="get">
+<form class="row g-2 mb-3 align-items-center" method="get">
+  <div class="col-auto">
+    <label class="form-label mb-0 small fw-semibold">Período</label>
+  </div>
   <div class="col-auto">
     <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
   </div>
   <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
   <div class="col-auto">
     <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto ms-3">
+    <label class="form-label mb-0 small fw-semibold text-muted">Comparar con</label>
+  </div>
+  <div class="col-auto">
+    <input type="date" name="comparar_desde"
+           value="{{ comparar_desde.isoformat() if comparar_desde else '' }}"
+           class="form-control form-control-sm" placeholder="Desde anterior">
+  </div>
+  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
+  <div class="col-auto">
+    <input type="date" name="comparar_hasta"
+           value="{{ comparar_hasta.isoformat() if comparar_hasta else '' }}"
+           class="form-control form-control-sm" placeholder="Hasta anterior">
   </div>
   <div class="col-auto">
     <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
@@ -289,4 +306,52 @@
     </tfoot>
   </table>
 </div>
+
+{% if comparar_desde %}
+<div class="mt-4">
+  <h6 class="text-muted small text-uppercase fw-bold mb-2">
+    <i class="bi bi-bar-chart-line me-1"></i>
+    Comparación — Período Anterior
+    ({{ comparar_desde.strftime('%d/%m/%Y') }} al {{ comparar_hasta.strftime('%d/%m/%Y') }})
+  </h6>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered" style="font-size:8.5pt; max-width:600px">
+      <thead class="table-secondary">
+        <tr>
+          <th>Concepto</th>
+          <th class="text-end">Actual</th>
+          <th class="text-end">Anterior</th>
+          <th class="text-end">Variación</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Total Sumas Débito</td>
+          <td class="text-end">{{ num(tot.sd) }}</td>
+          <td class="text-end">{{ num(tot_cmp.sd) }}</td>
+          <td class="text-end {% if tot.sd - tot_cmp.sd >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {{ num(tot.sd - tot_cmp.sd) }}
+          </td>
+        </tr>
+        <tr>
+          <td>Total Sumas Crédito</td>
+          <td class="text-end">{{ num(tot.sh) }}</td>
+          <td class="text-end">{{ num(tot_cmp.sh) }}</td>
+          <td class="text-end {% if tot.sh - tot_cmp.sh >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {{ num(tot.sh - tot_cmp.sh) }}
+          </td>
+        </tr>
+        <tr class="fw-bold">
+          <td>Resultado E/R</td>
+          <td class="text-end">{{ num(resultado_er) }}</td>
+          <td class="text-end">{{ num(resultado_er_cmp) }}</td>
+          <td class="text-end {% if resultado_er - resultado_er_cmp >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {{ num(resultado_er - resultado_er_cmp) }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

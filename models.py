@@ -105,6 +105,18 @@ class LineaAsiento(db.Model):
     orden = db.Column(db.Integer, default=0)
 
 
+class AsientoAudit(db.Model):
+    __tablename__ = 'asientos_audit'
+    id = db.Column(db.Integer, primary_key=True)
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=False)
+    accion = db.Column(db.String(20), nullable=False)   # CREAR, EDITAR, CONFIRMAR, ANULAR
+    descripcion = db.Column(db.String(500))
+    creado_en = db.Column(db.DateTime, default=datetime.now)
+
+    asiento = db.relationship('Asiento', backref=db.backref('audits', lazy='dynamic',
+                                                             order_by='AsientoAudit.creado_en'))
+
+
 class Contraparte(db.Model):
     __tablename__ = 'contrapartes'
     id = db.Column(db.Integer, primary_key=True)

@@ -105,7 +105,7 @@
       <select id="tplCuentaSel" class="d-none">
         <option value="">— cuenta —</option>
         {% for c in cuentas %}
-        <option value="{{ c.id }}">{{ c.codigo }} – {{ c.nombre }}</option>
+        <option value="{{ c.id }}" data-tipo="{{ c.tipo }}">{{ c.codigo }} – {{ c.nombre }}</option>
         {% endfor %}
       </select>
       <input type="hidden" name="tipo" id="hidTipo" value="SII">
@@ -125,10 +125,11 @@
           <table class="table table-sm table-bordered mb-2">
             <thead class="table-secondary">
               <tr>
-                <th style="width:28%">Cuenta contable</th>
-                <th style="width:110px">Monto ($)</th>
-                <th style="width:180px">Descripción</th>
-                <th style="width:160px" title="Link respaldo"><i class="bi bi-link-45deg me-1"></i>Respaldo</th>
+                <th style="width:26%">Cuenta contable</th>
+                <th style="width:100px">Monto ($)</th>
+                <th style="width:160px">Descripción</th>
+                <th style="width:140px" title="Link respaldo"><i class="bi bi-link-45deg me-1"></i>Respaldo</th>
+                <th style="width:160px" title="Vincular cuota de préstamo"><i class="bi bi-bank me-1"></i>Cuota préstamo</th>
                 <th style="width:36px"></th>
               </tr>
             </thead>
@@ -873,7 +874,21 @@ function _esCuentaSueldo(texto) {
          t.includes('remunerac') || t.includes('sueldo') || t.includes('salario');
 }
 
-function _initTsLinea(sel, btnSueldo) {
+// Cache of pending cuotas (loaded once per page session)
+let _cuotasCache = null;
+const _apiCuotasUrl = '{{ url_for("prestamos.api_cuotas_pendientes", eid=empresa.id) }}';
+
+function _getCuotas(callback) {
+  if (_cuotasCache) { callback(_cuotasCache); return; }
+  fetch(_apiCuotasUrl).then(r => r.json()).then(data => {
+    _cuotasCache = data.prestamos || [];
+    callback(_cuotasCache);
+  }).catch(() => { _cuotasCache = []; callback([]); });
+}
+
+const TIPOS_PRESTAMO = ['PASIVO', 'ACTIVO'];
+
+function _initTsLinea(sel, btnSueldo, tdCuota) {
   const ts = new TomSelect(sel, {
     create: false, placeholder: '— buscar cuenta —',
     maxOptions: 300, searchField: ['text'],
@@ -884,7 +899,61 @@ function _initTsLinea(sel, btnSueldo) {
         const texto = ts.options[val]?.text || '';
         btnSueldo.classList.toggle('d-none', !_esCuentaSueldo(texto));
       }
+      // Show cuota picker if pasivo/activo account
+      if (tdCuota) {
+        const optEl = sel.querySelector('option[value="' + val + '"]');
+        const tipo = optEl?.dataset?.tipo || '';
+        if (TIPOS_PRESTAMO.includes(tipo)) {
+          _mostrarCuotaPicker(tdCuota, tipo, sel.closest('tr'));
+        } else {
+          tdCuota.innerHTML = '<span class="text-muted small">—</span>';
+        }
+      }
     },
+  });
+}
+
+function _mostrarCuotaPicker(td, tipoCtaCont, tr) {
+  td.innerHTML = '<span class="spinner-border spinner-border-sm text-muted"></span>';
+  _getCuotas(function(prestamos) {
+    // Filter by prestamo tipo: PASIVO cuenta → PAGAR loan; ACTIVO cuenta → COBRAR loan
+    const tipoLoan = tipoCtaCont === 'PASIVO' ? 'PAGAR' : 'COBRAR';
+    const matching = prestamos.filter(p => p.tipo === tipoLoan && p.cuotas.length > 0);
+    if (!matching.length) {
+      td.innerHTML = '<span class="text-muted small">Sin cuotas pendientes</span>';
+      return;
+    }
+    const sel = document.createElement('select');
+    sel.name = 'cuota_prestamo_id';
+    sel.className = 'form-select form-select-sm';
+    sel.style.fontSize = '.78rem';
+    sel.innerHTML = '<option value="">— vincular cuota —</option>';
+    matching.forEach(p => {
+      const og = document.createElement('optgroup');
+      og.label = p.nombre + (p.moneda === 'UF' ? ' (UF)' : '');
+      p.cuotas.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.dataset.monto = c.total;
+        opt.dataset.desc = `Cuota ${c.numero} ${p.nombre}`;
+        opt.textContent = c.desc + (p.moneda === 'UF' ? ` — UF ${c.total.toFixed(2)}` : ` — $${Math.round(c.total).toLocaleString('es-CL')}`);
+        og.appendChild(opt);
+      });
+      sel.appendChild(og);
+    });
+    sel.addEventListener('change', function() {
+      const opt = sel.options[sel.selectedIndex];
+      if (!opt.value) return;
+      const monto = parseFloat(opt.dataset.monto) || 0;
+      const desc = opt.dataset.desc || '';
+      const inpMonto = tr.querySelector('.linea-monto');
+      const inpNota = tr.querySelector('input[name="nota"]');
+      if (inpMonto && monto > 0) inpMonto.value = Math.round(monto);
+      if (inpNota && desc) inpNota.value = desc;
+      _actualizarRestante();
+    });
+    td.innerHTML = '';
+    td.appendChild(sel);
   });
 }
 
@@ -937,14 +1006,18 @@ function _addLinea(monto) {
     if (tbody.rows.length > 1) { tr.remove(); _actualizarRestante(); }
   });
 
+  const tdCuota = document.createElement('td');
+  tdCuota.innerHTML = '<span class="text-muted small">—</span>';
+
   const td1 = document.createElement('td'); td1.appendChild(sel);
   const td2 = document.createElement('td'); td2.appendChild(inpMonto);
   const td3 = document.createElement('td'); td3.appendChild(igNota);
   const td4 = document.createElement('td'); td4.appendChild(inpRespaldo);
-  const td5 = document.createElement('td'); td5.appendChild(btnDel);
-  tr.append(td1, td2, td3, td4, td5);
+  const td5 = tdCuota;
+  const td6 = document.createElement('td'); td6.appendChild(btnDel);
+  tr.append(td1, td2, td3, td4, td5, td6);
   tbody.appendChild(tr);
-  _initTsLinea(sel, btnBuscarSueldo);
+  _initTsLinea(sel, btnBuscarSueldo, tdCuota);
 }
 
 function _actualizarRestante() {

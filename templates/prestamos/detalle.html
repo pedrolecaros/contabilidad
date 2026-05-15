@@ -291,17 +291,18 @@
               </button>
             </form>
             {% else %}
-            <form method="post"
-                  action="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
-                  class="d-flex align-items-center gap-1">
-              <input type="date" name="fecha_pago" class="form-control form-control-sm py-0"
+            <div class="d-flex align-items-center gap-1">
+              <input type="date" class="form-control form-control-sm py-0 fecha-pago-input"
                      style="width:130px; font-size:.75rem;"
                      value="{{ hoy.isoformat() }}">
-              <button type="submit" class="btn btn-outline-success btn-sm py-0 px-2"
-                      style="font-size:.75rem;" title="Marcar como pagada">
+              <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 btn-pagar-cuota"
+                      style="font-size:.75rem;" title="Pagar cuota"
+                      data-preview-url="{{ url_for('prestamos.cuota_preview', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
+                      data-toggle-url="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
+                      data-cuota="{{ c.numero_cuota }}">
                 <i class="bi bi-check2"></i>
               </button>
-            </form>
+            </div>
             {% endif %}
           </td>
           <td>
@@ -358,4 +359,149 @@
 {% endif %}
 
 {% endif %}
+
+{# ── Modal preview asiento cuota ── #}
+<div class="modal fade" id="modalPagarCuota" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0"><i class="bi bi-journal-check me-2"></i>Asiento borrador — Cuota <span id="modal-num-cuota"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-loading" class="text-center py-3 text-muted">
+          <div class="spinner-border spinner-border-sm me-2"></div>Calculando...
+        </div>
+        <div id="modal-error" class="alert alert-warning d-none"></div>
+        <div id="modal-content" class="d-none">
+          <p class="mb-2 small text-muted" id="modal-desc"></p>
+          {% if prestamo.moneda == 'UF' %}
+          <div class="alert alert-info py-2 mb-2 small" id="modal-uf-info" style="display:none!important"></div>
+          {% endif %}
+          <table class="table table-sm table-bordered mb-0" style="font-size:.85rem">
+            <thead class="table-secondary">
+              <tr>
+                <th>Cuenta</th>
+                <th>Descripción</th>
+                <th class="text-end">Debe</th>
+                <th class="text-end">Haber</th>
+              </tr>
+            </thead>
+            <tbody id="modal-lineas"></tbody>
+            <tfoot class="fw-bold">
+              <tr>
+                <td colspan="2" class="text-end small text-muted">Total</td>
+                <td class="text-end" id="modal-total-debe"></td>
+                <td class="text-end" id="modal-total-haber"></td>
+              </tr>
+            </tfoot>
+          </table>
+          <div id="modal-sin-cuentas" class="alert alert-warning mt-2 small d-none">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Algunas cuentas contables no están configuradas. El asiento no se generará, pero el pago se registrará igual.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm" id="btn-confirmar-pago" disabled>
+          <i class="bi bi-check2-circle me-1"></i>Confirmar pago
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form id="form-pago-oculto" method="post" style="display:none">
+  <input type="hidden" name="fecha_pago" id="form-fecha-pago-oculto">
+</form>
+
+<script>
+(function() {
+  const fmt = n => Math.round(n).toLocaleString('es-CL');
+
+  document.querySelectorAll('.btn-pagar-cuota').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const cuota = this.dataset.cuota;
+      const previewUrl = this.dataset.previewUrl;
+      const toggleUrl = this.dataset.toggleUrl;
+      const fechaInput = this.closest('.d-flex').querySelector('.fecha-pago-input');
+      const fechaPago = fechaInput.value;
+
+      document.getElementById('modal-num-cuota').textContent = cuota;
+      document.getElementById('modal-loading').classList.remove('d-none');
+      document.getElementById('modal-content').classList.add('d-none');
+      document.getElementById('modal-error').classList.add('d-none');
+      document.getElementById('btn-confirmar-pago').disabled = true;
+
+      const modal = new bootstrap.Modal(document.getElementById('modalPagarCuota'));
+      modal.show();
+
+      const fd = new FormData();
+      fd.append('fecha_pago', fechaPago);
+      fetch(previewUrl, {method: 'POST', body: fd})
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('modal-loading').classList.add('d-none');
+          if (data.error) {
+            document.getElementById('modal-error').textContent = data.error;
+            document.getElementById('modal-error').classList.remove('d-none');
+            return;
+          }
+
+          document.getElementById('modal-desc').textContent = data.descripcion + ' — ' + data.fecha;
+
+          // UF info
+          const ufInfo = document.getElementById('modal-uf-info');
+          if (ufInfo && data.moneda === 'UF' && data.uf_valor) {
+            ufInfo.textContent = `Préstamo en UF · valor UF al ${data.fecha}: $${fmt(data.uf_valor)} — Total en pesos: $${fmt(data.total_pesos)}`;
+            ufInfo.style.display = '';
+          } else if (ufInfo) {
+            ufInfo.style.display = 'none';
+          }
+
+          const tbody = document.getElementById('modal-lineas');
+          tbody.innerHTML = '';
+          let sumDebe = 0, sumHaber = 0;
+          data.lineas.forEach(l => {
+            const tr = document.createElement('tr');
+            if (!l.nombre.startsWith('(')) tr.innerHTML = `
+              <td class="font-monospace small">${l.cuenta} <span class="text-muted">${l.nombre}</span></td>
+              <td class="small">${l.descripcion}</td>
+              <td class="text-end">${l.debe ? '$' + fmt(l.debe) : ''}</td>
+              <td class="text-end">${l.haber ? '$' + fmt(l.haber) : ''}</td>`;
+            else tr.innerHTML = `
+              <td colspan="2" class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>${l.nombre}</td>
+              <td class="text-end">${l.debe ? '$' + fmt(l.debe) : ''}</td>
+              <td class="text-end">${l.haber ? '$' + fmt(l.haber) : ''}</td>`;
+            tbody.appendChild(tr);
+            sumDebe += l.debe; sumHaber += l.haber;
+          });
+          document.getElementById('modal-total-debe').textContent = sumDebe ? '$' + fmt(sumDebe) : '';
+          document.getElementById('modal-total-haber').textContent = sumHaber ? '$' + fmt(sumHaber) : '';
+
+          if (!data.cuentas_ok) {
+            document.getElementById('modal-sin-cuentas').classList.remove('d-none');
+          } else {
+            document.getElementById('modal-sin-cuentas').classList.add('d-none');
+          }
+
+          document.getElementById('modal-content').classList.remove('d-none');
+          document.getElementById('btn-confirmar-pago').disabled = false;
+          document.getElementById('btn-confirmar-pago').onclick = function() {
+            const form = document.getElementById('form-pago-oculto');
+            form.action = toggleUrl;
+            document.getElementById('form-fecha-pago-oculto').value = fechaPago;
+            form.submit();
+          };
+        })
+        .catch(() => {
+          document.getElementById('modal-loading').classList.add('d-none');
+          document.getElementById('modal-error').textContent = 'Error al calcular el asiento. Intente nuevamente.';
+          document.getElementById('modal-error').classList.remove('d-none');
+        });
+    });
+  });
+})();
+</script>
 {% endblock %}

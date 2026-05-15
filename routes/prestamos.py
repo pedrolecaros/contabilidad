@@ -1,6 +1,6 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte
 from engine.asientos import generar_asiento_cuota_prestamo
 
@@ -371,6 +371,90 @@ def eliminar(eid, pid):
     return redirect(url_for('prestamos.lista', eid=eid))
 
 
+# ── Preview asiento cuota (sin guardar) ──────────────────────────────────────
+
+@bp.route('/empresa/<int:eid>/prestamos/<int:pid>/cuota/<int:cid>/preview', methods=['POST'])
+def cuota_preview(eid, pid, cid):
+    """Devuelve JSON con el borrador del asiento para la cuota, sin guardar."""
+    cuota = CuotaPrestamo.query.get_or_404(cid)
+    prestamo = Prestamo.query.get_or_404(pid)
+    if prestamo.empresa_id != eid or cuota.prestamo_id != pid:
+        return jsonify(error='No autorizado'), 403
+
+    fecha_pago_str = request.form.get('fecha_pago', '')
+    try:
+        fecha_pago = date.fromisoformat(fecha_pago_str)
+    except (ValueError, TypeError):
+        fecha_pago = date.today()
+
+    uf_valor = None
+    if prestamo.moneda == 'UF':
+        uf_row = ValorUF.query.filter_by(fecha=fecha_pago).first()
+        uf_valor = uf_row.valor if uf_row else None
+
+    # Calculate amounts
+    if prestamo.moneda == 'UF' and uf_valor:
+        capital_pesos = round((cuota.capital or 0) * uf_valor)
+        interes_pesos = round((cuota.interes or 0) * uf_valor)
+        total_pesos = capital_pesos + interes_pesos
+    else:
+        capital_pesos = round(cuota.capital or 0)
+        interes_pesos = round(cuota.interes or 0)
+        total_pesos = round(cuota.cuota_total or 0)
+
+    nombre = prestamo.acreedor_deudor or prestamo.nombre
+    desc = f"Cuota {cuota.numero_cuota} préstamo {nombre}"
+
+    from models import Cuenta
+    def _buscar(codigo):
+        c = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo, activa=True).first()
+        return {'codigo': codigo, 'nombre': c.nombre if c else f'({codigo} no configurada)', 'ok': bool(c)}
+
+    lineas = []
+    cuentas_ok = True
+
+    if prestamo.tipo == 'PAGAR':
+        c_pasivo = _buscar('2.2.01')
+        c_gasto = _buscar('5.2.12')
+        c_banco = _buscar('1.1.02')
+        if not all(x['ok'] for x in [c_pasivo, c_gasto, c_banco]):
+            cuentas_ok = False
+        if capital_pesos:
+            lineas.append({'cuenta': c_pasivo['codigo'], 'nombre': c_pasivo['nombre'],
+                           'descripcion': f'Capital {nombre}', 'debe': capital_pesos, 'haber': 0})
+        if interes_pesos:
+            lineas.append({'cuenta': c_gasto['codigo'], 'nombre': c_gasto['nombre'],
+                           'descripcion': f'Interés {nombre}', 'debe': interes_pesos, 'haber': 0})
+        lineas.append({'cuenta': c_banco['codigo'], 'nombre': c_banco['nombre'],
+                       'descripcion': desc, 'debe': 0, 'haber': total_pesos})
+    else:
+        c_banco = _buscar('1.1.02')
+        c_activo = _buscar('1.3.01')
+        c_ingreso = _buscar('4.2.01')
+        if not all(x['ok'] for x in [c_banco, c_activo, c_ingreso]):
+            cuentas_ok = False
+        lineas.append({'cuenta': c_banco['codigo'], 'nombre': c_banco['nombre'],
+                       'descripcion': desc, 'debe': total_pesos, 'haber': 0})
+        if capital_pesos:
+            lineas.append({'cuenta': c_activo['codigo'], 'nombre': c_activo['nombre'],
+                           'descripcion': f'Capital {nombre}', 'debe': 0, 'haber': capital_pesos})
+        if interes_pesos:
+            lineas.append({'cuenta': c_ingreso['codigo'], 'nombre': c_ingreso['nombre'],
+                           'descripcion': f'Interés {nombre}', 'debe': 0, 'haber': interes_pesos})
+
+    return jsonify(
+        descripcion=desc,
+        fecha=fecha_pago.isoformat(),
+        moneda=prestamo.moneda,
+        uf_valor=uf_valor,
+        capital_pesos=capital_pesos,
+        interes_pesos=interes_pesos,
+        total_pesos=total_pesos,
+        lineas=lineas,
+        cuentas_ok=cuentas_ok,
+    )
+
+
 # ── Toggle cuota pagada ───────────────────────────────────────────────────────
 
 @bp.route('/empresa/<int:eid>/prestamos/<int:pid>/cuota/<int:cid>/toggle', methods=['POST'])
@@ -488,3 +572,41 @@ def agregar_pago(eid, pid):
     db.session.commit()
     flash('Pago registrado', 'success')
     return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
+
+
+
+# ── API cuotas pendientes (para conciliación) ─────────────────────────────────
+
+@bp.route('/empresa/<int:eid>/api/cuotas-pendientes')
+def api_cuotas_pendientes(eid):
+    """Devuelve cuotas no pagadas agrupadas por préstamo, para vincular en conciliación."""
+    empresa = Empresa.query.get_or_404(eid)
+    prestamos = Prestamo.query.filter_by(empresa_id=eid).order_by(Prestamo.nombre).all()
+
+    resultado = []
+    for p in prestamos:
+        cuotas_pend = [c for c in p.cuotas if not c.pagada]
+        if not cuotas_pend:
+            continue
+        cuotas_data = []
+        for c in sorted(cuotas_pend, key=lambda x: x.fecha_vencimiento or date.today()):
+            monto = float(c.cuota_total or 0)
+            cuotas_data.append({
+                'id': c.id,
+                'numero': c.numero_cuota,
+                'fecha_venc': c.fecha_vencimiento.isoformat() if c.fecha_vencimiento else '',
+                'capital': float(c.capital or 0),
+                'interes': float(c.interes or 0),
+                'total': monto,
+                'moneda': p.moneda,
+                'desc': f"Cuota {c.numero_cuota} – vcto {c.fecha_vencimiento.strftime('%d/%m/%Y') if c.fecha_vencimiento else '?'}",
+            })
+        resultado.append({
+            'id': p.id,
+            'nombre': p.nombre,
+            'tipo': p.tipo,
+            'moneda': p.moneda,
+            'cuotas': cuotas_data,
+        })
+
+    return jsonify(prestamos=resultado)

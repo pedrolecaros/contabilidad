@@ -67,6 +67,13 @@ def _migrar(app):
     asiento_id INTEGER REFERENCES asientos(id),
     creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
 )""",
+        """CREATE TABLE IF NOT EXISTS asientos_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asiento_id INTEGER NOT NULL REFERENCES asientos(id),
+    accion VARCHAR(20) NOT NULL,
+    descripcion VARCHAR(500),
+    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+)""",
         'ALTER TABLE prestamos ADD COLUMN acreedor_rut VARCHAR(20)',
         'ALTER TABLE cuotas_prestamo ADD COLUMN asiento_id INTEGER REFERENCES asientos(id)',
         'ALTER TABLE cuotas_prestamo ADD COLUMN uf_valor_pago REAL',

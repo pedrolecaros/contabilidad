@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" id="html-root">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -21,7 +21,32 @@
     .badge-anulado { background: #dc3545; }
     .table-sm td, .table-sm th { font-size: .85rem; }
     .titulo-cuenta { font-weight: 700; background: #e9ecef !important; }
+    /* Dark mode */
+    [data-theme="dark"] body { background: #121212; color: #e0e0e0; }
+    [data-theme="dark"] .card { background: #1e1e1e; border-color: #333; color: #e0e0e0; }
+    [data-theme="dark"] .table { color: #e0e0e0; }
+    [data-theme="dark"] .table-secondary { background: #2a2a2a; color: #ccc; }
+    [data-theme="dark"] .table-hover tbody tr:hover { background: #2d2d2d; }
+    [data-theme="dark"] .table-light { background: #2a2a2a; color: #ccc; }
+    [data-theme="dark"] .form-control, [data-theme="dark"] .form-select {
+      background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+    [data-theme="dark"] .main-content { background: #121212; }
+    [data-theme="dark"] .alert-info { background: #0d3349; color: #74c0fc; border-color: #1864ab; }
+    [data-theme="dark"] .alert-warning { background: #3d2c00; color: #fcc419; border-color: #7c5c00; }
+    /* Search modal */
+    #modal-buscar .buscar-item { cursor:pointer; padding:.5rem .75rem; border-radius:4px; }
+    #modal-buscar .buscar-item:hover { background: rgba(0,0,0,.06); }
+    #modal-buscar .buscar-item-icon { width:28px; text-align:center; font-size:1rem; }
+    .buscar-kbd { background:#eee; border:1px solid #ccc; border-radius:3px;
+                  padding:1px 5px; font-size:.75rem; font-family:monospace; }
   </style>
+  <script>
+    // Apply saved theme before paint to avoid flash
+    (function(){
+      var t = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
 <div class="container-fluid">
@@ -39,6 +64,13 @@
         <i class="bi bi-building me-1"></i>{{ empresa.nombre_fantasia or empresa.razon_social }}
         <div class="text-muted" style="font-size:.75rem;font-weight:400">{{ empresa.rut }}</div>
       </div>
+      <hr class="text-secondary my-1">
+
+      <ul class="nav flex-column mb-1">
+        <li><a class="nav-link {% if request.endpoint=='dashboard.index' %}active{% endif %}"
+               href="{{ url_for('dashboard.index', eid=empresa.id) }}">
+          <i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
+      </ul>
       <hr class="text-secondary my-1">
 
       <div class="nav-section">Contabilidad</div>
@@ -123,7 +155,40 @@
                href="{{ url_for('empresas.editar', eid=empresa.id) }}">
           <i class="bi bi-building-gear me-2"></i>Empresa</a></li>
       </ul>
+
+      <!-- Buscador y dark mode al pie del sidebar -->
+      <div class="mt-auto px-3 pb-2 pt-3 border-top border-secondary">
+        <button class="btn btn-outline-light btn-sm w-100 mb-2"
+                onclick="document.getElementById('input-buscar-global').focus(); new bootstrap.Modal(document.getElementById('modal-buscar')).show()">
+          <i class="bi bi-search me-1"></i>Buscar
+          <span class="buscar-kbd ms-1">Ctrl+K</span>
+        </button>
+        <button class="btn btn-outline-secondary btn-sm w-100" id="btn-toggle-theme">
+          <i class="bi bi-moon-stars me-1" id="icon-theme"></i><span id="lbl-theme">Modo oscuro</span>
+        </button>
+      </div>
     </nav>
+
+    <!-- Modal buscador global -->
+    <div class="modal fade" id="modal-buscar" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-body pb-1">
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" id="input-buscar-global" class="form-control form-control-lg"
+                     placeholder="Buscar asientos, cuentas, empleados, proveedores…"
+                     autocomplete="off">
+            </div>
+            <div id="buscar-resultados" class="mt-2 mb-1" style="max-height:380px;overflow-y:auto">
+              <div class="text-center text-muted py-4 small" id="buscar-hint">
+                Escribe para buscar en esta empresa
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <main class="col-md-10 main-content">
     {% else %}
     <main class="col-12 main-content">
@@ -205,6 +270,93 @@ document.addEventListener('change', function(e) {
   }
 });
 
+// ── Dark mode toggle ──────────────────────────────────────────────────────────
+(function(){
+  function applyTheme(t) {
+    document.getElementById('html-root').setAttribute('data-theme', t);
+    localStorage.setItem('theme', t);
+    var icon = document.getElementById('icon-theme');
+    var lbl  = document.getElementById('lbl-theme');
+    if (icon) icon.className = t === 'dark' ? 'bi bi-sun me-1' : 'bi bi-moon-stars me-1';
+    if (lbl)  lbl.textContent = t === 'dark' ? 'Modo claro' : 'Modo oscuro';
+  }
+  var btn = document.getElementById('btn-toggle-theme');
+  if (btn) {
+    applyTheme(localStorage.getItem('theme') || 'light');
+    btn.addEventListener('click', function(){
+      var cur = localStorage.getItem('theme') || 'light';
+      applyTheme(cur === 'dark' ? 'light' : 'dark');
+    });
+  }
+})();
+
+// ── Buscador global (Ctrl+K / Cmd+K) ─────────────────────────────────────────
+(function(){
+  var modal, input, resultados, timer;
+  {% if empresa is defined and empresa %}
+  var EID = {{ empresa.id }};
+  {% else %}
+  var EID = null;
+  {% endif %}
+
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      if (!EID) return;
+      modal = modal || new bootstrap.Modal(document.getElementById('modal-buscar'));
+      modal.show();
+      setTimeout(function(){
+        document.getElementById('input-buscar-global').focus();
+      }, 200);
+    }
+    if (e.key === 'Escape') {
+      var m = document.getElementById('modal-buscar');
+      if (m && m.classList.contains('show')) {
+        bootstrap.Modal.getInstance(m).hide();
+      }
+    }
+  });
+
+  var inputEl = document.getElementById('input-buscar-global');
+  if (inputEl) {
+    inputEl.addEventListener('input', function(){
+      clearTimeout(timer);
+      var q = this.value.trim();
+      if (!q || !EID) { resetResultados(); return; }
+      timer = setTimeout(function(){ doSearch(q); }, 200);
+    });
+  }
+
+  function resetResultados() {
+    var el = document.getElementById('buscar-resultados');
+    if (el) el.innerHTML = '<div class="text-center text-muted py-4 small">Escribe para buscar en esta empresa</div>';
+  }
+
+  var ICONOS = { asiento: 'bi-journal-text', cuenta: 'bi-list-nested',
+                 empleado: 'bi-person-vcard', contraparte: 'bi-people' };
+
+  function doSearch(q) {
+    fetch('/empresa/' + EID + '/buscar?q=' + encodeURIComponent(q))
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        var el = document.getElementById('buscar-resultados');
+        if (!el) return;
+        if (!data.resultados.length) {
+          el.innerHTML = '<div class="text-center text-muted py-3 small">Sin resultados para "' + q + '"</div>';
+          return;
+        }
+        var html = '';
+        data.resultados.forEach(function(r) {
+          html += '<a href="' + r.url + '" class="buscar-item d-flex align-items-center gap-2 text-decoration-none text-reset">' +
+            '<span class="buscar-item-icon text-muted"><i class="bi ' + (ICONOS[r.tipo]||'bi-search') + '"></i></span>' +
+            '<div><div class="small fw-semibold">' + r.titulo + '</div>' +
+            '<div class="text-muted" style="font-size:.75rem">' + r.subtitulo + '</div></div>' +
+            '</a>';
+        });
+        el.innerHTML = html;
+      });
+  }
+})();
 </script>
 </body>
 </html>

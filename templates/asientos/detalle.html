@@ -182,4 +182,23 @@
   {% endif %}
 </div>
 {% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2 small bg-light">
+    <i class="bi bi-clock-history me-1"></i>Historial de cambios
+  </div>
+  <ul class="list-group list-group-flush">
+    {% for a in audits %}
+    <li class="list-group-item py-1 px-3 small d-flex justify-content-between">
+      <span>
+        <span class="badge rounded-pill {% if a.accion=='CREAR' %}bg-success{% elif a.accion=='EDITAR' %}bg-primary{% elif a.accion=='CONFIRMAR' %}bg-info text-dark{% elif a.accion=='ANULAR' %}bg-danger{% else %}bg-secondary{% endif %} me-2">{{ a.accion }}</span>
+        {{ a.descripcion or '' }}
+      </span>
+      <span class="text-muted">{{ a.creado_en.strftime('%d/%m/%Y %H:%M') }}</span>
+    </li>
+    {% else %}
+    <li class="list-group-item py-1 px-3 small text-muted">Sin registros de cambio.</li>
+    {% endfor %}
+  </ul>
+</div>
 {% endblock %}

@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item active">{{ empresa.nombre_fantasia or empresa.razon_social }}</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-speedometer2 me-2"></i>Dashboard</h5>
+  <span class="text-muted small">{{ hoy.strftime('%d/%m/%Y') }}</span>
+</div>
+
+<!-- Tarjetas de indicadores -->
+<div class="row g-3 mb-4">
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm {% if docs_pendientes > 0 %}border-start border-warning border-4{% endif %}">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Documentos pendientes</div>
+        <div class="fs-3 fw-bold {% if docs_pendientes > 0 %}text-warning{% else %}text-success{% endif %}">
+          {{ docs_pendientes }}
+        </div>
+        <a href="{{ url_for('pendientes.index', eid=empresa.id) }}" class="stretched-link small text-muted">
+          Ver pendientes →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm {% if movs_sin_conc > 0 %}border-start border-warning border-4{% endif %}">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Movimientos sin conciliar</div>
+        <div class="fs-3 fw-bold {% if movs_sin_conc > 0 %}text-warning{% else %}text-success{% endif %}">
+          {{ movs_sin_conc }}
+        </div>
+        <a href="{{ url_for('conciliacion.index', eid=empresa.id) }}" class="stretched-link small text-muted">
+          Conciliar →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm {% if asientos_borrador > 0 %}border-start border-info border-4{% endif %}">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Asientos en borrador</div>
+        <div class="fs-3 fw-bold {% if asientos_borrador > 0 %}text-info{% else %}text-success{% endif %}">
+          {{ asientos_borrador }}
+        </div>
+        <a href="{{ url_for('asientos.lista', eid=empresa.id, estado='BORRADOR') }}"
+           class="stretched-link small text-muted">Ver borradores →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm {% if cuotas_vencidas > 0 %}border-start border-danger border-4{% endif %}">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Cuotas préstamo vencidas</div>
+        <div class="fs-3 fw-bold {% if cuotas_vencidas > 0 %}text-danger{% else %}text-success{% endif %}">
+          {{ cuotas_vencidas }}
+        </div>
+        <a href="{{ url_for('prestamos.lista', eid=empresa.id) }}" class="stretched-link small text-muted">
+          Ver préstamos →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Saldo banco (total)</div>
+        <div class="fs-5 fw-bold {% if saldo_banco >= 0 %}text-success{% else %}text-danger{% endif %}">
+          $ {{ saldo_banco|clp }}
+        </div>
+        <span class="small text-muted">Suma de movimientos</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Asientos este mes</div>
+        <div class="fs-3 fw-bold">{{ asientos_mes }}</div>
+        <a href="{{ url_for('asientos.lista', eid=empresa.id) }}" class="stretched-link small text-muted">
+          Ver todos →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Última remuneración</div>
+        <div class="fs-5 fw-bold">{{ ultimo_periodo_rem or '—' }}</div>
+        <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="stretched-link small text-muted">
+          Remuneraciones →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Accesos rápidos</div>
+        <div class="d-flex flex-column gap-1 mt-1">
+          <a href="{{ url_for('importar.index', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm py-0">
+            <i class="bi bi-upload me-1"></i>Importar
+          </a>
+          <a href="{{ url_for('asientos.nuevo', eid=empresa.id) }}" class="btn btn-outline-primary btn-sm py-0">
+            <i class="bi bi-plus-circle me-1"></i>Nuevo Asiento
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Actividad reciente -->
+{% if recientes %}
+<div class="card shadow-sm">
+  <div class="card-header bg-dark text-white py-2 small fw-semibold">
+    <i class="bi bi-activity me-1"></i>Asientos recientes
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-secondary">
+        <tr>
+          <th>N°</th><th>Fecha</th><th>Descripción</th><th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in recientes %}
+        <tr>
+          <td><a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=a.id) }}">{{ a.numero }}</a></td>
+          <td class="small">{{ a.fecha|fecha_cl }}</td>
+          <td class="small">{{ a.descripcion or '—' }}</td>
+          <td>
+            <span class="badge badge-{{ a.estado|lower }}">{{ a.estado }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -130,49 +130,63 @@ def balance(eid):
     empresa = Empresa.query.get_or_404(eid)
     desde, hasta = _rango_fechas()
 
+    # Optional comparison period
+    comparar_desde_str = request.args.get('comparar_desde', '')
+    comparar_hasta_str = request.args.get('comparar_hasta', '')
+    comparar_desde = comparar_hasta = None
+    if comparar_desde_str and comparar_hasta_str:
+        try:
+            comparar_desde = date.fromisoformat(comparar_desde_str)
+            comparar_hasta = date.fromisoformat(comparar_hasta_str)
+        except ValueError:
+            pass
+
     sumas = _sumas_balance(eid, desde, hasta)
+    sumas_cmp = _sumas_balance(eid, comparar_desde, comparar_hasta) if comparar_desde else {}
 
     cuentas = (Cuenta.query
                .filter_by(empresa_id=eid, activa=True)
                .order_by(Cuenta.codigo).all())
 
-    filas = []
-    tot = {k: 0.0 for k in ['sd','sh','sald','sala','bgd','bgh','erd','erh']}
+    def _build_filas(sumas_dict):
+        filas = []
+        tot = {k: 0.0 for k in ['sd','sh','sald','sala','bgd','bgh','erd','erh']}
+        for c in cuentas:
+            sd, sh = sumas_dict.get(c.id, (0.0, 0.0))
+            sald = max(sd - sh, 0)
+            sala = max(sh - sd, 0)
+            erd = erh = bgd = bgh = 0.0
+            if not c.es_titulo:
+                if c.tipo in ('GASTO', 'INGRESO'):
+                    erd = sald; erh = sala
+                else:
+                    bgd = sald; bgh = sala
+                tot['sd']  += sd;   tot['sh']  += sh
+                tot['sald']+= sald; tot['sala']+= sala
+                tot['bgd'] += bgd;  tot['bgh'] += bgh
+                tot['erd'] += erd;  tot['erh'] += erh
+            if sd or sh or c.es_titulo:
+                filas.append({'cuenta': c, 'sd': sd, 'sh': sh,
+                               'sald': sald, 'sala': sala,
+                               'bgd': bgd, 'bgh': bgh,
+                               'erd': erd, 'erh': erh})
+        return filas, tot
 
-    for c in cuentas:
-        sd, sh = sumas.get(c.id, (0.0, 0.0))
-        # Saldo deudor / acreedor (raw, sin naturaleza)
-        sald = max(sd - sh, 0)   # saldo deudor
-        sala = max(sh - sd, 0)   # saldo acreedor
+    filas, tot = _build_filas(sumas)
+    filas_cmp, tot_cmp = _build_filas(sumas_cmp) if comparar_desde else ([], {})
 
-        erd = erh = bgd = bgh = 0.0
-        if not c.es_titulo:
-            if c.tipo in ('GASTO', 'INGRESO'):
-                erd = sald   # pérdidas
-                erh = sala   # ganancias
-            else:            # ACTIVO, PASIVO, PATRIMONIO
-                bgd = sald   # activos
-                bgh = sala   # pasivos / patrimonio
-
-            tot['sd']  += sd;   tot['sh']  += sh
-            tot['sald']+= sald; tot['sala']+= sala
-            tot['bgd'] += bgd;  tot['bgh'] += bgh
-            tot['erd'] += erd;  tot['erh'] += erh
-
-        if sd or sh or c.es_titulo:
-            filas.append({
-                'cuenta': c,
-                'sd': sd, 'sh': sh,
-                'sald': sald, 'sala': sala,
-                'bgd': bgd, 'bgh': bgh,
-                'erd': erd, 'erh': erh,
-            })
+    # Build comparison dict keyed by cuenta.id for easy template lookup
+    cmp_por_cuenta = {f['cuenta'].id: f for f in filas_cmp} if filas_cmp else {}
 
     resultado_er = tot['erh'] - tot['erd']
+    resultado_er_cmp = tot_cmp.get('erh', 0) - tot_cmp.get('erd', 0) if tot_cmp else None
 
     return render_template('reportes/balance.html', empresa=empresa,
                            filas=filas, desde=desde, hasta=hasta,
-                           tot=tot, resultado_er=resultado_er)
+                           tot=tot, resultado_er=resultado_er,
+                           comparar_desde=comparar_desde, comparar_hasta=comparar_hasta,
+                           cmp_por_cuenta=cmp_por_cuenta, tot_cmp=tot_cmp,
+                           resultado_er_cmp=resultado_er_cmp)
 
 
 @bp.route('/empresa/<int:eid>/reportes/resultado')
