@@ -3,6 +3,7 @@ from datetime import date
 import calendar
 from models import db, Empresa, Cuenta, LineaAsiento, Asiento, DocumentoSII
 from sqlalchemy import func, case
+from collections import defaultdict
 
 bp = Blueprint('reportes', __name__)
 
@@ -340,6 +341,80 @@ def diario_imprimir(eid):
     return render_template('reportes/diario_print.html', empresa=empresa,
                            asientos=asientos, desde=desde, hasta=hasta,
                            now=datetime.now())
+
+
+@bp.route('/empresa/<int:eid>/reportes/aging')
+def aging(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    tipo_vista = request.args.get('tipo_vista', 'AR')  # AR=VENTAS(cobrar) AP=COMPRAS(pagar)
+    rut_detalle = request.args.get('rut')
+    hoy = date.today()
+
+    tipo_libro = 'VENTAS' if tipo_vista == 'AR' else 'COMPRAS'
+
+    # Documentos no conciliados con total > 0
+    docs = (DocumentoSII.query
+            .filter_by(empresa_id=eid, tipo_libro=tipo_libro)
+            .filter(DocumentoSII.conciliacion_id.is_(None))
+            .filter(DocumentoSII.total > 0)
+            .order_by(DocumentoSII.fecha)
+            .all())
+
+    # Agrupar por rut_contraparte con buckets de antigüedad
+    grupos = defaultdict(lambda: {
+        'razon_social': '',
+        'b0_30': 0.0, 'b31_60': 0.0, 'b61_90': 0.0, 'b90_mas': 0.0, 'total': 0.0,
+        'ndocs': 0,
+    })
+
+    for doc in docs:
+        if not doc.fecha:
+            continue
+        dias = (hoy - doc.fecha).days
+        rut = doc.rut_contraparte or '—'
+        g = grupos[rut]
+        g['razon_social'] = doc.razon_social_contraparte or rut
+        g['ndocs'] += 1
+        g['total'] += doc.total
+        if dias <= 30:
+            g['b0_30'] += doc.total
+        elif dias <= 60:
+            g['b31_60'] += doc.total
+        elif dias <= 90:
+            g['b61_90'] += doc.total
+        else:
+            g['b90_mas'] += doc.total
+
+    # Ordenar por total desc
+    filas = sorted(
+        [{'rut': rut, **data} for rut, data in grupos.items()],
+        key=lambda x: x['total'], reverse=True
+    )
+
+    # Totales de pie
+    totales = {
+        'b0_30': sum(f['b0_30'] for f in filas),
+        'b31_60': sum(f['b31_60'] for f in filas),
+        'b61_90': sum(f['b61_90'] for f in filas),
+        'b90_mas': sum(f['b90_mas'] for f in filas),
+        'total': sum(f['total'] for f in filas),
+    }
+
+    # Detalle de documentos cuando se hace clic en una fila
+    docs_detalle = []
+    detalle_rut = None
+    if rut_detalle:
+        detalle_rut = next((f for f in filas if f['rut'] == rut_detalle), None)
+        docs_detalle = [d for d in docs if d.rut_contraparte == rut_detalle]
+        docs_detalle.sort(key=lambda d: d.fecha)
+        for d in docs_detalle:
+            d._dias = (hoy - d.fecha).days if d.fecha else 0
+
+    return render_template('reportes/aging.html',
+        empresa=empresa, tipo_vista=tipo_vista,
+        filas=filas, totales=totales,
+        docs_detalle=docs_detalle, rut_detalle=rut_detalle, detalle_rut=detalle_rut,
+        hoy=hoy)
 
 
 @bp.route('/empresa/<int:eid>/reportes/mayor/imprimir')

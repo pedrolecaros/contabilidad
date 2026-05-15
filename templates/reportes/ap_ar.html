@@ -1,7 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}Cuentas por Pagar / Cobrar – {{ empresa.razon_social }}{% endblock %}
 {% block content %}
-<h5 class="mb-3"><i class="bi bi-people me-2"></i>Cuentas por Pagar / Cobrar</h5>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-people me-2"></i>Cuentas por Pagar / Cobrar</h5>
+  <a href="{{ url_for('reportes.aging', eid=empresa.id) }}" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-hourglass-split me-1"></i>Antigüedad de Saldos
+  </a>
+</div>
 
 <!-- Filtro fechas -->
 <form class="row g-2 mb-4" method="get">
