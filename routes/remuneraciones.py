@@ -796,6 +796,9 @@ def _poblar(emp, form):
     emp.otros_haberes = float(raw_otros) if raw_otros else 0.0
     raw_mutual = form.get('tasa_mutual', '').strip()
     emp.tasa_mutual = float(raw_mutual) / 100 if raw_mutual else 0.0093
+    raw_apv = (form.get('apv_monto', '0') or '0').replace('.', '').replace(',', '.')
+    emp.apv_monto = float(raw_apv) if raw_apv else 0.0
+    emp.apv_tipo = form.get('apv_tipo', 'A') or 'A'
     emp.activo = form.get('activo') == 'on'
     fi = form.get('fecha_ingreso', '').strip()
     if fi:

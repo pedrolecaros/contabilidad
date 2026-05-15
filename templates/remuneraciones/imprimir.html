@@ -109,6 +109,12 @@
     {% if liq.impuesto_renta %}
     <tr><td>Impuesto Único 2ª Categoría</td><td class="text-right">{{ num(liq.impuesto_renta) }}</td></tr>
     {% endif %}
+    {% if liq.apv %}
+    <tr>
+      <td>APV Tipo {{ liq.empleado.apv_tipo or 'A' }}</td>
+      <td class="text-right">{{ num(liq.apv) }}</td>
+    </tr>
+    {% endif %}
     <tr class="total-row"><td>Total Descuentos</td><td class="text-right">{{ num(liq.total_descuentos) }}</td></tr>
   </table>
 </div>

@@ -20,6 +20,7 @@ def _migrar(app):
         "CREATE TABLE IF NOT EXISTS variables_mensuales (id INTEGER PRIMARY KEY, periodo VARCHAR(7) UNIQUE, uf REAL, utm REAL, tope_imponible REAL, tope_gratificacion REAL, imm REAL, fecha_actualizacion DATETIME)",
         "ALTER TABLE empleados ADD COLUMN tipo_sueldo VARCHAR(10) DEFAULT 'BRUTO'",
         "ALTER TABLE empleados ADD COLUMN monto_isapre_uf REAL DEFAULT 0.0",
+<<<<<<< HEAD
         "ALTER TABLE variables_mensuales ADD COLUMN tasa_sis REAL",
         "ALTER TABLE variables_mensuales ADD COLUMN tasas_afp_json TEXT",
         "CREATE TABLE IF NOT EXISTS valores_uf (id INTEGER PRIMARY KEY, fecha DATE UNIQUE NOT NULL, valor REAL NOT NULL)",
@@ -56,6 +57,9 @@ def _migrar(app):
 )""",
         "ALTER TABLE empresas ADD COLUMN contribuyente_iva INTEGER DEFAULT 1",
         "ALTER TABLE empresas ADD COLUMN tasa_ppm REAL DEFAULT 1.0",
+        "ALTER TABLE empleados ADD COLUMN apv_monto REAL DEFAULT 0.0",
+        "ALTER TABLE empleados ADD COLUMN apv_tipo VARCHAR(1) DEFAULT 'A'",
+        "ALTER TABLE liquidaciones ADD COLUMN apv REAL DEFAULT 0.0",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

@@ -206,6 +206,8 @@ class Empleado(db.Model):
     otros_haberes = db.Column(db.Float, default=0.0)
     # Mutual de seguridad (tasa empleador)
     tasa_mutual = db.Column(db.Float, default=0.0093)
+    apv_monto = db.Column(db.Float, default=0.0)   # APV mensual en pesos
+    apv_tipo  = db.Column(db.String(1), default='A')  # 'A' o 'B'
     activo = db.Column(db.Boolean, default=True)
 
     empresa = db.relationship('Empresa', backref=db.backref('empleados', lazy='dynamic'))
@@ -240,6 +242,7 @@ class Liquidacion(db.Model):
     cesantia_emp = db.Column(db.Float, default=0.0)
     mutual = db.Column(db.Float, default=0.0)
     costo_empresa = db.Column(db.Float, default=0.0)
+    apv = db.Column(db.Float, default=0.0)
     # Referencia UTM usada
     utm = db.Column(db.Float, default=68306.0)
     estado = db.Column(db.String(15), default='BORRADOR')   # BORRADOR | EMITIDA
