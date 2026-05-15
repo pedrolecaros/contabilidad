@@ -12,72 +12,28 @@
        title="Balances y resultados consolidados">
       <i class="bi bi-graph-up me-1"></i>Financiero
     </a>
-    <a href="{{ url_for('main.backup') }}" class="btn btn-outline-dark btn-sm"
-       title="Descargar copia de seguridad de la base de datos">
-      <i class="bi bi-download me-1"></i>Backup BD
-    </a>
     <a href="{{ url_for('empresas.nueva') }}" class="btn btn-primary btn-sm">
       <i class="bi bi-plus-lg me-1"></i>Nueva Empresa
     </a>
   </div>
 </div>
 
-{# ── Indicadores diarios + Configuración ──────────────────────────────── #}
+{# ── Configuración ────────────────────────────────────────────────────── #}
 <div class="row g-3 mb-4">
-  {# Indicadores #}
-  <div class="col-md-8">
-    <div class="card h-100">
-      <div class="card-header py-2 small fw-semibold">
-        <i class="bi bi-graph-up-arrow me-1"></i>Indicadores
-        {% if uf_hoy %}
-        <span class="text-muted fw-normal ms-1" style="font-size:.78rem;">UF al {{ uf_hoy.fecha.strftime('%d/%m/%Y') }}</span>
-        {% endif %}
-      </div>
-      <div class="card-body py-2">
-        <div class="row g-2 text-center">
-          <div class="col-6 col-md-3">
-            <div class="text-muted" style="font-size:.72rem;">UF</div>
-            <div class="fw-bold fs-5 text-primary">
-              {% if uf_hoy %}$ {{ '{:,.2f}'.format(uf_hoy.valor).replace(',', '.') }}{% else %}<span class="text-muted">—</span>{% endif %}
-            </div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="text-muted" style="font-size:.72rem;">UTM{% if vars_mes %} {{ vars_mes.periodo }}{% endif %}</div>
-            <div class="fw-bold fs-5 text-secondary">
-              {% if vars_mes and vars_mes.utm %}$ {{ '{:,.0f}'.format(vars_mes.utm).replace(',', '.') }}{% else %}<span class="text-muted">—</span>{% endif %}
-            </div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="text-muted" style="font-size:.72rem;">IMM</div>
-            <div class="fw-bold fs-5 text-secondary">
-              {% if vars_mes and vars_mes.imm %}$ {{ '{:,.0f}'.format(vars_mes.imm).replace(',', '.') }}{% else %}<span class="text-muted">—</span>{% endif %}
-            </div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="text-muted" style="font-size:.72rem;">Tope imponible</div>
-            <div class="fw-bold fs-5 text-secondary">
-              {% if vars_mes and vars_mes.tope_imponible %}$ {{ '{:,.0f}'.format(vars_mes.tope_imponible).replace(',', '.') }}{% else %}<span class="text-muted">—</span>{% endif %}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  {# Configuración #}
   <div class="col-md-4">
-    <div class="card h-100">
+    <div class="card">
       <div class="card-header py-2 small fw-semibold">
         <i class="bi bi-gear me-1"></i>Configuración
       </div>
       <div class="card-body py-2 d-flex flex-column gap-1">
-        <a href="{{ url_for('remuneraciones.variables') }}" class="btn btn-outline-secondary btn-sm text-start">
-          <i class="bi bi-sliders me-2"></i>Variables mensuales (UF, UTM, AFP…)
-        </a>
         <a href="{{ url_for('remuneraciones.uf_tabla') }}" class="btn btn-outline-secondary btn-sm text-start">
           <i class="bi bi-calendar3 me-2"></i>Tabla de valores UF
         </a>
         <a href="{{ url_for('main.backup') }}" class="btn btn-outline-dark btn-sm text-start">
           <i class="bi bi-download me-2"></i>Descargar backup BD
+        </a>
+        <a href="#" class="btn btn-outline-secondary btn-sm text-start disabled">
+          <i class="bi bi-people me-2"></i>Usuarios
         </a>
       </div>
     </div>
