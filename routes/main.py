@@ -2,7 +2,7 @@ import os
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, send_file, current_app, request
-from models import db, Empresa, Asiento, ArchivoImportado, DocumentoSII, MovimientoBanco, Liquidacion, Prestamo
+from models import db, Empresa, Asiento, ArchivoImportado, DocumentoSII, MovimientoBanco, Liquidacion, Prestamo, ValorUF, VariablesMensuales
 from sqlalchemy import func
 
 bp = Blueprint('main', __name__)
@@ -11,7 +11,15 @@ bp = Blueprint('main', __name__)
 @bp.route('/')
 def index():
     empresas = Empresa.query.filter_by(activa=True).order_by(Empresa.razon_social).all()
-    return render_template('index.html', empresas=empresas)
+
+    hoy = date.today()
+    uf_hoy = (ValorUF.query.filter(ValorUF.fecha <= hoy)
+              .order_by(ValorUF.fecha.desc()).first())
+    vars_mes = (VariablesMensuales.query
+                .order_by(VariablesMensuales.periodo.desc()).first())
+
+    return render_template('index.html', empresas=empresas,
+                           uf_hoy=uf_hoy, vars_mes=vars_mes, hoy=hoy)
 
 
 @bp.route('/consolidado')

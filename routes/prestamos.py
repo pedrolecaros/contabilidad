@@ -1,7 +1,7 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte
+from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte, MovimientoBanco
 from engine.asientos import generar_asiento_cuota_prestamo
 
 bp = Blueprint('prestamos', __name__)
@@ -40,6 +40,17 @@ def _periodicidad_delta(periodicidad):
         return relativedelta(months=1)
 
 
+def _auto_crear_contraparte(eid, rut, nombre, tipo_prestamo):
+    """Create Contraparte from loan acreedor/deudor if one doesn't exist yet."""
+    if not rut or not nombre:
+        return
+    existe = Contraparte.query.filter_by(empresa_id=eid, rut=rut).first()
+    if not existe:
+        tipo_cp = 'PROVEEDOR' if tipo_prestamo == 'PAGAR' else 'CLIENTE'
+        cp = Contraparte(empresa_id=eid, rut=rut, razon_social=nombre, tipo=tipo_cp)
+        db.session.add(cp)
+
+
 def _generar_cuotas(prestamo):
     """Regenerate amortization table. Skips for LIBRE loans."""
     if prestamo.periodicidad == 'LIBRE' or not prestamo.n_cuotas:
@@ -62,20 +73,19 @@ def _generar_cuotas(prestamo):
     pmt = _pmt(prestamo.monto_original, tasa_periodo, n)
     delta = _periodicidad_delta(prestamo.periodicidad)
 
-    saldo = prestamo.monto_original
+    saldo = float(prestamo.monto_original)  # keep exact float to avoid rounding drift
     fecha = prestamo.fecha_inicio + delta
 
     for i in range(1, n + 1):
-        interes = round(saldo * tasa_periodo, 0)
-        capital = round(pmt - interes, 0)
-        # Last cuota: adjust to pay exact remaining saldo
-        if i == n:
-            capital = round(saldo, 0)
-            interes = round(pmt - capital, 0)
-            if interes < 0:
-                interes = 0
+        interes_raw = saldo * tasa_periodo
+        # Last cuota: pay exact remaining saldo (no rounding drift)
+        capital_raw = saldo if i == n else (pmt - interes_raw)
+        interes = round(interes_raw, 0)
+        capital = round(capital_raw, 0)
         cuota_total = capital + interes
-        saldo = round(saldo - capital, 0)
+        saldo = saldo - capital_raw  # subtract exact, not rounded
+        if saldo < 0:
+            saldo = 0.0
 
         cuota = CuotaPrestamo(
             prestamo_id=prestamo.id,
@@ -84,7 +94,7 @@ def _generar_cuotas(prestamo):
             capital=capital,
             interes=interes,
             cuota_total=cuota_total,
-            saldo_insoluto=max(saldo, 0),
+            saldo_insoluto=max(round(saldo, 0), 0),
         )
         db.session.add(cuota)
         fecha = fecha + delta
@@ -239,6 +249,9 @@ def nuevo(eid):
         db.session.add(prestamo)
         db.session.flush()
         _generar_cuotas(prestamo)
+        _auto_crear_contraparte(eid, acreedor_rut,
+                                request.form.get('acreedor_deudor', '').strip(),
+                                tipo)
         db.session.commit()
         flash(f'Préstamo "{nombre}" creado', 'success')
         return redirect(url_for('prestamos.detalle', eid=eid, pid=prestamo.id))
@@ -344,7 +357,8 @@ def editar(eid, pid):
 
         if prestamo.periodicidad != 'LIBRE' and prestamo.n_cuotas:
             _generar_cuotas(prestamo)
-
+        _auto_crear_contraparte(eid, prestamo.acreedor_rut,
+                                prestamo.acreedor_deudor, prestamo.tipo)
         db.session.commit()
         flash('Préstamo actualizado', 'success')
         return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
@@ -442,6 +456,27 @@ def cuota_preview(eid, pid, cid):
             lineas.append({'cuenta': c_ingreso['codigo'], 'nombre': c_ingreso['nombre'],
                            'descripcion': f'Interés {nombre}', 'debe': 0, 'haber': interes_pesos})
 
+    # Movimientos bancarios pendientes que podrían corresponder al pago
+    if prestamo.tipo == 'PAGAR':
+        movs_q = (MovimientoBanco.query
+                  .filter_by(empresa_id=eid, procesado=False)
+                  .filter(MovimientoBanco.cargo > 0)
+                  .order_by(MovimientoBanco.fecha.desc())
+                  .limit(30).all())
+    else:
+        movs_q = (MovimientoBanco.query
+                  .filter_by(empresa_id=eid, procesado=False)
+                  .filter(MovimientoBanco.abono > 0)
+                  .order_by(MovimientoBanco.fecha.desc())
+                  .limit(30).all())
+    movimientos_banco = [{
+        'id': m.id,
+        'fecha': m.fecha.strftime('%d/%m/%Y') if m.fecha else '',
+        'descripcion': (m.descripcion or '')[:60],
+        'monto': float(m.cargo if (m.cargo or 0) > 0 else (m.abono or 0)),
+        'banco': m.banco or '',
+    } for m in movs_q]
+
     return jsonify(
         descripcion=desc,
         fecha=fecha_pago.isoformat(),
@@ -452,6 +487,7 @@ def cuota_preview(eid, pid, cid):
         total_pesos=total_pesos,
         lineas=lineas,
         cuentas_ok=cuentas_ok,
+        movimientos_banco=movimientos_banco,
     )
 
 
@@ -467,6 +503,12 @@ def toggle_cuota(eid, pid, cid):
 
     if cuota.pagada:
         # Desmarcar — eliminar asiento generado automáticamente
+        if cuota.movimiento_banco_id:
+            mov = MovimientoBanco.query.get(cuota.movimiento_banco_id)
+            if mov:
+                mov.procesado = False
+                mov.asiento_id = None
+            cuota.movimiento_banco_id = None
         if cuota.asiento_id:
             asiento = Asiento.query.get(cuota.asiento_id)
             cuota.asiento_id = None
@@ -493,11 +535,25 @@ def toggle_cuota(eid, pid, cid):
                 cuota.cuota_total_pesos = round((cuota.cuota_total or 0) * uf_row.valor)
 
         # Generate accounting entry
+        asiento = None
         try:
             asiento = generar_asiento_cuota_prestamo(cuota)
             cuota.asiento_id = asiento.id
         except ValueError:
             pass  # missing accounts — skip silently
+
+        # Link bank movement if provided
+        mov_id_str = request.form.get('movimiento_banco_id', '').strip()
+        if mov_id_str:
+            try:
+                mov = MovimientoBanco.query.get(int(mov_id_str))
+                if mov and mov.empresa_id == eid:
+                    cuota.movimiento_banco_id = mov.id
+                    mov.procesado = True
+                    if asiento:
+                        mov.asiento_id = asiento.id
+            except (ValueError, TypeError):
+                pass
 
     db.session.commit()
     return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
@@ -563,11 +619,24 @@ def agregar_pago(eid, pid):
     db.session.add(cuota)
     db.session.flush()
 
+    asiento = None
     try:
         asiento = generar_asiento_cuota_prestamo(cuota)
         cuota.asiento_id = asiento.id
     except ValueError:
         pass
+
+    mov_id_str = request.form.get('movimiento_banco_id', '').strip()
+    if mov_id_str:
+        try:
+            mov = MovimientoBanco.query.get(int(mov_id_str))
+            if mov and mov.empresa_id == eid:
+                cuota.movimiento_banco_id = mov.id
+                mov.procesado = True
+                if asiento:
+                    mov.asiento_id = asiento.id
+        except (ValueError, TypeError):
+            pass
 
     db.session.commit()
     flash('Pago registrado', 'success')
