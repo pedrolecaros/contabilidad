@@ -378,19 +378,21 @@
           {% if prestamo.moneda == 'UF' %}
           <div class="alert alert-info py-2 mb-2 small" id="modal-uf-info" style="display:none!important"></div>
           {% endif %}
-          <table class="table table-sm table-bordered mb-0" style="font-size:.85rem">
+          <table class="table table-sm table-bordered mb-0" style="font-size:.83rem">
             <thead class="table-secondary">
               <tr>
-                <th>Cuenta</th>
-                <th>Descripción</th>
-                <th class="text-end">Debe</th>
-                <th class="text-end">Haber</th>
+                <th style="min-width:160px;">Cuenta</th>
+                <th style="min-width:130px;">Descripción</th>
+                <th class="text-end" style="width:110px;">Debe $</th>
+                <th class="text-end" style="width:110px;">Haber $</th>
               </tr>
             </thead>
             <tbody id="modal-lineas"></tbody>
-            <tfoot class="fw-bold">
+            <tfoot class="fw-bold table-light">
               <tr>
-                <td colspan="2" class="text-end small text-muted">Total</td>
+                <td colspan="2" class="text-end small">
+                  <span id="modal-balance-badge"></span>
+                </td>
                 <td class="text-end" id="modal-total-debe"></td>
                 <td class="text-end" id="modal-total-haber"></td>
               </tr>
@@ -400,6 +402,7 @@
             <i class="bi bi-exclamation-triangle me-1"></i>
             Algunas cuentas contables no están configuradas. El asiento no se generará, pero el pago se registrará igual.
           </div>
+          <div id="modal-mov-diff" class="d-none mt-2 small"></div>
 
           <div id="modal-movs-banco" class="mt-3 d-none">
             <div class="d-flex align-items-center gap-2 mb-1">
@@ -442,19 +445,187 @@
 <form id="form-pago-oculto" method="post" style="display:none">
   <input type="hidden" name="fecha_pago" id="form-fecha-pago-oculto">
   <input type="hidden" name="movimiento_banco_id" id="form-mov-banco-oculto">
+  <input type="hidden" name="lineas_json" id="form-lineas-json">
 </form>
 
 <script>
 (function() {
   const fmt = n => Math.round(n).toLocaleString('es-CL');
 
+  let currentToggleUrl = '';
+  let currentFechaPago = '';
+  let selectedMovMonto = null;
+
+  // ── Recalculate totals and balance indicator ─────────────────────────────
+  function recalcTotals() {
+    let sumDebe = 0, sumHaber = 0;
+    document.querySelectorAll('#modal-lineas tr').forEach(tr => {
+      sumDebe  += parseFloat(tr.querySelector('.linea-debe')?.value  || 0) || 0;
+      sumHaber += parseFloat(tr.querySelector('.linea-haber')?.value || 0) || 0;
+    });
+    document.getElementById('modal-total-debe').textContent  = sumDebe  ? '$' + fmt(sumDebe)  : '';
+    document.getElementById('modal-total-haber').textContent = sumHaber ? '$' + fmt(sumHaber) : '';
+
+    const diff = Math.round(sumDebe - sumHaber);
+    const badge = document.getElementById('modal-balance-badge');
+    const btn   = document.getElementById('btn-confirmar-pago');
+    if (Math.abs(diff) <= 1) {
+      badge.innerHTML = '<span class="badge bg-success">Cuadrado ✓</span>';
+      btn.disabled = false;
+    } else {
+      const lado = diff > 0 ? 'más en Debe' : 'más en Haber';
+      badge.innerHTML = `<span class="badge bg-danger">Descuadrado $${fmt(Math.abs(diff))} ${lado}</span>`;
+      btn.disabled = true;
+    }
+    checkMovDiff(sumDebe, sumHaber);
+  }
+
+  // ── Compare selected bank movement amount vs asiento total ───────────────
+  function checkMovDiff(sumDebe, sumHaber) {
+    const el = document.getElementById('modal-mov-diff');
+    if (!el) return;
+    if (!selectedMovMonto) { el.classList.add('d-none'); return; }
+    // Bank side: for PAGAR the bank is in haber; for COBRAR in debe.
+    const asientoTotal = Math.max(sumDebe, sumHaber);
+    const diff = Math.round(selectedMovMonto - asientoTotal);
+    el.classList.remove('d-none');
+    if (Math.abs(diff) <= 1) {
+      el.className = 'alert alert-success py-1 mt-2 small';
+      el.innerHTML = '<i class="bi bi-check-circle me-1"></i>Movimiento bancario cuadra con el asiento ✓';
+    } else {
+      const signo = diff > 0 ? '+' : '';
+      el.className = 'alert alert-warning py-1 mt-2 small';
+      el.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i>
+        Diferencia con movimiento: <strong>$${fmt(Math.abs(diff))}</strong>
+        (movimiento $${fmt(selectedMovMonto)}, asiento $${fmt(asientoTotal)})
+        &nbsp;<a href="#" id="btn-ajustar-mov" class="small">Ajustar asiento al movimiento</a>`;
+      document.getElementById('btn-ajustar-mov').onclick = function(e) {
+        e.preventDefault();
+        ajustarAlMovimiento();
+      };
+    }
+  }
+
+  // ── Set the bank line amount to match the selected movement ──────────────
+  function ajustarAlMovimiento() {
+    if (!selectedMovMonto) return;
+    const bancoRow = [...document.querySelectorAll('#modal-lineas tr')]
+      .find(tr => tr.dataset.esBanco === 'true');
+    if (!bancoRow) return;
+    const haberInp = bancoRow.querySelector('.linea-haber');
+    const debeInp  = bancoRow.querySelector('.linea-debe');
+    if (parseFloat(haberInp?.value || 0) > 0) {
+      haberInp.value = selectedMovMonto;
+    } else if (parseFloat(debeInp?.value || 0) > 0) {
+      debeInp.value = selectedMovMonto;
+    }
+    recalcTotals();
+  }
+
+  // ── Collect current lineas from the editable table ───────────────────────
+  function getLineasJson() {
+    const lineas = [];
+    document.querySelectorAll('#modal-lineas tr').forEach(tr => {
+      lineas.push({
+        cuenta_id: tr.dataset.cuentaId,
+        descripcion: tr.querySelector('.linea-desc')?.value || '',
+        debe:  parseFloat(tr.querySelector('.linea-debe')?.value  || 0) || 0,
+        haber: parseFloat(tr.querySelector('.linea-haber')?.value || 0) || 0,
+      });
+    });
+    return JSON.stringify(lineas);
+  }
+
+  // ── Render lineas as editable rows ───────────────────────────────────────
+  function renderLineas(lineas) {
+    const tbody = document.getElementById('modal-lineas');
+    tbody.innerHTML = '';
+    lineas.forEach(l => {
+      const tr = document.createElement('tr');
+      tr.dataset.cuentaId = l.cuenta_id || '';
+      tr.dataset.esBanco  = l.es_banco ? 'true' : 'false';
+      const cuentaLabel = l.nombre.startsWith('(')
+        ? `<span class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>${l.nombre}</span>`
+        : `<span class="font-monospace" style="font-size:.78rem;">${l.cuenta}</span>
+           <span class="text-muted" style="font-size:.78rem;"> ${l.nombre}</span>`;
+      tr.innerHTML = `
+        <td class="py-1">${cuentaLabel}</td>
+        <td class="py-1">
+          <input type="text" class="form-control form-control-sm py-0 linea-desc"
+                 value="${l.descripcion}" style="min-width:120px;font-size:.8rem;">
+        </td>
+        <td class="py-1">
+          <input type="number" class="form-control form-control-sm py-0 text-end linea-debe"
+                 value="${l.debe || ''}" min="0" step="1" style="width:100px;font-size:.8rem;">
+        </td>
+        <td class="py-1">
+          <input type="number" class="form-control form-control-sm py-0 text-end linea-haber"
+                 value="${l.haber || ''}" min="0" step="1" style="width:100px;font-size:.8rem;">
+        </td>`;
+      tr.querySelectorAll('.linea-debe, .linea-haber').forEach(inp => {
+        inp.addEventListener('input', recalcTotals);
+      });
+      tbody.appendChild(tr);
+    });
+    recalcTotals();
+  }
+
+  // ── Render bank movements list ────────────────────────────────────────────
+  function renderMovimientos(movimientos) {
+    const movsSection = document.getElementById('modal-movs-banco');
+    const sinMovs     = document.getElementById('modal-sin-movs');
+    const movsTbody   = document.getElementById('modal-movs-tbody');
+    const movsCount   = document.getElementById('modal-movs-count');
+    const diffEl      = document.getElementById('modal-mov-diff');
+    movsTbody.innerHTML = '';
+    selectedMovMonto = null;
+    document.getElementById('form-mov-banco-oculto').value = '';
+    document.getElementById('modal-mov-seleccionado').textContent = 'Sin vincular (opcional)';
+    if (diffEl) diffEl.classList.add('d-none');
+
+    if (movimientos && movimientos.length > 0) {
+      movsSection.classList.remove('d-none');
+      sinMovs.classList.add('d-none');
+      movsCount.textContent = movimientos.length;
+      movimientos.forEach(m => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.innerHTML = `
+          <td><input type="radio" class="form-check-input mov-radio" name="mov_sel" value="${m.id}"></td>
+          <td class="small">${m.fecha}</td>
+          <td class="small">${m.descripcion}</td>
+          <td class="text-end small fw-semibold">$${fmt(m.monto)}</td>
+          <td class="text-muted small">${m.banco}</td>`;
+        tr.addEventListener('click', () => {
+          tr.querySelector('.mov-radio').checked = true;
+          selectedMovMonto = m.monto;
+          document.getElementById('form-mov-banco-oculto').value = m.id;
+          document.getElementById('modal-mov-seleccionado').textContent =
+            `Vinculado: ${m.fecha} – ${m.descripcion} ($${fmt(m.monto)})`;
+          // Immediately show diff
+          const sd = [...document.querySelectorAll('.linea-debe')].reduce((s,i)=>s+parseFloat(i.value||0),0);
+          const sh = [...document.querySelectorAll('.linea-haber')].reduce((s,i)=>s+parseFloat(i.value||0),0);
+          checkMovDiff(sd, sh);
+        });
+        movsTbody.appendChild(tr);
+      });
+    } else {
+      movsSection.classList.add('d-none');
+      sinMovs.classList.remove('d-none');
+    }
+  }
+
+  // ── Main: button click opens modal and fetches preview ───────────────────
   document.querySelectorAll('.btn-pagar-cuota').forEach(btn => {
     btn.addEventListener('click', function() {
-      const cuota = this.dataset.cuota;
+      const cuota      = this.dataset.cuota;
       const previewUrl = this.dataset.previewUrl;
-      const toggleUrl = this.dataset.toggleUrl;
+      const toggleUrl  = this.dataset.toggleUrl;
       const fechaInput = this.closest('.d-flex').querySelector('.fecha-pago-input');
-      const fechaPago = fechaInput.value;
+      const fechaPago  = fechaInput.value;
+
+      currentToggleUrl = toggleUrl;
+      currentFechaPago = fechaPago;
 
       document.getElementById('modal-num-cuota').textContent = cuota;
       document.getElementById('modal-loading').classList.remove('d-none');
@@ -462,8 +633,7 @@
       document.getElementById('modal-error').classList.add('d-none');
       document.getElementById('btn-confirmar-pago').disabled = true;
 
-      const modal = new bootstrap.Modal(document.getElementById('modalPagarCuota'));
-      modal.show();
+      new bootstrap.Modal(document.getElementById('modalPagarCuota')).show();
 
       const fd = new FormData();
       fd.append('fecha_pago', fechaPago);
@@ -479,34 +649,16 @@
 
           document.getElementById('modal-desc').textContent = data.descripcion + ' — ' + data.fecha;
 
-          // UF info
           const ufInfo = document.getElementById('modal-uf-info');
           if (ufInfo && data.moneda === 'UF' && data.uf_valor) {
-            ufInfo.textContent = `Préstamo en UF · valor UF al ${data.fecha}: $${fmt(data.uf_valor)} — Total en pesos: $${fmt(data.total_pesos)}`;
+            ufInfo.textContent = `Préstamo en UF · valor UF al ${data.fecha}: $${fmt(data.uf_valor)} · Total estimado: $${fmt(data.total_pesos)}`;
             ufInfo.style.display = '';
           } else if (ufInfo) {
             ufInfo.style.display = 'none';
           }
 
-          const tbody = document.getElementById('modal-lineas');
-          tbody.innerHTML = '';
-          let sumDebe = 0, sumHaber = 0;
-          data.lineas.forEach(l => {
-            const tr = document.createElement('tr');
-            if (!l.nombre.startsWith('(')) tr.innerHTML = `
-              <td class="font-monospace small">${l.cuenta} <span class="text-muted">${l.nombre}</span></td>
-              <td class="small">${l.descripcion}</td>
-              <td class="text-end">${l.debe ? '$' + fmt(l.debe) : ''}</td>
-              <td class="text-end">${l.haber ? '$' + fmt(l.haber) : ''}</td>`;
-            else tr.innerHTML = `
-              <td colspan="2" class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>${l.nombre}</td>
-              <td class="text-end">${l.debe ? '$' + fmt(l.debe) : ''}</td>
-              <td class="text-end">${l.haber ? '$' + fmt(l.haber) : ''}</td>`;
-            tbody.appendChild(tr);
-            sumDebe += l.debe; sumHaber += l.haber;
-          });
-          document.getElementById('modal-total-debe').textContent = sumDebe ? '$' + fmt(sumDebe) : '';
-          document.getElementById('modal-total-haber').textContent = sumHaber ? '$' + fmt(sumHaber) : '';
+          renderLineas(data.lineas);
+          renderMovimientos(data.movimientos_banco || []);
 
           if (!data.cuentas_ok) {
             document.getElementById('modal-sin-cuentas').classList.remove('d-none');
@@ -514,49 +666,7 @@
             document.getElementById('modal-sin-cuentas').classList.add('d-none');
           }
 
-          // Bank movements
-          const movsSection = document.getElementById('modal-movs-banco');
-          const sinMovs = document.getElementById('modal-sin-movs');
-          const movsTbody = document.getElementById('modal-movs-tbody');
-          const movsCount = document.getElementById('modal-movs-count');
-          movsTbody.innerHTML = '';
-          document.getElementById('form-mov-banco-oculto').value = '';
-          document.getElementById('modal-mov-seleccionado').textContent = 'Sin vincular (opcional)';
-
-          if (data.movimientos_banco && data.movimientos_banco.length > 0) {
-            movsSection.classList.remove('d-none');
-            sinMovs.classList.add('d-none');
-            movsCount.textContent = data.movimientos_banco.length;
-            data.movimientos_banco.forEach(m => {
-              const tr = document.createElement('tr');
-              tr.style.cursor = 'pointer';
-              tr.innerHTML = `
-                <td><input type="radio" class="form-check-input mov-radio" name="mov_sel" value="${m.id}"></td>
-                <td>${m.fecha}</td>
-                <td>${m.descripcion}</td>
-                <td class="text-end">$${fmt(m.monto)}</td>
-                <td class="text-muted">${m.banco}</td>`;
-              tr.addEventListener('click', () => {
-                tr.querySelector('.mov-radio').checked = true;
-                document.getElementById('form-mov-banco-oculto').value = m.id;
-                document.getElementById('modal-mov-seleccionado').textContent =
-                  `Vinculado: ${m.fecha} – ${m.descripcion} ($${fmt(m.monto)})`;
-              });
-              movsTbody.appendChild(tr);
-            });
-          } else {
-            movsSection.classList.add('d-none');
-            sinMovs.classList.remove('d-none');
-          }
-
           document.getElementById('modal-content').classList.remove('d-none');
-          document.getElementById('btn-confirmar-pago').disabled = false;
-          document.getElementById('btn-confirmar-pago').onclick = function() {
-            const form = document.getElementById('form-pago-oculto');
-            form.action = toggleUrl;
-            document.getElementById('form-fecha-pago-oculto').value = fechaPago;
-            form.submit();
-          };
         })
         .catch(() => {
           document.getElementById('modal-loading').classList.add('d-none');
@@ -565,6 +675,16 @@
         });
     });
   });
+
+  // ── Confirm button submits the hidden form with edited lineas ─────────────
+  document.getElementById('btn-confirmar-pago').addEventListener('click', function() {
+    const form = document.getElementById('form-pago-oculto');
+    form.action = currentToggleUrl;
+    document.getElementById('form-fecha-pago-oculto').value = currentFechaPago;
+    document.getElementById('form-lineas-json').value = getLineasJson();
+    form.submit();
+  });
+
 })();
 </script>
 {% endblock %}

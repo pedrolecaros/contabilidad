@@ -2,7 +2,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte, MovimientoBanco
-from engine.asientos import generar_asiento_cuota_prestamo
+from engine.asientos import generar_asiento_cuota_prestamo, generar_asiento_cuota_custom
 
 bp = Blueprint('prestamos', __name__)
 
@@ -422,7 +422,8 @@ def cuota_preview(eid, pid, cid):
     from models import Cuenta
     def _buscar(codigo):
         c = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo, activa=True).first()
-        return {'codigo': codigo, 'nombre': c.nombre if c else f'({codigo} no configurada)', 'ok': bool(c)}
+        return {'id': c.id if c else None, 'codigo': codigo,
+                'nombre': c.nombre if c else f'({codigo} no configurada)', 'ok': bool(c)}
 
     lineas = []
     cuentas_ok = True
@@ -434,12 +435,15 @@ def cuota_preview(eid, pid, cid):
         if not all(x['ok'] for x in [c_pasivo, c_gasto, c_banco]):
             cuentas_ok = False
         if capital_pesos:
-            lineas.append({'cuenta': c_pasivo['codigo'], 'nombre': c_pasivo['nombre'],
+            lineas.append({'cuenta_id': c_pasivo['id'], 'cuenta': c_pasivo['codigo'],
+                           'nombre': c_pasivo['nombre'],
                            'descripcion': f'Capital {nombre}', 'debe': capital_pesos, 'haber': 0})
         if interes_pesos:
-            lineas.append({'cuenta': c_gasto['codigo'], 'nombre': c_gasto['nombre'],
+            lineas.append({'cuenta_id': c_gasto['id'], 'cuenta': c_gasto['codigo'],
+                           'nombre': c_gasto['nombre'],
                            'descripcion': f'Interés {nombre}', 'debe': interes_pesos, 'haber': 0})
-        lineas.append({'cuenta': c_banco['codigo'], 'nombre': c_banco['nombre'],
+        lineas.append({'cuenta_id': c_banco['id'], 'cuenta': c_banco['codigo'],
+                       'nombre': c_banco['nombre'], 'es_banco': True,
                        'descripcion': desc, 'debe': 0, 'haber': total_pesos})
     else:
         c_banco = _buscar('1.1.02')
@@ -447,13 +451,16 @@ def cuota_preview(eid, pid, cid):
         c_ingreso = _buscar('4.2.01')
         if not all(x['ok'] for x in [c_banco, c_activo, c_ingreso]):
             cuentas_ok = False
-        lineas.append({'cuenta': c_banco['codigo'], 'nombre': c_banco['nombre'],
+        lineas.append({'cuenta_id': c_banco['id'], 'cuenta': c_banco['codigo'],
+                       'nombre': c_banco['nombre'], 'es_banco': True,
                        'descripcion': desc, 'debe': total_pesos, 'haber': 0})
         if capital_pesos:
-            lineas.append({'cuenta': c_activo['codigo'], 'nombre': c_activo['nombre'],
+            lineas.append({'cuenta_id': c_activo['id'], 'cuenta': c_activo['codigo'],
+                           'nombre': c_activo['nombre'],
                            'descripcion': f'Capital {nombre}', 'debe': 0, 'haber': capital_pesos})
         if interes_pesos:
-            lineas.append({'cuenta': c_ingreso['codigo'], 'nombre': c_ingreso['nombre'],
+            lineas.append({'cuenta_id': c_ingreso['id'], 'cuenta': c_ingreso['codigo'],
+                           'nombre': c_ingreso['nombre'],
                            'descripcion': f'Interés {nombre}', 'debe': 0, 'haber': interes_pesos})
 
     # Movimientos bancarios pendientes que podrían corresponder al pago
@@ -534,13 +541,28 @@ def toggle_cuota(eid, pid, cid):
                 cuota.uf_valor_pago = uf_row.valor
                 cuota.cuota_total_pesos = round((cuota.cuota_total or 0) * uf_row.valor)
 
-        # Generate accounting entry
+        # Generate accounting entry (custom lineas if user edited them)
+        import json as _json
         asiento = None
-        try:
-            asiento = generar_asiento_cuota_prestamo(cuota)
-            cuota.asiento_id = asiento.id
-        except ValueError:
-            pass  # missing accounts — skip silently
+        lineas_json_str = request.form.get('lineas_json', '').strip()
+        if lineas_json_str:
+            try:
+                lineas_data = _json.loads(lineas_json_str)
+                asiento = generar_asiento_cuota_custom(cuota, lineas_data)
+                cuota.asiento_id = asiento.id
+            except Exception as exc:
+                flash(f'Error en asiento editado: {exc}', 'danger')
+                try:
+                    asiento = generar_asiento_cuota_prestamo(cuota)
+                    cuota.asiento_id = asiento.id
+                except ValueError:
+                    pass
+        else:
+            try:
+                asiento = generar_asiento_cuota_prestamo(cuota)
+                cuota.asiento_id = asiento.id
+            except ValueError:
+                pass  # missing accounts — skip silently
 
         # Link bank movement if provided
         mov_id_str = request.form.get('movimiento_banco_id', '').strip()

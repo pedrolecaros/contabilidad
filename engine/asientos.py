@@ -458,6 +458,48 @@ def generar_asiento_cuota_prestamo(cuota) -> Asiento:
     return asiento
 
 
+def generar_asiento_cuota_custom(cuota, lineas_data) -> Asiento:
+    """
+    Creates a cuota payment asiento using caller-supplied lineas (edited by user).
+    lineas_data: list of {cuenta_id, debe, haber, descripcion}
+    Raises ValueError if the entry doesn't balance (tolerance $1).
+    """
+    prestamo = cuota.prestamo
+    emp_id = prestamo.empresa_id
+    fecha = cuota.fecha_pago or cuota.fecha_vencimiento
+    nombre = prestamo.acreedor_deudor or prestamo.nombre
+    desc_asiento = f"Cuota {cuota.numero_cuota} préstamo {nombre}"
+
+    total_debe = sum(float(l.get('debe') or 0) for l in lineas_data)
+    total_haber = sum(float(l.get('haber') or 0) for l in lineas_data)
+    if abs(total_debe - total_haber) > 1:
+        raise ValueError(f"Asiento no cuadra: Debe ${total_debe:,.0f} ≠ Haber ${total_haber:,.0f}")
+
+    asiento = Asiento(
+        empresa_id=emp_id,
+        fecha=fecha,
+        numero=_proximo_numero(emp_id),
+        descripcion=desc_asiento,
+        origen='PRESTAMO',
+        estado='CONFIRMADO',
+    )
+    db.session.add(asiento)
+    db.session.flush()
+
+    for i, l in enumerate(lineas_data, 1):
+        db.session.add(LineaAsiento(
+            asiento_id=asiento.id,
+            cuenta_id=int(l['cuenta_id']),
+            debe=round(float(l.get('debe') or 0)),
+            haber=round(float(l.get('haber') or 0)),
+            descripcion=str(l.get('descripcion', '')),
+            orden=i,
+        ))
+
+    db.session.flush()
+    return asiento
+
+
 def confirmar_asiento(asiento: Asiento):
     if not asiento.cuadrado:
         raise ValueError(f"Asiento no cuadra: Debe={asiento.total_debe} Haber={asiento.total_haber}")
