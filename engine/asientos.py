@@ -386,6 +386,78 @@ def generar_asiento_cobro_cliente(mov: MovimientoBanco) -> Asiento:
     return asiento
 
 
+def generar_asiento_cuota_prestamo(cuota) -> Asiento:
+    """
+    Registra el pago de una cuota de préstamo.
+    PAGAR: DEBE 2.2.01 [capital] + DEBE 5.2.12 [interés] → HABER 1.1.02 [total]
+    COBRAR: DEBE 1.1.02 [total] → HABER 1.3.01 [capital] + HABER 4.2.01 [interés]
+    Para préstamos UF usa cuota.cuota_total_pesos como monto total.
+    """
+    prestamo = cuota.prestamo
+    emp_id = prestamo.empresa_id
+    fecha = cuota.fecha_pago or cuota.fecha_vencimiento
+
+    if prestamo.moneda == 'UF':
+        capital_pesos = round((cuota.capital or 0) * (cuota.uf_valor_pago or 1))
+        interes_pesos = round((cuota.interes or 0) * (cuota.uf_valor_pago or 1))
+        total_pesos = capital_pesos + interes_pesos
+    else:
+        capital_pesos = round(cuota.capital or 0)
+        interes_pesos = round(cuota.interes or 0)
+        total_pesos = round(cuota.cuota_total or 0)
+
+    nombre = prestamo.acreedor_deudor or prestamo.nombre
+    desc_asiento = f"Cuota {cuota.numero_cuota} préstamo {nombre}"
+
+    asiento = Asiento(
+        empresa_id=emp_id,
+        fecha=fecha,
+        numero=_proximo_numero(emp_id),
+        descripcion=desc_asiento,
+        origen='PRESTAMO',
+        estado='CONFIRMADO',
+    )
+    db.session.add(asiento)
+    db.session.flush()
+
+    c_banco = _buscar_cuenta(emp_id, '1.1.02')
+    if not c_banco:
+        raise ValueError("Cuenta banco (1.1.02) no encontrada")
+
+    if prestamo.tipo == 'PAGAR':
+        c_pasivo = _buscar_cuenta(emp_id, '2.2.01')
+        c_gasto = _buscar_cuenta(emp_id, '5.2.12')
+        if not c_pasivo or not c_gasto:
+            raise ValueError("Cuentas 2.2.01 o 5.2.12 no encontradas")
+        lineas = []
+        if capital_pesos:
+            lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_pasivo.id,
+                                       debe=capital_pesos, haber=0, descripcion=f"Capital {nombre}", orden=1))
+        if interes_pesos:
+            lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_gasto.id,
+                                       debe=interes_pesos, haber=0, descripcion=f"Interés {nombre}", orden=2))
+        lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
+                                   debe=0, haber=total_pesos, descripcion=desc_asiento, orden=3))
+    else:
+        c_activo = _buscar_cuenta(emp_id, '1.3.01')
+        c_ingreso = _buscar_cuenta(emp_id, '4.2.01')
+        if not c_activo or not c_ingreso:
+            raise ValueError("Cuentas 1.3.01 o 4.2.01 no encontradas")
+        lineas = [
+            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
+                         debe=total_pesos, haber=0, descripcion=desc_asiento, orden=1),
+        ]
+        if capital_pesos:
+            lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_activo.id,
+                                       debe=0, haber=capital_pesos, descripcion=f"Capital {nombre}", orden=2))
+        if interes_pesos:
+            lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_ingreso.id,
+                                       debe=0, haber=interes_pesos, descripcion=f"Interés {nombre}", orden=3))
+
+    db.session.add_all(lineas)
+    return asiento
+
+
 def confirmar_asiento(asiento: Asiento):
     if not asiento.cuadrado:
         raise ValueError(f"Asiento no cuadra: Debe={asiento.total_debe} Haber={asiento.total_haber}")

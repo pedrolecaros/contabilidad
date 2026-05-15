@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block title %}Activos Fijos – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Activos Fijos</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-building me-2"></i>Activos Fijos</h5>
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalNuevo">
+    <i class="bi bi-plus-circle me-1"></i>Registrar Activo
+  </button>
+</div>
+
+{% if activos %}
+<table class="table table-sm table-hover">
+  <thead class="table-dark">
+    <tr>
+      <th>Nombre</th>
+      <th>Categoría</th>
+      <th>Fecha Compra</th>
+      <th class="text-end">Valor Compra</th>
+      <th class="text-center">Vida Útil</th>
+      <th>Método</th>
+      <th>Estado</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for af in activos %}
+    <tr class="{{ '' if af.activo else 'text-muted' }}">
+      <td>
+        <a href="{{ url_for('activos.detalle', eid=empresa.id, aid=af.id) }}">{{ af.nombre }}</a>
+      </td>
+      <td>{{ categorias.get(af.categoria, af.categoria) }}</td>
+      <td>{{ af.fecha_compra|fecha_cl }}</td>
+      <td class="text-end">{{ af.valor_compra|clp }}</td>
+      <td class="text-center">{{ af.vida_util_meses }} meses</td>
+      <td>{{ af.metodo }}</td>
+      <td>
+        {% if af.activo %}<span class="badge bg-success">Activo</span>
+        {% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}
+      </td>
+      <td>
+        <a href="{{ url_for('activos.detalle', eid=empresa.id, aid=af.id) }}"
+           class="btn btn-outline-secondary btn-sm">Tabla</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">No hay activos registrados. Registra el primero.</div>
+{% endif %}
+
+<!-- Modal Nuevo Activo -->
+<div class="modal fade" id="modalNuevo" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('activos.nuevo', eid=empresa.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Registrar Activo Fijo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-8">
+              <label class="form-label">Nombre del Bien</label>
+              <input type="text" name="nombre" class="form-control" required placeholder="ej: Computador HP ProBook 2024">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Categoría</label>
+              <select name="categoria" class="form-select" id="selectCategoria" required>
+                {% for k, v in categorias.items() %}
+                <option value="{{ k }}">{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Fecha de Compra</label>
+              <input type="date" name="fecha_compra" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Valor de Compra ($)</label>
+              <input type="number" name="valor_compra" class="form-control" min="0" step="1" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Valor Residual ($)</label>
+              <input type="number" name="valor_residual" class="form-control" min="0" step="1" value="0">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Vida Útil (meses)</label>
+              <input type="number" name="vida_util_meses" id="vidaUtilMeses" class="form-control" min="1" required value="60">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Método de Depreciación</label>
+              <select name="metodo" class="form-select">
+                <option value="LINEAL">Lineal</option>
+                <option value="ACELERADO">Acelerado (doble tasa)</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Descripción (opcional)</label>
+              <input type="text" name="descripcion" class="form-control" placeholder="Marca, modelo, N° serie...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Registrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const vidaUtilDefaults = {{ vida_util_default | tojson }};
+document.getElementById('selectCategoria').addEventListener('change', function(){
+  const vu = vidaUtilDefaults[this.value];
+  if(vu !== undefined) document.getElementById('vidaUtilMeses').value = vu;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% block title %}{{ activo.nombre }} – Depreciación{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('activos.lista', eid=empresa.id) }}">Activos Fijos</a></li>
+    <li class="breadcrumb-item active">{{ activo.nombre }}</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{{ url_for('activos.lista', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>{{ activo.nombre }}</h5>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-auto">
+    <div class="card card-body bg-light py-2 px-3" style="min-width:150px">
+      <div class="text-muted small">Categoría</div>
+      <strong>{{ categorias.get(activo.categoria, activo.categoria) }}</strong>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="card card-body bg-light py-2 px-3" style="min-width:150px">
+      <div class="text-muted small">Valor de Compra</div>
+      <strong>${{ activo.valor_compra|clp }}</strong>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="card card-body bg-light py-2 px-3" style="min-width:150px">
+      <div class="text-muted small">Fecha de Compra</div>
+      <strong>{{ activo.fecha_compra|fecha_cl }}</strong>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="card card-body bg-light py-2 px-3" style="min-width:150px">
+      <div class="text-muted small">Vida Útil</div>
+      <strong>{{ activo.vida_util_meses }} meses</strong>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="card card-body bg-light py-2 px-3" style="min-width:150px">
+      <div class="text-muted small">Método</div>
+      <strong>{{ activo.metodo }}</strong>
+    </div>
+  </div>
+  {% if activo.descripcion %}
+  <div class="col-auto">
+    <div class="card card-body bg-light py-2 px-3">
+      <div class="text-muted small">Descripción</div>
+      <strong>{{ activo.descripcion }}</strong>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Generar depreciación -->
+<div class="card mb-4" style="max-width:400px">
+  <div class="card-header fw-semibold">Generar Asiento de Depreciación</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('activos.depreciar', eid=empresa.id, aid=activo.id) }}" class="row g-2">
+      <div class="col">
+        <input type="month" name="periodo" class="form-control"
+               value="{{ periodo_actual }}" required>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Generar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Tabla de depreciación -->
+<h6 class="mb-2">Tabla de Depreciación</h6>
+<div style="max-height:500px; overflow-y:auto">
+<table class="table table-sm table-hover">
+  <thead class="table-dark sticky-top">
+    <tr>
+      <th>Mes</th>
+      <th>Período</th>
+      <th class="text-end">Cuota</th>
+      <th class="text-end">Dep. Acumulada</th>
+      <th class="text-end">Valor Neto</th>
+      <th class="text-center">Estado</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in tabla %}
+    <tr class="{{ 'table-success' if row.registro and row.registro.asiento_id else '' }}">
+      <td>{{ row.mes_num }}</td>
+      <td>{{ row.periodo }}</td>
+      <td class="text-end">{{ row.cuota|clp }}</td>
+      <td class="text-end">{{ row.dep_acum|clp }}</td>
+      <td class="text-end">{{ row.valor_neto|clp }}</td>
+      <td class="text-center">
+        {% if row.registro %}
+          <span class="badge bg-success">Registrado</span>
+          {% if row.registro.asiento_id %}
+            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=row.registro.asiento_id) }}"
+               class="badge bg-secondary text-decoration-none">Asiento</a>
+          {% endif %}
+        {% else %}
+          <span class="badge bg-light text-dark border">Pendiente</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if activo.activo %}
+<form method="post" action="{{ url_for('activos.desactivar', eid=empresa.id, aid=activo.id) }}"
+      onsubmit="return confirm('¿Desactivar este activo?')">
+  <button class="btn btn-outline-danger btn-sm mt-3">Desactivar Activo</button>
+</form>
+{% endif %}
+{% endblock %}

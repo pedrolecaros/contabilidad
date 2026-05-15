@@ -56,9 +56,35 @@ def _migrar(app):
 )""",
         "ALTER TABLE empresas ADD COLUMN contribuyente_iva INTEGER DEFAULT 1",
         "ALTER TABLE empresas ADD COLUMN tasa_ppm REAL DEFAULT 1.0",
+        'ALTER TABLE cuotas_prestamo ADD COLUMN asiento_id INTEGER REFERENCES asientos(id)',
+        'ALTER TABLE cuotas_prestamo ADD COLUMN uf_valor_pago REAL',
+        'ALTER TABLE cuotas_prestamo ADD COLUMN cuota_total_pesos REAL',
         "ALTER TABLE empleados ADD COLUMN apv_monto REAL DEFAULT 0.0",
         "ALTER TABLE empleados ADD COLUMN apv_tipo VARCHAR(1) DEFAULT 'A'",
         "ALTER TABLE liquidaciones ADD COLUMN apv REAL DEFAULT 0.0",
+        """CREATE TABLE IF NOT EXISTS activos_fijos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    nombre VARCHAR(200) NOT NULL,
+    descripcion VARCHAR(500),
+    categoria VARCHAR(15) NOT NULL,
+    valor_compra REAL NOT NULL,
+    valor_residual REAL DEFAULT 0.0,
+    vida_util_meses INTEGER NOT NULL DEFAULT 60,
+    fecha_compra DATE NOT NULL,
+    metodo VARCHAR(10) DEFAULT 'LINEAL',
+    cuenta_activo_id INTEGER REFERENCES cuentas(id),
+    cuenta_dep_id INTEGER REFERENCES cuentas(id),
+    activo INTEGER DEFAULT 1,
+    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+)""",
+        """CREATE TABLE IF NOT EXISTS depreciacion_registros (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    activo_fijo_id INTEGER NOT NULL REFERENCES activos_fijos(id),
+    periodo VARCHAR(7) NOT NULL,
+    monto REAL NOT NULL,
+    asiento_id INTEGER REFERENCES asientos(id)
+)""",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

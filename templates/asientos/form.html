@@ -1,5 +1,15 @@
 {% extends 'base.html' %}
 {% block title %}{% if asiento %}Editar Asiento N°{{ asiento.numero }}{% else %}Nuevo Asiento{% endif %} – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">Asientos</a></li>
+    <li class="breadcrumb-item active">{% if asiento %}Editar Asiento{% else %}Nuevo Asiento{% endif %}</li>
+  </ol>
+</nav>
+{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-10">

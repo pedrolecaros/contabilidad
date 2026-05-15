@@ -642,3 +642,105 @@ def ajuste_uf(eid):
         cuentas_activo=cuentas_activo, cuentas_pasivo=cuentas_pasivo,
         asiento_generado=asiento_generado,
         ultimo_dia=ultimo_dia)
+
+
+def _clasificar_cuenta_efe(cuenta):
+    c = cuenta.codigo
+    t = cuenta.tipo
+    if t == 'INGRESO':
+        return 'OPERACIONAL', 'Cobros operacionales'
+    if t == 'GASTO':
+        return 'OPERACIONAL', 'Pagos operacionales'
+    if c.startswith('1.1.03') or c.startswith('1.1.04'):
+        return 'OPERACIONAL', 'Cobros / Clientes'
+    if c.startswith('2.1.01'):
+        return 'OPERACIONAL', 'Pagos a proveedores'
+    if c.startswith('2.1.02') or c.startswith('2.1.03'):
+        return 'OPERACIONAL', 'Pagos de remuneraciones'
+    if any(c.startswith(f'2.1.0{d}') for d in [4, 5, 6, 7, 8]):
+        return 'OPERACIONAL', 'Pagos de impuestos'
+    if c.startswith('2.1.'):
+        return 'OPERACIONAL', 'Otros pasivos circulantes'
+    if c.startswith('1.1.'):
+        return 'OPERACIONAL', 'Otros activos circulantes'
+    if c.startswith('1.2.') or c.startswith('1.3.'):
+        return 'INVERSION', cuenta.nombre
+    if c.startswith('2.2.') or c.startswith('2.3.'):
+        return 'FINANCIAMIENTO', 'Préstamos y deudas LP'
+    if c.startswith('3.'):
+        return 'FINANCIAMIENTO', 'Capital y retiros'
+    return 'OPERACIONAL', 'Otros operacionales'
+
+
+@bp.route('/empresa/<int:eid>/reportes/efe')
+def efe(eid):
+    from datetime import timedelta
+    from sqlalchemy import or_
+    empresa = Empresa.query.get_or_404(eid)
+    desde, hasta = _rango_fechas()
+
+    cuentas_efectivo = Cuenta.query.filter(
+        Cuenta.empresa_id == eid,
+        Cuenta.es_titulo == False,
+        Cuenta.activa == True,
+        or_(Cuenta.codigo.like('1.1.01%'), Cuenta.codigo.like('1.1.02%'))
+    ).all()
+    efectivo_ids = {c.id for c in cuentas_efectivo}
+
+    if not efectivo_ids:
+        return render_template('reportes/efe.html', empresa=empresa,
+                               desde=desde, hasta=hasta,
+                               saldo_inicial=0, saldo_final=0,
+                               seccion_op={}, seccion_inv={}, seccion_fin={},
+                               total_op=0, total_inv=0, total_fin=0, variacion=0)
+
+    desde_m1 = desde - timedelta(days=1)
+    saldo_inicial = sum(c.saldo(hasta=desde_m1) for c in cuentas_efectivo)
+    saldo_final = sum(c.saldo(hasta=hasta) for c in cuentas_efectivo)
+
+    asiento_ids = (db.session.query(LineaAsiento.asiento_id)
+                   .join(Asiento)
+                   .filter(
+                       Asiento.empresa_id == eid,
+                       Asiento.estado == 'CONFIRMADO',
+                       Asiento.fecha >= desde,
+                       Asiento.fecha <= hasta,
+                       LineaAsiento.cuenta_id.in_(efectivo_ids)
+                   ).distinct().all())
+    asiento_ids = [r[0] for r in asiento_ids]
+
+    seccion_op = defaultdict(float)
+    seccion_inv = defaultdict(float)
+    seccion_fin = defaultdict(float)
+
+    for aid in asiento_ids:
+        asiento = Asiento.query.get(aid)
+        lineas_ef = [l for l in asiento.lineas if l.cuenta_id in efectivo_ids]
+        lineas_otras = [l for l in asiento.lineas if l.cuenta_id not in efectivo_ids]
+        net_banco = sum(l.debe - l.haber for l in lineas_ef)
+        if not lineas_otras or net_banco == 0:
+            continue
+        total_otras = sum(l.debe + l.haber for l in lineas_otras) or 1.0
+        for line in lineas_otras:
+            peso = (line.debe + line.haber) / total_otras
+            flujo = net_banco * peso
+            seccion, subcat = _clasificar_cuenta_efe(line.cuenta)
+            if seccion == 'OPERACIONAL':
+                seccion_op[subcat] += flujo
+            elif seccion == 'INVERSION':
+                seccion_inv[subcat] += flujo
+            else:
+                seccion_fin[subcat] += flujo
+
+    total_op = sum(seccion_op.values())
+    total_inv = sum(seccion_inv.values())
+    total_fin = sum(seccion_fin.values())
+    variacion = total_op + total_inv + total_fin
+
+    return render_template('reportes/efe.html', empresa=empresa,
+                           desde=desde, hasta=hasta,
+                           saldo_inicial=saldo_inicial, saldo_final=saldo_final,
+                           seccion_op=dict(seccion_op), seccion_inv=dict(seccion_inv),
+                           seccion_fin=dict(seccion_fin),
+                           total_op=total_op, total_inv=total_inv, total_fin=total_fin,
+                           variacion=variacion)

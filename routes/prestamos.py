@@ -1,7 +1,8 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF
+from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento
+from engine.asientos import generar_asiento_cuota_prestamo
 
 bp = Blueprint('prestamos', __name__)
 
@@ -124,6 +125,21 @@ def lista(eid):
         if cuotas_pend:
             proxima_cuota[p.id] = min(cuotas_pend, key=lambda c: c.fecha_vencimiento)
 
+    # Month-by-month cash flow projection (pending cuotas, next 24 months)
+    from collections import defaultdict
+    proyeccion = defaultdict(lambda: {'capital': 0.0, 'interes': 0.0, 'total': 0.0})
+    for p in prestamos:
+        if not p.activo:
+            continue
+        for c in p.cuotas:
+            if c.pagada:
+                continue
+            mes = c.fecha_vencimiento.strftime('%Y-%m')
+            proyeccion[mes]['capital'] += c.capital or 0
+            proyeccion[mes]['interes'] += c.interes or 0
+            proyeccion[mes]['total'] += c.cuota_total or 0
+    proyeccion_list = sorted(proyeccion.items())
+
     return render_template('prestamos/lista.html',
                            empresa=empresa,
                            prestamos=prestamos,
@@ -133,6 +149,7 @@ def lista(eid):
                            vencidas=vencidas,
                            saldos=saldos,
                            proxima_cuota=proxima_cuota,
+                           proyeccion=proyeccion_list,
                            hoy=hoy)
 
 
@@ -351,8 +368,17 @@ def toggle_cuota(eid, pid, cid):
         return redirect(url_for('prestamos.lista', eid=eid))
 
     if cuota.pagada:
+        # Desmarcar — eliminar asiento generado automáticamente
+        if cuota.asiento_id:
+            asiento = Asiento.query.get(cuota.asiento_id)
+            cuota.asiento_id = None
+            if asiento:
+                LineaAsiento.query.filter_by(asiento_id=asiento.id).delete()
+                db.session.delete(asiento)
         cuota.pagada = False
         cuota.fecha_pago = None
+        cuota.uf_valor_pago = None
+        cuota.cuota_total_pesos = None
     else:
         cuota.pagada = True
         fecha_pago_str = request.form.get('fecha_pago', '')
@@ -360,6 +386,20 @@ def toggle_cuota(eid, pid, cid):
             cuota.fecha_pago = date.fromisoformat(fecha_pago_str)
         except (ValueError, TypeError):
             cuota.fecha_pago = date.today()
+
+        # Lookup UF value if UF loan
+        if prestamo.moneda == 'UF':
+            uf_row = ValorUF.query.filter_by(fecha=cuota.fecha_pago).first()
+            if uf_row:
+                cuota.uf_valor_pago = uf_row.valor
+                cuota.cuota_total_pesos = round((cuota.cuota_total or 0) * uf_row.valor)
+
+        # Generate accounting entry
+        try:
+            asiento = generar_asiento_cuota_prestamo(cuota)
+            cuota.asiento_id = asiento.id
+        except ValueError:
+            pass  # missing accounts — skip silently
 
     db.session.commit()
     return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
@@ -400,6 +440,14 @@ def agregar_pago(eid, pid):
     ultimo = (db.session.query(db.func.max(CuotaPrestamo.numero_cuota))
               .filter_by(prestamo_id=pid).scalar() or 0)
 
+    uf_valor = None
+    cuota_total_pesos = None
+    if prestamo.moneda == 'UF':
+        uf_row = ValorUF.query.filter_by(fecha=fecha_pago).first()
+        if uf_row:
+            uf_valor = uf_row.valor
+            cuota_total_pesos = round((capital + interes) * uf_row.valor)
+
     cuota = CuotaPrestamo(
         prestamo_id=pid,
         numero_cuota=ultimo + 1,
@@ -411,8 +459,18 @@ def agregar_pago(eid, pid):
         pagada=True,
         fecha_pago=fecha_pago,
         notas=notas,
+        uf_valor_pago=uf_valor,
+        cuota_total_pesos=cuota_total_pesos,
     )
     db.session.add(cuota)
+    db.session.flush()
+
+    try:
+        asiento = generar_asiento_cuota_prestamo(cuota)
+        cuota.asiento_id = asiento.id
+    except ValueError:
+        pass
+
     db.session.commit()
     flash('Pago registrado', 'success')
     return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))

@@ -1,6 +1,16 @@
 {% extends 'base.html' %}
 {% block title %}{{ prestamo.nombre }} – Préstamo{% endblock %}
 
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('prestamos.lista', eid=empresa.id) }}">Préstamos</a></li>
+    <li class="breadcrumb-item active">{{ prestamo.nombre }}</li>
+  </ol>
+</nav>
+{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0">
@@ -234,6 +244,7 @@
           <th class="text-end">Saldo</th>
           <th class="text-center">Pagado</th>
           <th>Fecha pago</th>
+          <th>Asiento</th>
         </tr>
       </thead>
       <tbody>
@@ -293,11 +304,21 @@
           <td>
             {% if c.pagada and c.fecha_pago %}
             <span class="text-muted small">{{ c.fecha_pago|fecha_cl }}</span>
-            {% if prestamo.moneda == 'UF' and uf_vals and c.fecha_pago in uf_vals %}
+            {% if prestamo.moneda == 'UF' and c.uf_valor_pago %}
             <br><small class="text-muted" style="font-size:.7rem;">
-              UF1 = $ {{ uf_vals[c.fecha_pago]|clp }}
+              UF1 = $ {{ c.uf_valor_pago|clp }}
             </small>
             {% endif %}
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if c.asiento_id and c.asiento %}
+            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=c.asiento_id) }}"
+               target="_blank" class="small" title="Ver asiento N°{{ c.asiento.numero }}">
+              N°{{ c.asiento.numero }}
+            </a>
             {% else %}
             <span class="text-muted">—</span>
             {% endif %}
@@ -321,7 +342,7 @@
             {% if prestamo.moneda == 'UF' %}UF {{ capital_pendiente|clp }}{% else %}$ {{ capital_pendiente|clp }}{% endif %}
             <div class="fw-normal text-muted" style="font-size:.72rem;">pendiente</div>
           </td>
-          <td colspan="2"></td>
+          <td colspan="3"></td>
         </tr>
       </tfoot>
     </table>

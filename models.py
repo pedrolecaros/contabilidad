@@ -323,6 +323,11 @@ class CuotaPrestamo(db.Model):
     fecha_pago = db.Column(db.Date, nullable=True)
     movimiento_banco_id = db.Column(db.Integer, db.ForeignKey('movimientos_banco.id'), nullable=True)
     notas = db.Column(db.String(300))
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
+    uf_valor_pago = db.Column(db.Float, nullable=True)
+    cuota_total_pesos = db.Column(db.Float, nullable=True)
+
+    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
 
 
 class ReglaClasificacion(db.Model):
@@ -356,3 +361,38 @@ class ArchivoImportado(db.Model):
     cuenta_bancaria = db.Column(db.String(50))
 
     empresa = db.relationship('Empresa', backref=db.backref('archivos', lazy='dynamic'))
+
+
+class ActivoFijo(db.Model):
+    __tablename__ = 'activos_fijos'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    nombre = db.Column(db.String(200), nullable=False)
+    descripcion = db.Column(db.String(500))
+    categoria = db.Column(db.String(15), nullable=False)
+    # TERRENO | CONSTRUCCION | MAQUINARIA | VEHICULO | MUEBLE | EQUIPO_COMP
+    valor_compra = db.Column(db.Float, nullable=False)
+    valor_residual = db.Column(db.Float, default=0.0)
+    vida_util_meses = db.Column(db.Integer, nullable=False, default=60)
+    fecha_compra = db.Column(db.Date, nullable=False)
+    metodo = db.Column(db.String(10), default='LINEAL')  # LINEAL | ACELERADO
+    cuenta_activo_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
+    cuenta_dep_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
+    activo = db.Column(db.Boolean, default=True)
+    creado_en = db.Column(db.DateTime, default=datetime.now)
+
+    empresa = db.relationship('Empresa', backref=db.backref('activos_fijos', lazy='dynamic'))
+    cuenta_activo = db.relationship('Cuenta', foreign_keys=[cuenta_activo_id])
+    cuenta_dep = db.relationship('Cuenta', foreign_keys=[cuenta_dep_id])
+
+
+class DepreciacionRegistro(db.Model):
+    __tablename__ = 'depreciacion_registros'
+    id = db.Column(db.Integer, primary_key=True)
+    activo_fijo_id = db.Column(db.Integer, db.ForeignKey('activos_fijos.id'), nullable=False)
+    periodo = db.Column(db.String(7), nullable=False)  # YYYY-MM
+    monto = db.Column(db.Float, nullable=False)
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
+
+    activo_fijo = db.relationship('ActivoFijo', backref=db.backref('depreciaciones', lazy='dynamic'))
+    asiento = db.relationship('Asiento')

@@ -1,6 +1,15 @@
 {% extends 'base.html' %}
 {% block title %}Préstamos – {{ empresa.nombre_fantasia or empresa.razon_social }}{% endblock %}
 
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Préstamos</li>
+  </ol>
+</nav>
+{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0"><i class="bi bi-bank me-2"></i>Préstamos</h5>
@@ -226,4 +235,36 @@
   </div>
   {% endif %}
 </div>
+
+{% if proyeccion %}
+<div class="card mt-4">
+  <div class="card-header fw-semibold">
+    <i class="bi bi-bar-chart-line me-1"></i>Proyección de flujo mensual (cuotas pendientes)
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Mes</th>
+            <th class="text-end">Capital</th>
+            <th class="text-end">Interés</th>
+            <th class="text-end">Total cuota</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mes, datos in proyeccion %}
+          <tr>
+            <td class="small">{{ mes }}</td>
+            <td class="text-end small">{{ datos.capital|clp }}</td>
+            <td class="text-end small">{{ datos.interes|clp }}</td>
+            <td class="text-end small fw-semibold">{{ datos.total|clp }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

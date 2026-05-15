@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% block title %}Flujo de Efectivo – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Flujo de Efectivo</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<h5 class="mb-3"><i class="bi bi-arrow-left-right me-2"></i>Estado de Flujo de Efectivo</h5>
+
+<form class="row g-2 mb-4" method="get">
+  <div class="col-auto">
+    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
+  </div>
+</form>
+
+<div style="max-width:750px">
+{% macro fila_flujo(label, valor) %}
+  <tr>
+    <td style="padding-left:24px">{{ label }}</td>
+    <td class="text-end {% if valor < 0 %}text-danger{% endif %}">
+      {% if valor < 0 %}({{ (-valor)|clp }}){% else %}{{ valor|clp }}{% endif %}
+    </td>
+  </tr>
+{% endmacro %}
+
+<table class="table table-sm">
+  <tbody>
+    <!-- OPERACIONAL -->
+    <tr class="titulo-cuenta">
+      <td colspan="2"><strong>Actividades Operacionales</strong></td>
+    </tr>
+    {% for label, valor in seccion_op.items() %}
+      {{ fila_flujo(label, valor) }}
+    {% endfor %}
+    {% if not seccion_op %}
+      <tr><td style="padding-left:24px" class="text-muted">Sin movimientos</td><td></td></tr>
+    {% endif %}
+    <tr class="table-primary fw-semibold">
+      <td>Flujo Neto Operacional</td>
+      <td class="text-end {% if total_op < 0 %}text-danger{% endif %}">
+        {% if total_op < 0 %}({{ (-total_op)|clp }}){% else %}{{ total_op|clp }}{% endif %}
+      </td>
+    </tr>
+
+    <tr><td colspan="2" class="py-1"></td></tr>
+
+    <!-- INVERSIÓN -->
+    <tr class="titulo-cuenta">
+      <td colspan="2"><strong>Actividades de Inversión</strong></td>
+    </tr>
+    {% if seccion_inv %}
+      {% for label, valor in seccion_inv.items() %}
+        {{ fila_flujo(label, valor) }}
+      {% endfor %}
+    {% else %}
+      <tr><td style="padding-left:24px" class="text-muted">Sin movimientos</td><td></td></tr>
+    {% endif %}
+    <tr class="table-warning fw-semibold">
+      <td>Flujo Neto de Inversión</td>
+      <td class="text-end {% if total_inv < 0 %}text-danger{% endif %}">
+        {% if total_inv < 0 %}({{ (-total_inv)|clp }}){% else %}{{ total_inv|clp }}{% endif %}
+      </td>
+    </tr>
+
+    <tr><td colspan="2" class="py-1"></td></tr>
+
+    <!-- FINANCIAMIENTO -->
+    <tr class="titulo-cuenta">
+      <td colspan="2"><strong>Actividades de Financiamiento</strong></td>
+    </tr>
+    {% if seccion_fin %}
+      {% for label, valor in seccion_fin.items() %}
+        {{ fila_flujo(label, valor) }}
+      {% endfor %}
+    {% else %}
+      <tr><td style="padding-left:24px" class="text-muted">Sin movimientos</td><td></td></tr>
+    {% endif %}
+    <tr class="table-info fw-semibold">
+      <td>Flujo Neto de Financiamiento</td>
+      <td class="text-end {% if total_fin < 0 %}text-danger{% endif %}">
+        {% if total_fin < 0 %}({{ (-total_fin)|clp }}){% else %}{{ total_fin|clp }}{% endif %}
+      </td>
+    </tr>
+
+    <tr><td colspan="2" class="py-2 border-top border-2"></td></tr>
+
+    <tr class="table-dark fw-bold">
+      <td>Variación Neta de Caja</td>
+      <td class="text-end {% if variacion < 0 %}text-danger{% endif %}">
+        {% if variacion < 0 %}({{ (-variacion)|clp }}){% else %}{{ variacion|clp }}{% endif %}
+      </td>
+    </tr>
+
+    <tr><td colspan="2" class="py-1"></td></tr>
+
+    <tr>
+      <td>Saldo inicial de caja y bancos</td>
+      <td class="text-end">{{ saldo_inicial|clp }}</td>
+    </tr>
+    <tr>
+      <td>Saldo final de caja y bancos</td>
+      <td class="text-end fw-semibold">{{ saldo_final|clp }}</td>
+    </tr>
+    {% set diferencia = saldo_final - saldo_inicial - variacion %}
+    {% if diferencia | abs > 1 %}
+    <tr class="table-warning">
+      <td><small>Diferencia no conciliada</small></td>
+      <td class="text-end"><small>{{ diferencia|clp }}</small></td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

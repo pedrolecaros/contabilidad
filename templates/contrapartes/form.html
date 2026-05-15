@@ -1,5 +1,15 @@
 {% extends 'base.html' %}
 {% block title %}{{ titulo }} – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('contrapartes.index', eid=empresa.id) }}">Proveedores / Clientes</a></li>
+    <li class="breadcrumb-item active">Nueva Contraparte</li>
+  </ol>
+</nav>
+{% endblock %}
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">

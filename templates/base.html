@@ -74,6 +74,9 @@
         <li><a class="nav-link {% if 'f29' in request.endpoint %}active{% endif %}"
                href="{{ url_for('f29.index', eid=empresa.id) }}">
           <i class="bi bi-file-earmark-text me-2"></i>F29</a></li>
+        <li><a class="nav-link {% if 'activos' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('activos.lista', eid=empresa.id) }}">
+          <i class="bi bi-building me-2"></i>Activos Fijos</a></li>
         <li><a class="nav-link {% if 'validacion' in request.endpoint %}active{% endif %}"
                href="{{ url_for('validacion.index', eid=empresa.id) }}">
           <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>
@@ -112,12 +115,17 @@
         <li><a class="nav-link {% if request.endpoint=='reportes.ajuste_uf' %}active{% endif %}"
                href="{{ url_for('reportes.ajuste_uf', eid=empresa.id) }}">
           <i class="bi bi-currency-exchange me-2"></i>Ajuste UF</a></li>
+        <li><a class="nav-link {% if request.endpoint=='reportes.efe' %}active{% endif %}"
+               href="{{ url_for('reportes.efe', eid=empresa.id) }}">
+          <i class="bi bi-arrow-left-right me-2"></i>Flujo de Efectivo</a></li>
       </ul>
     </nav>
     <main class="col-md-10 main-content">
     {% else %}
     <main class="col-12 main-content">
     {% endif %}
+
+      {% block breadcrumb %}{% endblock %}
 
       <!-- Flash messages -->
       {% with messages = get_flashed_messages(with_categories=true) %}

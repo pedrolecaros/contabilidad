@@ -1,7 +1,4 @@
-RECOMENDACIONES DE MEJORA – SISTEMA CONTABLE CHILE
-====================================================
-Revisión completa del código: routes, templates, models, engine, importers.
-Organizadas por prioridad y área. Para implementar cualquiera: cópiame el número.
+Se ordena hacer del 1 al 10. al final tiene que haber resumen.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 A. FUNCIONALIDADES CONTABLES FALTANTES (alto impacto)
@@ -18,7 +15,7 @@ A. FUNCIONALIDADES CONTABLES FALTANTES (alto impacto)
    El sistema tiene Balance General y Estado de Resultados, pero le falta el tercer estado
    financiero fundamental. Los movimientos bancarios ya están en la BD. Falta un reporte
    que agrupe: flujo operacional (cobros clientes, pagos proveedores, remuneraciones),
-   flujo de inversión (activos fijos), flujo de financiamiento (préstamos). Se puede
+   flujo de inversión (activos fijos), flujo de financiamiento (préstamos). Se puede/
    derivar de los asientos confirmados clasificados por tipo de cuenta.
 
 3. DEPRECIACIÓN DE ACTIVOS FIJOS – Cálculo automático
@@ -42,20 +39,8 @@ A. FUNCIONALIDADES CONTABLES FALTANTES (alto impacto)
 6. PROVISIÓN VACACIONES
    Cada empleado genera derecho a vacaciones (1,25 días hábiles por mes trabajado).
    Falta un módulo que calcule y registre la provisión mensual de vacaciones como
-   gasto (débito Gasto Vacaciones / crédito Provisión Vacaciones por Pagar).
+   gasto (débito Gasto Vacaciones / crédito Provisión Vacaciones por Pagar).1
 
-7. MOTOR DE REGLAS DE CLASIFICACIÓN BANCARIA
-   Hoy el usuario debe contabilizar cada movimiento bancario manualmente eligiendo
-   una cuenta. Falta un motor de reglas: si descripción contiene "TELEFONICA" → siempre
-   débito 5.2.05, si monto = X y fecha = 28 → arriendo. Las reglas se crearían desde
-   la UI y se aplicarían automáticamente al importar cartola. Reduciría el trabajo
-   repetitivo drásticamente.
-
-8. TRANSFERENCIAS ENTRE CUENTAS BANCARIAS PROPIAS
-   No hay un tipo de conciliación específico para traspasos entre cuentas de la misma
-   empresa (ej: BancoChile → BCI). Hoy el usuario debe hacer dos asientos manuales.
-   Falta: en la conciliación bancaria, un botón "Traspaso" que vincule el cargo de una
-   cuenta con el abono de otra y genere el asiento automáticamente.
 
 9. FACTURAS PENDIENTES DE COBRO / PAGO – AGING REPORT
    El sistema tiene la info (documentos SII sin conciliar) pero no hay un reporte de
@@ -115,14 +100,14 @@ C. REPORTES Y VISTAS FALTANTES
     el formato estándar: saldo banco + ajustes = saldo contable. El auditor o el
     contador lo van a pedir en ese formato.
 
-18. EXPORTAR MAYOR A EXCEL/CSV
+18. EXPORTAR MAYOR, diario, balance A CSV
     El libro mayor tiene botón de impresión (PDF), pero no de exportación a Excel.
     Para trabajar los datos en planillas. Falta agregar un botón "Exportar CSV".
 
 19. CUADRO DE FLUJO DE IVA
     Reporte mensual que muestre: IVA Débito (ventas) – IVA Crédito (compras) =
     IVA a pagar o remanente. Con detalle por tipo de DTE y fecha. Este cálculo
-    existe en el motor pero no hay una vista específica.
+    existe en el motor pero no hay una vista específica. Solo empresas con IVA segun ficha empresa.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 D. MEJORAS DE UX / FRONT-END
@@ -168,10 +153,6 @@ D. MEJORAS DE UX / FRONT-END
     arrastrarlos todos juntos (drag & drop multi-file) y el sistema los clasifica
     por tipo automáticamente.
 
-27. NOTIFICACIONES / ALERTAS PROACTIVAS
-    El sistema sabe cuándo hay documentos pendientes, cuotas vencidas, períodos sin
-    cerrar. Falta: una campana de notificaciones en el header con alertas agrupadas
-    por empresa. "Empresa X tiene 5 documentos sin procesar", "Préstamo Y vence en 3 días".
 
 28. HISTORIAL DE CAMBIOS VISIBLE EN ASIENTOS
     Cuando un asiento está confirmado y se intenta editar, el sistema actualmente lo
@@ -237,11 +218,7 @@ E. MEJORAS DE BACK-END Y MODELO DE DATOS
     permite migraciones versionadas, rollback, y auto-generación al cambiar models.py.
     Migrar a Alembic daría más control y seguridad al evolucionar el esquema.
 
-38. CONFIGURACIÓN POR ENTORNO (dev/prod)
-    app.py tiene debug=True hardcodeado. En producción eso expone el traceback completo
-    a cualquier usuario si hay un error. Falta: un config.py con clases Development /
-    Production / Testing, y cargar según la variable de entorno FLASK_ENV. Incluir
-    SECRET_KEY, DATABASE_URI, y MAX_CONTENT_LENGTH desde variables de entorno.
+
 
 39. PRECISIÓN MONETARIA EN PESOS
     Los montos se guardan como FLOAT lo que puede dar errores de redondeo (ej: 100.0000000001).
@@ -282,10 +259,6 @@ F. MEJORAS ESPECÍFICAS DE MÓDULOS EXISTENTES
     que pre-llene el formulario con los valores de la última liquidación y permita solo
     ajustar lo que cambió.
 
-45. LIBRO DE COMPRAS / VENTAS – EXPORTAR EN FORMATO SII
-    El sistema importa libros del SII, pero no puede exportar en formato SII (CSV
-    con estructura específica). Sería útil poder generar el libro de compras o ventas
-    en el formato que acepta el portal SII para validación cruzada o carga manual.
 
 46. CONSOLIDADO – EXPORTAR A EXCEL
     La vista del consolidado (grilla de empresas × meses) no tiene exportación.
@@ -301,14 +274,8 @@ F. MEJORAS ESPECÍFICAS DE MÓDULOS EXISTENTES
 48. PLAN DE CUENTAS – IMPORTAR / EXPORTAR
     El plan de cuentas se crea automáticamente con el PCGA al crear una empresa.
     Pero si el usuario personaliza cuentas en empresa A, tendría que repetirlo en
-    empresa B. Falta: exportar el plan de una empresa como CSV/Excel e importarlo
-    en otra nueva empresa como base.
+    empresa B. Falta al crear empresa usar pcga o el de otra empresa.
 
-49. ASIENTOS – PLANTILLAS DE ASIENTOS FRECUENTES
-    Hay asientos que se repiten mensualmente: arriendo, servicios básicos, honorarios
-    de la contabilidad, etc. Falta: guardar un asiento como "plantilla" (sin fecha ni
-    montos definitivos) y generar nuevos asientos a partir de ella con un clic.
-    Reduciría el trabajo repetitivo de los asientos manuales.
 
 50. VALIDACIÓN DE CUADRATURA AL CONFIRMAR ASIENTO
     El sistema ya valida que el asiento cuadre (Debe = Haber) antes de confirmar.
@@ -338,14 +305,9 @@ G. INTEGRACIONES EXTERNAS
 54. BACKUP AUTOMÁTICO A GOOGLE DRIVE / DROPBOX
     El sistema ya tiene un botón de backup manual. Falta: un job automático
     (cron o apscheduler) que haga un backup diario de la BD y lo suba a una
-    carpeta de Google Drive o Dropbox configurada. El usuario recibe una alerta
+    carpeta de Google Drive. El usuario recibe una alerta
     si el backup falla.
 
-55. API REST PARA INTEGRACIÓN EXTERNA
-    Si el usuario quiere conectar el sistema con otro software (CRM, punto de venta,
-    e-commerce), hoy no hay cómo. Falta: una API REST básica (Flask-RESTful o
-    Flask-RESTX) con autenticación por token que permita consultar saldos, listar
-    documentos, y crear asientos desde sistemas externos.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 H. MEJORAS PEQUEÑAS DE CALIDAD DE VIDA
@@ -362,9 +324,7 @@ H. MEJORAS PEQUEÑAS DE CALIDAD DE VIDA
     (usando Cleave.js o Inputmask) haría más fácil leer y verificar montos grandes
     mientras se escribe.
 
-58. BREADCRUMBS EN TODAS LAS PÁGINAS
-    Cuando se está en Empresa X → Asientos → Asiento N°42 → Editar, no hay indicación
-    visual de dónde se está. Agregar breadcrumbs en el header de cada página.
+
 
 59. CONFIRMACIÓN DE SALIDA CON CAMBIOS SIN GUARDAR
     En formularios largos (nuevo asiento con muchas líneas, formulario de empleado),
@@ -377,44 +337,8 @@ H. MEJORAS PEQUEÑAS DE CALIDAD DE VIDA
     Falta: campo "URL logo" en la ficha de empresa y usarlo en el template de impresión
     de liquidaciones, facturas y reportes.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RESUMEN POR PRIORIDAD
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CRÍTICO (cumplimiento o seguridad):
-  #1  F29 mensual
-  #31 Autenticación y roles
-  #32 Cifrar clave SII
-  #35 Validar RUT (dígito verificador)
-
-ALTO IMPACTO (productividad diaria):
-  #4  Informe renta por trabajador
-  #7  Reglas automáticas cartola bancaria
-  #9  Aging report (antigüedad de saldos)
-  #11 Asientos al pagar cuota préstamo
-  #23 Validación en tiempo real en asientos
-  #33 Índices en la base de datos
-  #44 Copiar liquidación del mes anterior
-  #49 Plantillas de asientos frecuentes
-
-MEJORA NOTABLE:
-  #2  Estado de Flujo de Efectivo
-  #3  Depreciación activos fijos
-  #14 Libro auxiliar remuneraciones (DT)
-  #17 Reporte conciliación bancaria formal
-  #20 Buscador global (CMD+K)
-  #21 Dashboard por empresa
-  #25 Filtros avanzados en asientos
-  #34 Soft delete
-  #41 Conciliación en dos pestañas
-  #43 Historial comparativo remuneraciones
-
-CALIDAD DE VIDA:
-  #56 Fecha predeterminada inteligente
-  #57 Formato de montos en inputs
-  #58 Breadcrumbs
-  #59 Confirmación al salir sin guardar
-  #60 Logo en liquidaciones
-
-Total: 60 recomendaciones
-Fecha de revisión: 2026-05-14
+- Punto 1 — F29 ✅                                                                                                                                                                             
+  - Puntos 4, 5, 6, 9, 10 — ✅ mergeados y 70/70 tests OK                                                                                                                                        
+  - Puntos 2, 3 — ✅ implementados
+  - Punto 58 — ✅ breadcrumbs en 40 templates
