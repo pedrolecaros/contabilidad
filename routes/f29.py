@@ -118,9 +118,14 @@ def index(eid):
     else:
         anio_def, mes_def = hoy.year, hoy.month - 1
 
-    anio      = int(request.values.get('anio', anio_def))
-    mes       = int(request.values.get('mes', mes_def))
-    tasa_ppm  = float(request.values.get('tasa_ppm', empresa.tasa_ppm or 1.0))
+    try:
+        anio = int(request.values.get('anio', anio_def))
+        mes  = int(request.values.get('mes', mes_def))
+        tasa_ppm = float(request.values.get('tasa_ppm', empresa.tasa_ppm or 1.0))
+        if not (1 <= mes <= 12) or anio < 2000:
+            raise ValueError
+    except (ValueError, TypeError):
+        anio, mes, tasa_ppm = anio_def, mes_def, float(empresa.tasa_ppm or 1.0)
 
     datos = _calcular_f29(eid, anio, mes, tasa_ppm)
 

@@ -66,6 +66,8 @@ def _calcular_cuota(activo, mes_numero):
 
 def _tabla_depreciacion(activo):
     """Generate list of {periodo, mes_num, cuota, dep_acum, valor_neto, registro}."""
+    # Single query for all registros of this activo
+    registros = {r.periodo: r for r in DepreciacionRegistro.query.filter_by(activo_fijo_id=activo.id).all()}
     rows = []
     dep_acum = 0.0
     for m in range(1, activo.vida_util_meses + 1):
@@ -74,16 +76,13 @@ def _tabla_depreciacion(activo):
         cuota = _calcular_cuota(activo, m)
         dep_acum += cuota
         valor_neto = activo.valor_compra - dep_acum
-        reg = DepreciacionRegistro.query.filter_by(
-            activo_fijo_id=activo.id, periodo=periodo_str
-        ).first()
         rows.append({
             'mes_num': m,
             'periodo': periodo_str,
             'cuota': cuota,
             'dep_acum': dep_acum,
             'valor_neto': max(valor_neto, activo.valor_residual),
-            'registro': reg,
+            'registro': registros.get(periodo_str),
         })
     return rows
 
@@ -117,14 +116,21 @@ def lista(eid):
 @bp.route('/empresa/<int:eid>/activos/nuevo', methods=['POST'])
 def nuevo(eid):
     empresa = Empresa.query.get_or_404(eid)
-    nombre = request.form['nombre'].strip()
-    categoria = request.form['categoria']
-    valor_compra = float(request.form['valor_compra'])
-    valor_residual = float(request.form.get('valor_residual', 0) or 0)
-    vida_util_meses = int(request.form['vida_util_meses'])
-    fecha_compra = date.fromisoformat(request.form['fecha_compra'])
+    nombre = request.form.get('nombre', '').strip()
+    categoria = request.form.get('categoria', '')
     metodo = request.form.get('metodo', 'LINEAL')
     descripcion = request.form.get('descripcion', '').strip()
+    try:
+        valor_compra = float(request.form['valor_compra'])
+        valor_residual = float(request.form.get('valor_residual', 0) or 0)
+        vida_util_meses = int(request.form['vida_util_meses'])
+        fecha_compra = date.fromisoformat(request.form['fecha_compra'])
+    except (ValueError, KeyError) as exc:
+        flash(f'Datos inválidos: {exc}', 'danger')
+        return redirect(url_for('activos.lista', eid=eid))
+    if not nombre or not categoria or vida_util_meses < 1 or valor_compra <= 0:
+        flash('Faltan datos obligatorios o valores inválidos.', 'danger')
+        return redirect(url_for('activos.lista', eid=eid))
 
     cod_activo, cod_dep = CATEGORIA_CUENTAS.get(categoria, (None, None))
     cuenta_activo = _get_cuenta(eid, cod_activo) if cod_activo else None

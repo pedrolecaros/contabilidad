@@ -192,9 +192,11 @@ def contabilizar_banco(eid, mid):
 @bp.route('/empresa/<int:eid>/pendientes/eliminar-doc/<int:did>', methods=['POST'])
 def eliminar_doc(eid, did):
     doc = DocumentoSII.query.get_or_404(did)
+    tipo_dte = doc.tipo_dte
+    folio = doc.folio
     db.session.delete(doc)
     db.session.commit()
-    flash(f'Documento {doc.tipo_dte} folio {doc.folio} eliminado', 'success')
+    flash(f'Documento {tipo_dte} folio {folio} eliminado', 'success')
     return redirect(url_for('pendientes.index', eid=eid))
 
 

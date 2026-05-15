@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% block title %}Renta Líquida Imponible {{ anio }} – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Renta Líquida Imponible</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>Renta Líquida Imponible</h5>
+    <div class="text-muted small mt-1">
+      Año tributario {{ anio }} ·
+      <span class="badge {% if empresa.regimen == 'PYME' %}bg-info{% else %}bg-secondary{% endif %}">
+        Régimen {{ empresa.regimen }}
+      </span>
+    </div>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    <form method="get" class="d-flex gap-1 align-items-center">
+      <select name="anio" class="form-select form-select-sm" onchange="this.form.submit()" style="width:100px;">
+        {% for y in range(2020, (anio + 3)) %}
+        <option value="{{ y }}" {% if y == anio %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-printer me-1"></i>Imprimir
+    </button>
+  </div>
+</div>
+
+{% if empresa.regimen == 'GENERAL' %}
+<div class="alert alert-warning small">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  <strong>Régimen General:</strong> El cálculo aquí mostrado parte del resultado contable.
+  Deberá aplicar los ajustes tributarios correspondientes (gastos rechazados, diferencias temporales, etc.) en forma manual.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-success">
+      <div class="card-body text-center py-3">
+        <div class="text-muted small">Total Ingresos</div>
+        <div class="fw-bold fs-4 text-success">$ {{ ingresos|clp }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-danger">
+      <div class="card-body text-center py-3">
+        <div class="text-muted small">Total Egresos</div>
+        <div class="fw-bold fs-4 text-danger">$ {{ gastos|clp }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card {% if rli_monto >= 0 %}border-primary{% else %}border-secondary{% endif %}">
+      <div class="card-body text-center py-3">
+        <div class="text-muted small">RLI ({{ anio }})</div>
+        <div class="fw-bold fs-4 {% if rli_monto >= 0 %}text-primary{% else %}text-secondary{% endif %}">
+          $ {{ rli_monto|clp }}
+        </div>
+        <div class="text-muted" style="font-size:.72rem;">{{ rli_metodo }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if rli_monto > 0 %}
+<div class="card mb-3 border-warning">
+  <div class="card-body py-2 small">
+    <strong>Impuesto estimado:</strong>
+    {% if empresa.regimen == 'PYME' %}
+    Tasa PYME 25% → <strong>$ {{ (rli_monto * 0.25)|clp }}</strong>
+    {% else %}
+    Tasa general 27% → <strong>$ {{ (rli_monto * 0.27)|clp }}</strong>
+    {% endif %}
+    <span class="text-muted ms-2">(referencial, sujeto a créditos y ajustes)</span>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header py-2 small fw-semibold text-success">
+        <i class="bi bi-plus-circle me-1"></i>Ingresos
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" style="font-size:.83rem;">
+          <thead class="table-light">
+            <tr>
+              <th>Código</th>
+              <th>Nombre</th>
+              <th class="text-end">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in detalle_ingresos %}
+            {% if d.monto != 0 %}
+            <tr>
+              <td class="font-monospace text-muted small">{{ d.codigo }}</td>
+              <td>{{ d.nombre }}</td>
+              <td class="text-end">$ {{ d.monto|clp }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+          <tfoot class="fw-semibold table-light">
+            <tr>
+              <td colspan="2" class="text-end">Total</td>
+              <td class="text-end text-success">$ {{ ingresos|clp }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header py-2 small fw-semibold text-danger">
+        <i class="bi bi-dash-circle me-1"></i>Egresos
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" style="font-size:.83rem;">
+          <thead class="table-light">
+            <tr>
+              <th>Código</th>
+              <th>Nombre</th>
+              <th class="text-end">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in detalle_gastos %}
+            {% if d.monto != 0 %}
+            <tr>
+              <td class="font-monospace text-muted small">{{ d.codigo }}</td>
+              <td>{{ d.nombre }}</td>
+              <td class="text-end">$ {{ d.monto|clp }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+          <tfoot class="fw-semibold table-light">
+            <tr>
+              <td colspan="2" class="text-end">Total</td>
+              <td class="text-end text-danger">$ {{ gastos|clp }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

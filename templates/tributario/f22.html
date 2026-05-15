@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}F22 – Declaración Anual de Renta{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">F22</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>F22 – Declaración Anual de Renta</h5>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body text-center py-5">
+    <i class="bi bi-tools display-3 text-muted mb-3 d-block"></i>
+    <h5 class="text-muted">Módulo en desarrollo</h5>
+    <p class="text-muted mb-4" style="max-width:500px;margin:0 auto;">
+      El F22 (Declaración Anual de Impuesto a la Renta) se generará automáticamente a partir de los datos
+      de la Renta Líquida Imponible, el Capital Propio Tributario y los créditos del período.
+    </p>
+    <div class="d-flex justify-content-center gap-2">
+      <a href="{{ url_for('tributario.rli', eid=empresa.id) }}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-calculator me-1"></i>Ver RLI
+      </a>
+      <a href="{{ url_for('tributario.cpt', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-bank2 me-1"></i>Ver CPT
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

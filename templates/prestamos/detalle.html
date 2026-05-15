@@ -109,6 +109,9 @@
         <div class="fw-bold fs-4 {% if prestamo.tipo == 'PAGAR' %}text-danger{% else %}text-success{% endif %}">
           {% if prestamo.moneda == 'UF' %}
           UF {{ capital_pendiente|clp }}
+          {% if capital_pendiente_clp %}
+          <div class="fw-normal fs-6 text-muted">≈ $ {{ capital_pendiente_clp|clp }}</div>
+          {% endif %}
           {% else %}
           $ {{ capital_pendiente|clp }}
           {% endif %}
@@ -127,6 +130,15 @@
           <div class="col-6 text-end fw-semibold">
             {% if prestamo.moneda == 'UF' %}UF {% else %}$ {% endif %}{{ total_cuotas|clp }}
           </div>
+          {% if prestamo.moneda == 'UF' and total_cuotas_clp %}
+          <div class="col-6 mt-1">Total cuotas CLP:</div>
+          <div class="col-6 text-end fw-semibold mt-1">$ {{ total_cuotas_clp|clp }}</div>
+          {% endif %}
+          {% if prestamo.moneda == 'UF' and uf_hoy %}
+          <div class="col-12 mt-1">
+            <small class="text-muted" style="font-size:.72rem;">UF hoy = $ {{ uf_hoy|clp }}</small>
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -244,6 +256,7 @@
           <th class="text-end">Capital</th>
           <th class="text-end">Interés</th>
           <th class="text-end">Cuota</th>
+          {% if prestamo.moneda == 'UF' %}<th class="text-end">Cuota CLP</th>{% endif %}
           <th class="text-end">Saldo</th>
           <th class="text-center">Pagado</th>
           <th>Fecha pago</th>
@@ -267,17 +280,23 @@
             {% if prestamo.moneda == 'UF' %}UF {{ c.interes|clp }}{% else %}$ {{ c.interes|clp }}{% endif %}
           </td>
           <td class="text-end fw-semibold">
-            {% if prestamo.moneda == 'UF' %}
-            UF {{ c.cuota_total|clp }}
-            {% if uf_vals and c.fecha_vencimiento in uf_vals %}
-            <br><small class="text-muted fw-normal">
-              $ {{ (c.cuota_total * uf_vals[c.fecha_vencimiento])|clp }}
-            </small>
-            {% endif %}
-            {% else %}
-            $ {{ c.cuota_total|clp }}
+            {% if prestamo.moneda == 'UF' %}UF {{ c.cuota_total|clp }}
+            {% else %}$ {{ c.cuota_total|clp }}
             {% endif %}
           </td>
+          {% if prestamo.moneda == 'UF' %}
+          <td class="text-end fw-semibold">
+            {% if c.pagada and c.cuota_total_pesos %}
+            $ {{ c.cuota_total_pesos|clp }}
+            {% elif c.pagada and c.uf_valor_pago %}
+            $ {{ (c.cuota_total * c.uf_valor_pago)|clp }}
+            {% elif uf_vals and c.fecha_vencimiento in uf_vals %}
+            <span class="text-muted">≈ $ {{ (c.cuota_total * uf_vals[c.fecha_vencimiento])|clp }}</span>
+            {% elif uf_hoy %}
+            <span class="text-muted">≈ $ {{ (c.cuota_total * uf_hoy)|clp }}</span>
+            {% else %}—{% endif %}
+          </td>
+          {% endif %}
           <td class="text-end text-muted">
             {% if prestamo.moneda == 'UF' %}UF {{ c.saldo_insoluto|clp }}{% else %}$ {{ c.saldo_insoluto|clp }}{% endif %}
           </td>
@@ -319,7 +338,7 @@
           </td>
           <td class="text-center">
             {% if c.asiento_id and c.asiento %}
-            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=c.asiento_id) }}"
+            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=c.asiento_id) }}"
                target="_blank" class="small" title="Ver asiento N°{{ c.asiento.numero }}">
               N°{{ c.asiento.numero }}
             </a>
@@ -342,6 +361,11 @@
           <td class="text-end">
             {% if prestamo.moneda == 'UF' %}UF {{ total_cuotas|clp }}{% else %}$ {{ total_cuotas|clp }}{% endif %}
           </td>
+          {% if prestamo.moneda == 'UF' %}
+          <td class="text-end">
+            {% if total_cuotas_clp %}$ {{ total_cuotas_clp|clp }}{% else %}—{% endif %}
+          </td>
+          {% endif %}
           <td class="text-end text-danger">
             {% if prestamo.moneda == 'UF' %}UF {{ capital_pendiente|clp }}{% else %}$ {{ capital_pendiente|clp }}{% endif %}
             <div class="fw-normal text-muted" style="font-size:.72rem;">pendiente</div>

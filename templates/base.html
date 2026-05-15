@@ -111,23 +111,49 @@
           <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>
       </ul>
 
+      <div class="nav-section mt-2">Remuneraciones</div>
+      <ul class="nav flex-column">
+        <li><a class="nav-link {% if 'remuneraciones' in request.endpoint and 'vacacion' not in request.endpoint %}active{% endif %}"
+               href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">
+          <i class="bi bi-person-vcard me-2"></i>Empleados / Liquidar</a></li>
+        <li><a class="nav-link {% if 'vacacion' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('remuneraciones.vacaciones', eid=empresa.id) }}">
+          <i class="bi bi-calendar-check me-2"></i>Vacaciones</a></li>
+        <li><a class="nav-link {% if request.endpoint=='remuneraciones.variables' %}active{% endif %}"
+               href="{{ url_for('remuneraciones.variables') }}">
+          <i class="bi bi-calculator me-2"></i>Indicadores</a></li>
+      </ul>
+
+      <div class="nav-section mt-2">Doc. Tributarios</div>
+      <ul class="nav flex-column">
+        <li><a class="nav-link {% if 'f29' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('f29.index', eid=empresa.id) }}">
+          <i class="bi bi-file-earmark-ruled me-2"></i>F29 – IVA</a></li>
+        <li><a class="nav-link {% if request.endpoint=='tributario.f22' %}active{% endif %}"
+               href="{{ url_for('tributario.f22', eid=empresa.id) }}">
+          <i class="bi bi-file-earmark-text me-2"></i>F22 – Renta</a></li>
+        <li><a class="nav-link {% if request.endpoint=='tributario.cpt' %}active{% endif %}"
+               href="{{ url_for('tributario.cpt', eid=empresa.id) }}">
+          <i class="bi bi-bank2 me-2"></i>CPT</a></li>
+        <li><a class="nav-link {% if request.endpoint=='tributario.rli' %}active{% endif %}"
+               href="{{ url_for('tributario.rli', eid=empresa.id) }}">
+          <i class="bi bi-bar-chart-line me-2"></i>Renta Líquida Imp.</a></li>
+        <li><a class="nav-link {% if request.endpoint=='tributario.rre' %}active{% endif %}"
+               href="{{ url_for('tributario.rre', eid=empresa.id) }}">
+          <i class="bi bi-journal-richtext me-2"></i>Reg. Rentas Emp.</a></li>
+      </ul>
+
       <div class="nav-section mt-2">Módulos</div>
       <ul class="nav flex-column">
         <li><a class="nav-link {% if 'contrapartes' in request.endpoint %}active{% endif %}"
                href="{{ url_for('contrapartes.index', eid=empresa.id) }}">
           <i class="bi bi-people me-2"></i>Proveedores / Clientes</a></li>
-        <li><a class="nav-link {% if 'remuneraciones' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">
-          <i class="bi bi-person-vcard me-2"></i>Remuneraciones</a></li>
         <li><a class="nav-link {% if 'prestamos' in request.endpoint %}active{% endif %}"
                href="{{ url_for('prestamos.lista', eid=empresa.id) }}">
           <i class="bi bi-bank me-2"></i>Préstamos</a></li>
         <li><a class="nav-link {% if 'activos' in request.endpoint %}active{% endif %}"
                href="{{ url_for('activos.lista', eid=empresa.id) }}">
           <i class="bi bi-boxes me-2"></i>Activos Fijos</a></li>
-        <li><a class="nav-link {% if 'f29' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('f29.index', eid=empresa.id) }}">
-          <i class="bi bi-file-earmark-text me-2"></i>F29</a></li>
       </ul>
 
       <div class="nav-section mt-2">Reportes</div>
@@ -140,16 +166,16 @@
           <i class="bi bi-book me-2"></i>Libro Mayor</a></li>
         <li><a class="nav-link {% if request.endpoint in ('reportes.balance','reportes.balance_imprimir') %}active{% endif %}"
                href="{{ url_for('reportes.balance', eid=empresa.id) }}">
-          <i class="bi bi-bar-chart-line me-2"></i>Balance General</a></li>
+          <i class="bi bi-bar-chart-steps me-2"></i>Balance General</a></li>
         <li><a class="nav-link {% if request.endpoint=='reportes.resultado' %}active{% endif %}"
                href="{{ url_for('reportes.resultado', eid=empresa.id) }}">
-          <i class="bi bi-graph-up me-2"></i>Resultado</a></li>
+          <i class="bi bi-graph-up me-2"></i>Estado de Resultado</a></li>
         <li><a class="nav-link {% if request.endpoint=='reportes.efe' %}active{% endif %}"
                href="{{ url_for('reportes.efe', eid=empresa.id) }}">
           <i class="bi bi-cash-stack me-2"></i>Flujo de Efectivo</a></li>
         <li><a class="nav-link {% if request.endpoint=='reportes.ap_ar' %}active{% endif %}"
                href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}">
-          <i class="bi bi-bar-chart-steps me-2"></i>AP / AR</a></li>
+          <i class="bi bi-people-fill me-2"></i>AP / AR</a></li>
         <li><a class="nav-link {% if request.endpoint=='reportes.aging' %}active{% endif %}"
                href="{{ url_for('reportes.aging', eid=empresa.id) }}">
           <i class="bi bi-hourglass-split me-2"></i>Antigüedad Saldos</a></li>

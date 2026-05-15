@@ -1,0 +1,162 @@
+RIESGOS Y BUGS – Sistema Contabilidad Chile
+Generado: 2026-05-15
+Auditado por: análisis automático completo de routes/, engine/, models.py, templates/
+======================================================================================
+
+Clasificación:
+  GRAVE  = causa crash/pérdida de datos/datos legalmente incorrectos
+  MEDIO  = comportamiento incorrecto o datos erróneos sin crash
+  LEVE   = degradación de rendimiento o patrón inseguro latente
+
+═══════════════════════════════════════════════════════════════════════════════
+GRAVES (corregir urgente)
+═══════════════════════════════════════════════════════════════════════════════
+
+[GRAVE-1] Remuneraciones: tope imponible ignorado → cotizaciones incorrectas
+Archivo: engine/remuneraciones.py:41 + routes/remuneraciones.py:134
+Descripción: calcular() acepta el parámetro tope_imponible pero nunca lo
+  pasa a _calcular_con_bruto(). Para empleados con sueldo bruto superior
+  al tope (~90 UF ≈ $3.4M CLP), AFP, salud y cesantía se calculan sobre
+  el sueldo completo en vez del tope imponible. Esto genera cotizaciones
+  infladas y liquidaciones legalmente incorrectas, con exposición a multas
+  de la Dirección del Trabajo / AFP.
+Reproducir: Crear empleado con sueldo bruto > 90 UF, generar liquidación.
+  Comparar AFP calculado vs. AFP correcto (debe ser tope × tasa, no bruto × tasa).
+Prioridad de corrección: CRÍTICA (impacto legal)
+
+[GRAVE-2] Pendientes: crash 500 al eliminar documento SII (DetachedInstanceError)
+Archivo: routes/pendientes.py:193-197
+Descripción: Después de db.session.delete(doc) + db.session.commit(), el
+  código accede a doc.tipo_dte y doc.folio en el mensaje flash. SQLAlchemy
+  expira la instancia al hacer commit → DetachedInstanceError → HTTP 500.
+  La ruta eliminar_banco del mismo archivo lo hace correctamente capturando
+  el valor ANTES del commit.
+Reproducir: Pendientes de cualquier empresa → botón Eliminar en cualquier
+  documento SII → error 500.
+Prioridad de corrección: CRÍTICA (100% reproducible)
+
+[GRAVE-3] Conciliación: deshacer deja CuotaPrestamo con FK huérfana
+Archivo: routes/conciliacion.py:278-308
+Descripción: La ruta deshacer() elimina objetos Asiento con
+  db.session.delete(a). Los registros CuotaPrestamo que referencian esos
+  asientos via asiento_id quedan apuntando a IDs inexistentes. SQLite no
+  enforcea FKs por defecto, así que no falla, pero las cuotas quedan con
+  estado corrupto: aparecen como pagadas con asiento inválido, y el
+  detalle del préstamo muestra un link roto.
+Reproducir: Pagar cuota de préstamo → conciliar el movimiento bancario →
+  usar "Deshacer conciliación" → revisar la cuota en el detalle del préstamo.
+Prioridad de corrección: ALTA (corrupción silenciosa de datos)
+
+[GRAVE-4] Conciliación: deshacer deja registros AsientoAudit huérfanos
+Archivo: routes/conciliacion.py:278-308 + models.py
+Descripción: AsientoAudit tiene FK a asientos.id sin cascade delete. Al
+  eliminar asientos en deshacer(), los AsientoAudit relacionados quedan
+  como registros huérfanos. Corrompe el log de auditoría; futuros queries
+  de auditoría podrían retornar datos inconsistentes.
+Reproducir: Mismo flujo que GRAVE-3 si el asiento tiene historial de
+  cambios registrado en AsientoAudit.
+Prioridad de corrección: ALTA (integridad de auditoría)
+
+[GRAVE-5] Activos: crash 500 si se envían valores no numéricos en el formulario
+Archivo: routes/activos.py:122-125
+Descripción: float(request.form['valor_compra']), int(request.form['vida_util_meses'])
+  y date.fromisoformat(request.form['fecha_compra']) no tienen try/except.
+  Un valor vacío, no numérico o fecha malformada causa ValueError → HTTP 500
+  sin mensaje de error útil al usuario.
+Reproducir: POST a /empresa/<eid>/activos/nuevo con vida_util_meses=abc
+  (simulable desde DevTools o curl).
+Prioridad de corrección: ALTA
+
+═══════════════════════════════════════════════════════════════════════════════
+MEDIO (corregir pronto)
+═══════════════════════════════════════════════════════════════════════════════
+
+[MEDIO-1] F29: crash 500 si parámetros URL no son numéricos
+Archivo: routes/f29.py:121-122
+Descripción: int(request.values.get('anio', ...)) y int(request.values.get('mes', ...))
+  no tienen try/except. URL con anio=foo genera ValueError → HTTP 500.
+Reproducir: Navegar a /empresa/<eid>/f29?anio=foo&mes=bar → error 500.
+Prioridad de corrección: MEDIA
+
+[MEDIO-2] Préstamos: link de asiento en cuota lleva al formulario de edición
+Archivo: templates/prestamos/detalle.html:322
+Descripción: El enlace usa url_for('asientos.editar') en vez de
+  url_for('asientos.detalle'). El usuario hace clic para ver el asiento
+  y termina en el formulario editable.
+Reproducir: Detalle de préstamo con cuotas pagadas → clic en el N° asiento.
+Prioridad de corrección: BAJA (UX incorrecta, no crash)
+
+[MEDIO-3] Reportes: antigüedad de deuda incluye documentos ya contabilizados
+Archivo: routes/reportes.py:390-461
+Descripción: El reporte de aging filtra por conciliacion_id IS NULL pero
+  no excluye documentos con procesado=True. Documentos ya contabilizados
+  sin conciliación formal aparecen como deuda pendiente, sobreestimando
+  el aging real.
+Reproducir: Importar libro de compras, contabilizar un documento →
+  Reportes → Antigüedad Saldos → el documento aparece como pendiente.
+Prioridad de corrección: MEDIA
+
+[MEDIO-4] Engine bancario: no valida movimientos con monto cero
+Archivo: engine/asientos.py:204-244
+Descripción: generar_asiento_banco() no valida que cargo o abono sea > 0
+  antes de crear el asiento. Dato corrupto (cargo=0, abono=0) genera un
+  asiento con dos líneas de $0, formalmente cuadrado pero inútil.
+Reproducir: Insertar un MovimientoBanco con cargo=0 y abono=0 y procesar.
+Prioridad de corrección: BAJA
+
+[MEDIO-5] Remuneraciones: historial sin filtro explícito por empresa_id
+Archivo: routes/remuneraciones.py:216-220
+Descripción: La query del historial de liquidaciones filtra por empleado_id
+  pero no por empresa_id explícitamente. Con IDs autoincrementales globales
+  no hay riesgo hoy, pero si en el futuro se reutilizan IDs (tras purgas)
+  podría haber acceso cruzado entre empresas.
+Prioridad de corrección: BAJA (preventiva)
+
+═══════════════════════════════════════════════════════════════════════════════
+LEVE (mejorar en iteraciones futuras)
+═══════════════════════════════════════════════════════════════════════════════
+
+[LEVE-1] Activos: N+1 queries en tabla de depreciación de activos de vida larga
+Archivo: routes/activos.py:68-88 (_tabla_depreciacion)
+Descripción: Por cada mes de vida útil se ejecuta una query individual a
+  DepreciacionRegistro. Un activo tipo CONSTRUCCION (360 meses = 30 años)
+  genera 360 queries en la carga de una sola página.
+Impacto: Carga lenta (>2s) en activos de vida útil larga.
+Solución: Cargar todos los DepreciacionRegistro del activo en una sola
+  query y construir el dict {periodo: registro} en Python.
+Archivos: routes/activos.py
+
+[LEVE-2] Dashboard: interpolación f-string en SQL (patrón inseguro)
+Archivo: routes/dashboard.py:29
+Descripción: db.text(f'prestamos.empresa_id = {eid}') usa interpolación
+  directa. eid es int validado por Flask, no hay riesgo actual, pero es
+  un patrón que debería usar parámetros bind SQLAlchemy.
+Solución: Usar db.text('prestamos.empresa_id = :eid').bindparams(eid=eid).
+Archivos: routes/dashboard.py
+
+[LEVE-3] Importar: sort_key crashea con períodos malformados en BD
+Archivo: routes/importar.py (_build_grilla o equivalente)
+Descripción: La función de ordenamiento aplica int() a partes del período
+  (YYYY-MM). Un ArchivoImportado con período corrupto en BD causa ValueError.
+Solución: Agregar try/except en el sort_key, retornando (0,0) como fallback.
+Archivos: routes/importar.py
+
+═══════════════════════════════════════════════════════════════════════════════
+RESUMEN
+═══════════════════════════════════════════════════════════════════════════════
+
+| Clasificación | Cantidad |
+|---------------|----------|
+| GRAVE         |    5     |
+| MEDIO         |    5     |
+| LEVE          |    3     |
+| Total         |   13     |
+
+ORDEN DE CORRECCIÓN RECOMENDADO:
+1. GRAVE-2: crash 100% reproducible en Pendientes (DetachedInstanceError)
+2. GRAVE-1: cotizaciones ilegales por tope imponible ignorado
+3. GRAVE-3 + GRAVE-4: corrupción silenciosa en Conciliación al deshacer
+4. GRAVE-5: crash en formulario de activos sin validación
+5. MEDIO-1: crash en F29 con parámetros URL inválidos
+6. MEDIO-3: aging sobreestima deuda pendiente
+7. El resto según disponibilidad y prioridad de negocio

@@ -3,7 +3,7 @@ import threading
 from flask import Flask
 from config import Config
 from database import init_db
-from routes import main, empresas, asientos, cuentas, importar, pendientes, reportes, validacion, conciliacion, contrapartes, remuneraciones, prestamos, f29, activos, dashboard, buscar
+from routes import main, empresas, asientos, cuentas, importar, pendientes, reportes, validacion, conciliacion, contrapartes, remuneraciones, prestamos, f29, activos, dashboard, buscar, tributario
 
 
 def _auto_fetch_uf(app):
@@ -73,6 +73,7 @@ def create_app(config_override=None):
     app.register_blueprint(activos.bp)
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(buscar.bp)
+    app.register_blueprint(tributario.bp)
 
     # Filtros Jinja2 para formato chileno
     @app.template_filter('clp')

@@ -1,7 +1,7 @@
 import calendar
 from datetime import date
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from models import db, Empresa, Asiento, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte, Cuenta
+from models import db, Empresa, Asiento, AsientoAudit, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte, Cuenta, CuotaPrestamo
 from engine import asientos as motor
 from engine.asientos import (confirmar_asiento, generar_asiento_pago_proveedor,
                              generar_asiento_cobro_cliente,
@@ -302,6 +302,14 @@ def deshacer(eid, cid):
     for aid in asiento_ids:
         a = Asiento.query.get(aid)
         if a:
+            # Reset any CuotaPrestamo linked to this asiento before deleting
+            CuotaPrestamo.query.filter_by(asiento_id=aid).update({
+                'asiento_id': None, 'movimiento_banco_id': None,
+                'pagada': False, 'fecha_pago': None,
+                'uf_valor_pago': None, 'cuota_total_pesos': None,
+            })
+            # Remove audit records linked to this asiento (avoid orphans)
+            AsientoAudit.query.filter_by(asiento_id=aid).delete()
             db.session.delete(a)
 
     db.session.commit()

@@ -277,19 +277,36 @@ def detalle(eid, pid):
 
     # Load UF values for UF loans (dict {date: valor})
     uf_vals = {}
+    uf_hoy = None
     if prestamo.moneda == 'UF':
-        fechas = [c.fecha_vencimiento for c in prestamo.cuotas]
+        fechas = set(c.fecha_vencimiento for c in prestamo.cuotas)
+        fechas.update(c.fecha_pago for c in prestamo.cuotas if c.fecha_pago)
+        fechas.add(hoy)
         if fechas:
-            uf_rows = ValorUF.query.filter(
-                ValorUF.fecha.in_(fechas)
-            ).all()
+            uf_rows = ValorUF.query.filter(ValorUF.fecha.in_(fechas)).all()
             uf_vals = {r.fecha: r.valor for r in uf_rows}
+        # Try to find nearest UF if today's is missing
+        if hoy not in uf_vals:
+            row = ValorUF.query.filter(ValorUF.fecha <= hoy).order_by(ValorUF.fecha.desc()).first()
+            if row:
+                uf_vals[hoy] = row.valor
+        uf_hoy = uf_vals.get(hoy)
 
     # Totals
     total_capital = sum(c.capital for c in prestamo.cuotas)
     total_interes = sum(c.interes for c in prestamo.cuotas)
     total_cuotas = sum(c.cuota_total for c in prestamo.cuotas)
     capital_pendiente = sum(c.capital for c in prestamo.cuotas if not c.pagada)
+
+    # CLP equivalents for UF loans (use uf_hoy for pending, uf_pago for paid)
+    total_cuotas_clp = None
+    capital_pendiente_clp = None
+    if prestamo.moneda == 'UF' and uf_hoy:
+        total_cuotas_clp = sum(
+            (c.cuota_total_pesos or round(c.cuota_total * (uf_vals.get(c.fecha_pago) or uf_hoy)))
+            for c in prestamo.cuotas
+        )
+        capital_pendiente_clp = round(capital_pendiente * uf_hoy)
 
     import json
     cuentas_activas = Cuenta.query.filter_by(empresa_id=eid, activa=True, es_titulo=False).order_by(Cuenta.codigo).all()
@@ -300,10 +317,13 @@ def detalle(eid, pid):
                            prestamo=prestamo,
                            hoy=hoy,
                            uf_vals=uf_vals,
+                           uf_hoy=uf_hoy,
                            total_capital=total_capital,
                            total_interes=total_interes,
                            total_cuotas=total_cuotas,
                            capital_pendiente=capital_pendiente,
+                           total_cuotas_clp=total_cuotas_clp,
+                           capital_pendiente_clp=capital_pendiente_clp,
                            cuentas_json=cuentas_json)
 
 
