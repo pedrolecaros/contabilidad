@@ -49,7 +49,7 @@ def index(eid):
                 .all())
 
     movs_sin = (MovimientoBanco.query
-                .filter_by(empresa_id=eid)
+                .filter_by(empresa_id=eid, procesado=False)
                 .filter(MovimientoBanco.conciliacion_id == None)
                 .filter(MovimientoBanco.fecha >= d_ini, MovimientoBanco.fecha <= d_fin)
                 .order_by(MovimientoBanco.fecha)
@@ -62,7 +62,7 @@ def index(eid):
                       .all())
 
     total_movs_sin = (MovimientoBanco.query
-                      .filter_by(empresa_id=eid)
+                      .filter_by(empresa_id=eid, procesado=False)
                       .filter(MovimientoBanco.conciliacion_id == None)
                       .count())
     total_docs_sin = (DocumentoSII.query
@@ -130,9 +130,22 @@ def crear(eid):
     movs = [MovimientoBanco.query.get(i) for i in mov_ids]
     movs = [m for m in movs if m and m.empresa_id == eid]
 
+    # Guard: reject already-processed items to prevent duplicate entries
+    docs_ya = [d for d in docs if d.procesado]
+    movs_ya = [m for m in movs if m.procesado]
+    if docs_ya:
+        for d in docs_ya:
+            flash(f'Doc {d.tipo_libro} folio {d.folio} ya tiene asiento — omitido', 'warning')
+        docs = [d for d in docs if not d.procesado]
+    if movs_ya:
+        for m in movs_ya:
+            flash(f'Movimiento {m.fecha} "{(m.descripcion or "")[:30]}" ya está procesado — omitido. '
+                  f'Si corresponde a un préstamo, desmarque primero la cuota.', 'warning')
+        movs = [m for m in movs if not m.procesado]
+
     fechas = [d.fecha for d in docs if d.fecha] + [m.fecha for m in movs if m.fecha]
     if not fechas:
-        flash('No se encontraron registros válidos', 'warning')
+        flash('No se encontraron registros válidos (todos ya estaban procesados)', 'warning')
         return redirect(url_for('conciliacion.index', eid=eid, desde=desde_mes, hasta=hasta_mes))
 
     # Descripción automática según tipo

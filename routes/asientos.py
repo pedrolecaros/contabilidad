@@ -1,7 +1,7 @@
 import json
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from datetime import date
-from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion
+from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion, CuotaPrestamo
 from engine.asientos import confirmar_asiento, anular_asiento
 from engine.auditoria import registrar_auditoria
 
@@ -244,9 +244,21 @@ def eliminar(eid, aid):
     if asiento.estado == 'CONFIRMADO':
         flash('No se puede eliminar un asiento confirmado. Primero anúlalo.', 'danger')
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
-    # Desligar documentos asociados y anular
+    # Desligar documentos, movimientos y cuotas de préstamos
     DocumentoSII.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
     MovimientoBanco.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
+    for cuota in CuotaPrestamo.query.filter_by(asiento_id=aid).all():
+        if cuota.movimiento_banco_id:
+            mov = MovimientoBanco.query.get(cuota.movimiento_banco_id)
+            if mov:
+                mov.procesado = False
+                mov.asiento_id = None
+        cuota.asiento_id = None
+        cuota.movimiento_banco_id = None
+        cuota.pagada = False
+        cuota.fecha_pago = None
+        cuota.uf_valor_pago = None
+        cuota.cuota_total_pesos = None
     asiento.estado = 'ANULADO'
     db.session.commit()
     flash('Asiento anulado', 'success')

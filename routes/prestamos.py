@@ -564,16 +564,20 @@ def toggle_cuota(eid, pid, cid):
             except ValueError:
                 pass  # missing accounts — skip silently
 
-        # Link bank movement if provided
+        # Link bank movement if provided — only if it hasn't been processed elsewhere
         mov_id_str = request.form.get('movimiento_banco_id', '').strip()
         if mov_id_str:
             try:
                 mov = MovimientoBanco.query.get(int(mov_id_str))
                 if mov and mov.empresa_id == eid:
-                    cuota.movimiento_banco_id = mov.id
-                    mov.procesado = True
-                    if asiento:
-                        mov.asiento_id = asiento.id
+                    if mov.procesado:
+                        flash(f'El movimiento bancario del {mov.fecha} ya está procesado '
+                              f'en otro comprobante — no se vinculó.', 'warning')
+                    else:
+                        cuota.movimiento_banco_id = mov.id
+                        mov.procesado = True
+                        if asiento:
+                            mov.asiento_id = asiento.id
             except (ValueError, TypeError):
                 pass
 
@@ -653,10 +657,14 @@ def agregar_pago(eid, pid):
         try:
             mov = MovimientoBanco.query.get(int(mov_id_str))
             if mov and mov.empresa_id == eid:
-                cuota.movimiento_banco_id = mov.id
-                mov.procesado = True
-                if asiento:
-                    mov.asiento_id = asiento.id
+                if mov.procesado:
+                    flash(f'El movimiento bancario del {mov.fecha} ya está procesado '
+                          f'en otro comprobante — no se vinculó.', 'warning')
+                else:
+                    cuota.movimiento_banco_id = mov.id
+                    mov.procesado = True
+                    if asiento:
+                        mov.asiento_id = asiento.id
         except (ValueError, TypeError):
             pass
 

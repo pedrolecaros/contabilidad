@@ -2,7 +2,7 @@
 Motor de journalización automática.
 Genera asientos en partida doble a partir de documentos SII o movimientos bancarios.
 """
-from models import db, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco
+from models import db, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, CuotaPrestamo
 
 
 TASA_IVA = 0.19
@@ -514,6 +514,18 @@ def confirmar_asiento(asiento: Asiento):
 
 def anular_asiento(asiento: Asiento):
     asiento.estado = 'ANULADO'
-    # Marcar documentos vinculados como no procesados
     DocumentoSII.query.filter_by(asiento_id=asiento.id).update({'procesado': False, 'asiento_id': None})
     MovimientoBanco.query.filter_by(asiento_id=asiento.id).update({'procesado': False, 'asiento_id': None})
+    # Clear cuota links so they don't point to an annulled entry
+    for cuota in CuotaPrestamo.query.filter_by(asiento_id=asiento.id).all():
+        if cuota.movimiento_banco_id:
+            mov = MovimientoBanco.query.get(cuota.movimiento_banco_id)
+            if mov:
+                mov.procesado = False
+                mov.asiento_id = None
+        cuota.asiento_id = None
+        cuota.movimiento_banco_id = None
+        cuota.pagada = False
+        cuota.fecha_pago = None
+        cuota.uf_valor_pago = None
+        cuota.cuota_total_pesos = None

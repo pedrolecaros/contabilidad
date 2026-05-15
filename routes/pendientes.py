@@ -103,6 +103,9 @@ def index(eid):
 @bp.route('/empresa/<int:eid>/pendientes/contabilizar-doc/<int:did>', methods=['POST'])
 def contabilizar_doc(eid, did):
     doc = DocumentoSII.query.get_or_404(did)
+    if doc.procesado:
+        flash('Este documento ya fue procesado y tiene asiento contable.', 'warning')
+        return redirect(url_for('pendientes.index', eid=eid))
     confirmar = request.form.get('confirmar') == '1'
     try:
         if doc.tipo_libro == 'COMPRAS':
@@ -137,6 +140,9 @@ def contabilizar_doc(eid, did):
 @bp.route('/empresa/<int:eid>/pendientes/contabilizar-banco/<int:mid>', methods=['POST'])
 def contabilizar_banco(eid, mid):
     mov = MovimientoBanco.query.get_or_404(mid)
+    if mov.procesado:
+        flash('Este movimiento bancario ya fue procesado y tiene asiento contable.', 'warning')
+        return redirect(url_for('pendientes.index', eid=eid))
     cuenta_id = request.form.get('cuenta_id', type=int)
     confirmar = request.form.get('confirmar') == '1'
     doc_conciliar_id = request.form.get('doc_conciliar_id', type=int)

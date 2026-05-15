@@ -83,6 +83,9 @@ def _migrar(app):
         "ALTER TABLE liquidaciones ADD COLUMN apv REAL DEFAULT 0.0",
         "ALTER TABLE empresas ADD COLUMN regimen VARCHAR(10) DEFAULT 'GENERAL'",
         'ALTER TABLE empresas ADD COLUMN logo_url VARCHAR(500)',
+        # Integrity: one bank movement can only link to one asiento, and one cuota
+        'CREATE UNIQUE INDEX IF NOT EXISTS uix_movimientos_banco_asiento ON movimientos_banco(asiento_id) WHERE asiento_id IS NOT NULL',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uix_cuotas_prestamo_movbanco ON cuotas_prestamo(movimiento_banco_id) WHERE movimiento_banco_id IS NOT NULL',
         """CREATE TABLE IF NOT EXISTS activos_fijos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),
