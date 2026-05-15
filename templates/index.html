@@ -55,7 +55,7 @@
     <tr>
       <td class="font-monospace small">{{ e.rut }}</td>
       <td>
-        <a href="{{ url_for('asientos.lista', eid=e.id) }}"
+        <a href="{{ url_for('dashboard.index', eid=e.id) }}"
            class="text-decoration-none fw-semibold">
           {{ e.nombre_fantasia or e.razon_social }}
         </a>
@@ -65,7 +65,7 @@
       </td>
       <td class="text-muted small">{{ (e.giro or '')[:55] }}</td>
       <td class="text-center text-nowrap">
-        <a href="{{ url_for('asientos.lista', eid=e.id) }}"
+        <a href="{{ url_for('dashboard.index', eid=e.id) }}"
            class="btn btn-sm btn-dark py-0 px-2"
            title="Abrir empresa">
           <i class="bi bi-box-arrow-in-right"></i>
