@@ -1,8 +1,50 @@
 import os
+import threading
 from flask import Flask
 from config import Config
 from database import init_db
 from routes import main, empresas, asientos, cuentas, importar, pendientes, reportes, validacion, conciliacion, contrapartes, remuneraciones, prestamos, f29, activos, dashboard, buscar
+
+
+def _auto_fetch_uf(app):
+    """Fetch full-year UF data on startup if today's value is missing."""
+    from datetime import date
+    import requests
+    from models import db, ValorUF
+
+    with app.app_context():
+        hoy = date.today()
+        try:
+            tiene_hoy = ValorUF.query.filter_by(fecha=hoy).first()
+            if tiene_hoy:
+                return  # already up to date
+
+            anio = hoy.year
+            headers = {'User-Agent': 'Mozilla/5.0 (compatible; contabilidad-app)'}
+            r = requests.get(f'https://mindicador.cl/api/uf/{anio}', timeout=20, headers=headers)
+            if r.status_code != 200:
+                return
+
+            actualizados = 0
+            for item in r.json().get('serie', []):
+                raw = item.get('fecha', '')[:10]
+                try:
+                    fecha = date.fromisoformat(raw)
+                    if fecha.year != anio:
+                        continue
+                    valor = float(item['valor'])
+                    existing = ValorUF.query.filter_by(fecha=fecha).first()
+                    if existing:
+                        existing.valor = valor
+                    else:
+                        db.session.add(ValorUF(fecha=fecha, valor=valor))
+                    actualizados += 1
+                except Exception:
+                    pass
+            if actualizados:
+                db.session.commit()
+        except Exception:
+            pass  # network unavailable — silently skip
 
 
 def create_app(config_override=None):
@@ -60,6 +102,10 @@ def create_app(config_override=None):
             return json.loads(value)
         except Exception:
             return {}
+
+    # Auto-fetch UF for the current year if today's value is missing
+    t = threading.Thread(target=_auto_fetch_uf, args=(app,), daemon=True)
+    t.start()
 
     return app
 
