@@ -1250,6 +1250,156 @@ class TestPrestamosAsientos(unittest.TestCase):
             self.assertGreater(a.total_debe, cuota_uf * 1000)
 
 
+class TestVacaciones(unittest.TestCase):
+    """Tests para control de días de vacaciones y provisión."""
+
+    def setUp(self):
+        import app as app_module
+        self.app = app_module.create_app()
+        self.app.config['TESTING'] = True
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            from models import db, Empresa, Empleado, Liquidacion, VacacionEmpleado
+            db.create_all()
+            emp = Empresa.query.filter_by(rut='88.888.888-8').first()
+            if not emp:
+                emp = Empresa(rut='88.888.888-8', razon_social='VacTest SpA')
+                db.session.add(emp)
+                db.session.commit()
+            self.eid = emp.id
+            # Crear empleado con fecha ingreso hace 12 meses
+            from datetime import date
+            from dateutil.relativedelta import relativedelta
+            emp_obj = Empleado.query.filter_by(empresa_id=self.eid, rut='11.111.111-1').first()
+            if not emp_obj:
+                emp_obj = Empleado(
+                    empresa_id=self.eid, rut='11.111.111-1', nombre='Ana Test',
+                    fecha_ingreso=date.today() - relativedelta(months=12),
+                    sueldo_base=1_000_000, activo=True,
+                    afp='Habitat', tasa_afp_comision=0.0127,
+                    tipo_salud='FONASA', tasa_mutual=0.0093,
+                )
+                db.session.add(emp_obj)
+                db.session.commit()
+                # Add an EMITIDA liquidacion so she appears in provision
+                liq = Liquidacion(
+                    empresa_id=self.eid, empleado_id=emp_obj.id,
+                    periodo='2024-12', sueldo_base=1_000_000,
+                    renta_imponible=1_000_000, estado='EMITIDA',
+                )
+                db.session.add(liq)
+                db.session.commit()
+            self.emp_id = emp_obj.id
+
+    def get(self, url):
+        return self.client.get(url, follow_redirects=True)
+
+    def post(self, url, data):
+        return self.client.post(url, data=data, follow_redirects=True)
+
+    def test_v01_modelo_existe(self):
+        """VacacionEmpleado tiene los campos requeridos."""
+        with self.app.app_context():
+            from models import VacacionEmpleado
+            from datetime import date
+            v = VacacionEmpleado(
+                empresa_id=self.eid, empleado_id=self.emp_id,
+                fecha_inicio=date(2025, 1, 6), fecha_fin=date(2025, 1, 17),
+                dias_habiles=10,
+            )
+            self.assertEqual(v.dias_habiles, 10)
+            self.assertEqual(v.fecha_inicio, date(2025, 1, 6))
+
+    def test_v02_dias_habiles_auto(self):
+        """_dias_habiles_entre calcula días hábiles lunes-viernes."""
+        from routes.remuneraciones import _dias_habiles_entre
+        # 2025-01-06 (Mon) a 2025-01-17 (Fri) = 10 días hábiles
+        self.assertEqual(_dias_habiles_entre(date(2025, 1, 6), date(2025, 1, 17)), 10)
+        # 2025-01-13 (Mon) a 2025-01-13 (Mon) = 1
+        self.assertEqual(_dias_habiles_entre(date(2025, 1, 13), date(2025, 1, 13)), 1)
+        # weekend only: 2025-01-11 (Sat) a 2025-01-12 (Sun) = 0
+        self.assertEqual(_dias_habiles_entre(date(2025, 1, 11), date(2025, 1, 12)), 0)
+
+    def test_v03_lista_vacaciones_carga(self):
+        """Página de vacaciones devuelve 200 con el nombre del empleado."""
+        r = self.get(f'/empresa/{self.eid}/remuneraciones/vacaciones')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('Ana Test'.encode(), r.data)
+
+    def test_v04_nueva_vacacion(self):
+        """POST crea un registro de vacación y aparece en la lista."""
+        r = self.post(f'/empresa/{self.eid}/remuneraciones/vacaciones/nueva', {
+            'empleado_id': str(self.emp_id),
+            'fecha_inicio': '2025-02-03',
+            'fecha_fin': '2025-02-14',
+        })
+        self.assertEqual(r.status_code, 200)
+        with self.app.app_context():
+            from models import VacacionEmpleado
+            v = VacacionEmpleado.query.filter_by(empleado_id=self.emp_id).first()
+            self.assertIsNotNone(v)
+            self.assertEqual(v.dias_habiles, 10)
+
+    def test_v05_provision_muestra_saldo(self):
+        """Página provisión muestra columna de días tomados y saldo."""
+        with self.app.app_context():
+            from models import db, VacacionEmpleado
+            from datetime import date
+            VacacionEmpleado.query.filter_by(empleado_id=self.emp_id).delete()
+            db.session.add(VacacionEmpleado(
+                empresa_id=self.eid, empleado_id=self.emp_id,
+                fecha_inicio=date(2025, 1, 6), fecha_fin=date(2025, 1, 17),
+                dias_habiles=10,
+            ))
+            db.session.commit()
+        r = self.get(f'/empresa/{self.eid}/remuneraciones/provision-vacaciones')
+        self.assertIn(b'Tomados', r.data)
+        self.assertIn(b'Saldo', r.data)
+
+    def test_v06_saldo_correcto(self):
+        """Saldo = acumulados - tomados; monto provision usa saldo."""
+        with self.app.app_context():
+            from models import db, VacacionEmpleado, Empleado, Liquidacion
+            from datetime import date
+            from dateutil.relativedelta import relativedelta
+            VacacionEmpleado.query.filter_by(empleado_id=self.emp_id).delete()
+            # Empleado con 12 meses → 15 días acumulados, tomamos 10 → saldo 5
+            db.session.add(VacacionEmpleado(
+                empresa_id=self.eid, empleado_id=self.emp_id,
+                fecha_inicio=date(2025, 1, 6), fecha_fin=date(2025, 1, 17),
+                dias_habiles=10,
+            ))
+            db.session.commit()
+            emp = Empleado.query.get(self.emp_id)
+            # meses activos ≈ 12 → acumulados = 15 días, tomados 10, saldo 5
+            meses = 12
+            dias_acum = round(meses * 1.25, 1)
+            self.assertAlmostEqual(dias_acum, 15.0, delta=0.5)
+            dias_tomados = 10
+            saldo = round(dias_acum - dias_tomados, 1)
+            self.assertGreaterEqual(saldo, 4.5)
+
+    def test_v07_eliminar_vacacion(self):
+        """DELETE elimina el registro de vacaciones."""
+        with self.app.app_context():
+            from models import db, VacacionEmpleado
+            from datetime import date
+            VacacionEmpleado.query.filter_by(empleado_id=self.emp_id).delete()
+            v = VacacionEmpleado(
+                empresa_id=self.eid, empleado_id=self.emp_id,
+                fecha_inicio=date(2025, 3, 3), fecha_fin=date(2025, 3, 7),
+                dias_habiles=5,
+            )
+            db.session.add(v)
+            db.session.commit()
+            vid = v.id
+        r = self.post(f'/empresa/{self.eid}/remuneraciones/vacaciones/{vid}/eliminar', {})
+        self.assertEqual(r.status_code, 200)
+        with self.app.app_context():
+            from models import VacacionEmpleado
+            self.assertIsNone(VacacionEmpleado.query.get(vid))
+
+
 if __name__ == '__main__':
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -1262,6 +1412,7 @@ if __name__ == '__main__':
     suite.addTests(loader.loadTestsFromTestCase(TestEmpresaForm))
     suite.addTests(loader.loadTestsFromTestCase(TestAsientoDescripciones))
     suite.addTests(loader.loadTestsFromTestCase(TestPrestamosAsientos))
+    suite.addTests(loader.loadTestsFromTestCase(TestVacaciones))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

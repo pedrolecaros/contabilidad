@@ -19,8 +19,11 @@
     <a href="{{ url_for('remuneraciones.libro', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-journal-text me-1"></i>Libro
     </a>
+    <a href="{{ url_for('remuneraciones.vacaciones', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-calendar-range me-1"></i>Vacaciones
+    </a>
     <a href="{{ url_for('remuneraciones.provision_vacaciones', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-umbrella me-1"></i>Provisión Vacaciones
+      <i class="bi bi-umbrella me-1"></i>Provisión
     </a>
     <a href="{{ url_for('remuneraciones.informe_renta', eid=empresa.id) }}" class="btn btn-outline-info btn-sm">
       <i class="bi bi-person-lines-fill me-1"></i>Informe Renta

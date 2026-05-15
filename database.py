@@ -56,6 +56,17 @@ def _migrar(app):
 )""",
         "ALTER TABLE empresas ADD COLUMN contribuyente_iva INTEGER DEFAULT 1",
         "ALTER TABLE empresas ADD COLUMN tasa_ppm REAL DEFAULT 1.0",
+        """CREATE TABLE IF NOT EXISTS vacaciones_empleado (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    dias_habiles INTEGER DEFAULT 0,
+    notas VARCHAR(300),
+    asiento_id INTEGER REFERENCES asientos(id),
+    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+)""",
         'ALTER TABLE prestamos ADD COLUMN acreedor_rut VARCHAR(20)',
         'ALTER TABLE cuotas_prestamo ADD COLUMN asiento_id INTEGER REFERENCES asientos(id)',
         'ALTER TABLE cuotas_prestamo ADD COLUMN uf_valor_pago REAL',

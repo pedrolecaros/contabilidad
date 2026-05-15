@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+{% block title %}Vacaciones – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">Remuneraciones</a></li>
+    <li class="breadcrumb-item active">Vacaciones</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-umbrella me-2"></i>Control de Vacaciones</h5>
+  <a href="{{ url_for('remuneraciones.provision_vacaciones', eid=empresa.id) }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-bar-chart-steps me-1"></i>Provisión
+  </a>
+</div>
+
+<!-- Resumen saldos por empleado -->
+{% if resumen %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-dark text-white py-2">
+    <i class="bi bi-people me-1"></i>Saldo de días por empleado
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-secondary">
+        <tr>
+          <th>Empleado</th>
+          <th class="text-center">Días acumulados</th>
+          <th class="text-center">Días tomados</th>
+          <th class="text-center fw-bold">Saldo días</th>
+          <th class="text-end">Valor día</th>
+          <th class="text-end">Monto saldo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp_id_r, r in resumen.items() %}
+        <tr {% if r.saldo < 0 %}class="table-danger"{% elif r.saldo < 5 %}class="table-warning"{% endif %}>
+          <td>
+            <strong>{{ r.emp.nombre }}</strong>
+            <div class="text-muted small">{{ r.emp.rut }}</div>
+          </td>
+          <td class="text-center">{{ r.dias_acum }}</td>
+          <td class="text-center text-muted">{{ r.tomados }}</td>
+          <td class="text-center fw-bold {% if r.saldo < 0 %}text-danger{% elif r.saldo < 5 %}text-warning{% else %}text-success{% endif %}">
+            {{ r.saldo }}
+          </td>
+          <td class="text-end small text-muted">$ {{ r.valor_dia|clp }}</td>
+          <td class="text-end small">$ {{ r.monto_saldo|clp }}</td>
+          <td class="text-end">
+            <a href="?emp_id={{ r.emp.id }}" class="btn btn-outline-secondary btn-sm py-0 px-2"
+               style="font-size:.75rem;">Filtrar</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Formulario nuevo registro -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-primary text-white py-2">
+    <i class="bi bi-plus-circle me-1"></i>Registrar período de vacaciones
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('remuneraciones.vacacion_nueva', eid=empresa.id) }}"
+          id="form-vacacion">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Empleado</label>
+          <select name="empleado_id" class="form-select form-select-sm" required>
+            <option value="">— Seleccionar —</option>
+            {% for e in empleados %}
+            <option value="{{ e.id }}" {% if emp_id_filter == e.id %}selected{% endif %}>
+              {{ e.nombre }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Fecha inicio</label>
+          <input type="date" name="fecha_inicio" class="form-control form-control-sm" required id="fi">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Fecha fin</label>
+          <input type="date" name="fecha_fin" class="form-control form-control-sm" required id="ff">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Días hábiles</label>
+          <input type="number" name="dias_habiles" id="dias_habiles"
+                 class="form-control form-control-sm" min="1" placeholder="Auto">
+          <div class="form-text">Se calcula automáticamente</div>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Notas</label>
+          <input type="text" name="notas" class="form-control form-control-sm"
+                 placeholder="Opcional">
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-check2"></i> Guardar
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Historial -->
+<div class="card shadow-sm">
+  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
+    <span><i class="bi bi-calendar-range me-1"></i>Historial de vacaciones
+      {% if emp_id_filter %}
+        — {{ (resumen[emp_id_filter].emp.nombre) if emp_id_filter in resumen else '' }}
+        <a href="{{ url_for('remuneraciones.vacaciones', eid=empresa.id) }}"
+           class="btn btn-sm btn-outline-light py-0 ms-2" style="font-size:.75rem;">
+          Ver todos
+        </a>
+      {% endif %}
+    </span>
+    <span class="small text-muted">{{ registros|length }} registro(s)</span>
+  </div>
+  {% if registros %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-secondary">
+        <tr>
+          <th>Empleado</th>
+          <th>Fecha inicio</th>
+          <th>Fecha fin</th>
+          <th class="text-center">Días hábiles</th>
+          <th>Notas</th>
+          <th class="text-center">Asiento</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in registros %}
+        <tr>
+          <td class="small">
+            <strong>{{ v.empleado.nombre }}</strong>
+          </td>
+          <td class="small">{{ v.fecha_inicio|fecha_cl }}</td>
+          <td class="small">{{ v.fecha_fin|fecha_cl }}</td>
+          <td class="text-center fw-semibold">{{ v.dias_habiles }}</td>
+          <td class="small text-muted">{{ v.notas or '' }}</td>
+          <td class="text-center small">
+            {% if v.asiento_id and v.asiento %}
+            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=v.asiento_id) }}"
+               target="_blank">N°{{ v.asiento.numero }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-end">
+            <form method="post"
+                  action="{{ url_for('remuneraciones.vacacion_eliminar', eid=empresa.id, vid=v.id) }}"
+                  onsubmit="return confirm('¿Eliminar este registro de vacaciones?')">
+              <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1"
+                      style="font-size:.75rem;" title="Eliminar">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-4 small">
+    Sin registros de vacaciones.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-calculate working days when dates change
+function calcDiasHabiles() {
+  var fi = document.getElementById('fi').value;
+  var ff = document.getElementById('ff').value;
+  if (!fi || !ff) return;
+  var d1 = new Date(fi), d2 = new Date(ff);
+  if (d2 < d1) return;
+  var dias = 0;
+  var cur = new Date(d1);
+  while (cur <= d2) {
+    var dow = cur.getDay(); // 0=Sun, 6=Sat
+    if (dow > 0 && dow < 6) dias++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  document.getElementById('dias_habiles').placeholder = dias + ' días hábiles';
+  if (!document.getElementById('dias_habiles')._manual) {
+    document.getElementById('dias_habiles').value = '';
+  }
+}
+document.getElementById('fi').addEventListener('change', calcDiasHabiles);
+document.getElementById('ff').addEventListener('change', calcDiasHabiles);
+document.getElementById('dias_habiles').addEventListener('input', function() {
+  this._manual = this.value !== '';
+});
+</script>
+{% endblock %}

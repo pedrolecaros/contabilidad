@@ -1,8 +1,22 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from models import db, Empresa, Empleado, Liquidacion, VariablesMensuales, ValorUF
+from models import db, Empresa, Empleado, Liquidacion, VariablesMensuales, ValorUF, VacacionEmpleado
 from engine import remuneraciones as motor
 
 bp = Blueprint('remuneraciones', __name__)
+
+
+def _dias_habiles_entre(fecha_inicio, fecha_fin):
+    """Cuenta días hábiles (lunes–viernes) entre dos fechas, inclusive."""
+    from datetime import timedelta
+    if fecha_fin < fecha_inicio:
+        return 0
+    dias = 0
+    d = fecha_inicio
+    while d <= fecha_fin:
+        if d.weekday() < 5:  # 0=Mon … 4=Fri
+            dias += 1
+        d += timedelta(days=1)
+    return dias
 
 AFP_OPCIONES = ['Capital', 'Cuprum', 'Habitat', 'Modelo', 'PlanVital', 'ProVida', 'Uno']
 
@@ -202,6 +216,108 @@ def historial(eid, emp_id):
     return render_template('remuneraciones/historial.html', empresa=empresa, emp=emp, liqs=liqs)
 
 
+@bp.route('/empresa/<int:eid>/remuneraciones/vacaciones')
+def vacaciones(eid):
+    from datetime import date
+    empresa = Empresa.query.get_or_404(eid)
+    empleados = (Empleado.query.filter_by(empresa_id=eid, activo=True)
+                 .order_by(Empleado.nombre).all())
+    emp_id_filter = request.args.get('emp_id', type=int)
+
+    query = VacacionEmpleado.query.filter_by(empresa_id=eid)
+    if emp_id_filter:
+        query = query.filter_by(empleado_id=emp_id_filter)
+    registros = query.order_by(VacacionEmpleado.fecha_inicio.desc()).all()
+
+    # Resumen por empleado: días acumulados, tomados, saldo
+    resumen = {}
+    hoy = date.today()
+    for emp in empleados:
+        ultima_liq = (Liquidacion.query
+            .filter_by(empresa_id=eid, empleado_id=emp.id, estado='EMITIDA')
+            .order_by(Liquidacion.periodo.desc()).first())
+        if not ultima_liq:
+            continue
+        if emp.fecha_ingreso:
+            meses = (hoy.year - emp.fecha_ingreso.year) * 12 + (hoy.month - emp.fecha_ingreso.month)
+        else:
+            meses = Liquidacion.query.filter_by(empresa_id=eid, empleado_id=emp.id, estado='EMITIDA').count()
+        meses = max(0, meses)
+        dias_acum = round(meses * 1.25, 1)
+        tomados = sum(v.dias_habiles for v in emp.vacaciones.filter_by(empresa_id=eid).all())
+        saldo = round(dias_acum - tomados, 1)
+        renta_base = ultima_liq.renta_imponible or emp.sueldo_base or 0
+        valor_dia = round(renta_base / 30) if renta_base else 0
+        resumen[emp.id] = {
+            'emp': emp,
+            'dias_acum': dias_acum,
+            'tomados': tomados,
+            'saldo': saldo,
+            'valor_dia': valor_dia,
+            'monto_saldo': round(saldo * valor_dia),
+        }
+
+    return render_template('remuneraciones/vacaciones.html',
+                           empresa=empresa, empleados=empleados,
+                           registros=registros, resumen=resumen,
+                           emp_id_filter=emp_id_filter)
+
+
+@bp.route('/empresa/<int:eid>/remuneraciones/vacaciones/nueva', methods=['POST'])
+def vacacion_nueva(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    emp_id = request.form.get('empleado_id', type=int)
+    emp = Empleado.query.get_or_404(emp_id)
+    if emp.empresa_id != eid:
+        flash('No autorizado', 'danger')
+        return redirect(url_for('remuneraciones.vacaciones', eid=eid))
+
+    try:
+        from datetime import date
+        fi = date.fromisoformat(request.form.get('fecha_inicio', ''))
+        ff = date.fromisoformat(request.form.get('fecha_fin', ''))
+    except (ValueError, TypeError):
+        flash('Fechas inválidas', 'danger')
+        return redirect(url_for('remuneraciones.vacaciones', eid=eid))
+
+    if ff < fi:
+        flash('La fecha fin debe ser posterior a la fecha inicio', 'danger')
+        return redirect(url_for('remuneraciones.vacaciones', eid=eid))
+
+    dias_str = request.form.get('dias_habiles', '').strip()
+    if dias_str:
+        try:
+            dias = int(dias_str)
+        except ValueError:
+            dias = _dias_habiles_entre(fi, ff)
+    else:
+        dias = _dias_habiles_entre(fi, ff)
+
+    notas = request.form.get('notas', '').strip() or None
+    v = VacacionEmpleado(
+        empresa_id=eid, empleado_id=emp_id,
+        fecha_inicio=fi, fecha_fin=ff,
+        dias_habiles=dias, notas=notas,
+    )
+    db.session.add(v)
+    db.session.commit()
+    flash(f'{dias} días hábiles de vacaciones registrados para {emp.nombre}', 'success')
+    return redirect(url_for('remuneraciones.vacaciones', eid=eid, emp_id=emp_id))
+
+
+@bp.route('/empresa/<int:eid>/remuneraciones/vacaciones/<int:vid>/eliminar', methods=['POST'])
+def vacacion_eliminar(eid, vid):
+    v = VacacionEmpleado.query.get_or_404(vid)
+    if v.empresa_id != eid:
+        flash('No autorizado', 'danger')
+        return redirect(url_for('remuneraciones.vacaciones', eid=eid))
+    emp_id = v.empleado_id
+    db.session.delete(v)
+    db.session.commit()
+    flash('Registro de vacaciones eliminado', 'success')
+    return redirect(url_for('remuneraciones.vacaciones', eid=eid, emp_id=emp_id))
+
+
 @bp.route('/empresa/<int:eid>/remuneraciones/provision-vacaciones', methods=['GET', 'POST'])
 def provision_vacaciones(eid):
     from datetime import date, timedelta
@@ -261,12 +377,17 @@ def provision_vacaciones(eid):
         dias_acumulados = round(meses_activos * 1.25, 1)
         total_acumulado = round(provision_mensual * meses_activos)
 
+        dias_tomados = sum(v.dias_habiles for v in emp.vacaciones.filter_by(empresa_id=eid).all())
+        saldo_dias = round(dias_acumulados - dias_tomados, 1)
+
         filas.append({
             'emp': emp,
             'renta_base': renta_base,
             'provision_mensual': provision_mensual,
             'meses_activos': meses_activos,
             'dias_acumulados': dias_acumulados,
+            'dias_tomados': dias_tomados,
+            'saldo_dias': saldo_dias,
             'total_acumulado': total_acumulado,
             'ultimo_periodo': ultima_liq.periodo,
         })

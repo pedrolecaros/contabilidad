@@ -331,6 +331,22 @@ class CuotaPrestamo(db.Model):
     asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
 
 
+class VacacionEmpleado(db.Model):
+    __tablename__ = 'vacaciones_empleado'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    fecha_inicio = db.Column(db.Date, nullable=False)
+    fecha_fin = db.Column(db.Date, nullable=False)
+    dias_habiles = db.Column(db.Integer, default=0)
+    notas = db.Column(db.String(300))
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.now)
+
+    empleado = db.relationship('Empleado', backref=db.backref('vacaciones', lazy='dynamic'))
+    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
+
+
 class ReglaClasificacion(db.Model):
     __tablename__ = 'reglas_clasificacion'
     id = db.Column(db.Integer, primary_key=True)
