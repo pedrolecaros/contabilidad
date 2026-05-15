@@ -6,6 +6,7 @@ import threading
 import uuid
 from datetime import datetime
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, current_app
+from collections import Counter
 from sqlalchemy import func
 from models import db, Empresa, ArchivoImportado, DocumentoSII, MovimientoBanco
 from importers import libro_compras, libro_ventas, libro_honorarios, cartola
@@ -112,6 +113,64 @@ def _periodo_docs(empresa_id, tipo, after_dt):
         if doc and doc.fecha:
             return doc.fecha.strftime('%Y-%m')
     return None
+
+
+def _detectar_coherencia_periodo(eid, tipo_upper, max_doc_id_antes, max_mov_id_antes):
+    """
+    Analiza los documentos/movimientos recién importados (id > max_*_antes) y
+    devuelve un string de advertencia si hay mezcla de períodos o el período
+    del archivo no coincide con el último ya registrado.
+    Retorna (periodo_predominante, aviso_o_None).
+    """
+    if tipo_upper in ('COMPRAS', 'VENTAS', 'HONORARIOS'):
+        docs_nuevos = (DocumentoSII.query
+                       .filter(DocumentoSII.empresa_id == eid,
+                               DocumentoSII.tipo_libro == tipo_upper,
+                               DocumentoSII.id > max_doc_id_antes)
+                       .all())
+        fechas = [d.fecha for d in docs_nuevos if d.fecha]
+    else:
+        movs_nuevos = (MovimientoBanco.query
+                       .filter(MovimientoBanco.empresa_id == eid,
+                               MovimientoBanco.id > max_mov_id_antes)
+                       .all())
+        fechas = [m.fecha for m in movs_nuevos if m.fecha]
+
+    if not fechas:
+        return None, None
+
+    conteo = Counter(f.strftime('%Y-%m') for f in fechas)
+    periodo_pred = conteo.most_common(1)[0][0]
+    periodos = sorted(conteo.keys())
+
+    avisos = []
+
+    # Mezcla de períodos
+    if len(periodos) > 1:
+        detalle = ', '.join(
+            f'{p} ({conteo[p]} docs, {conteo[p]/len(fechas)*100:.0f}%)'
+            for p in periodos
+        )
+        avisos.append(
+            f'El archivo contiene documentos de <strong>múltiples períodos</strong>: {detalle}. '
+            f'Período predominante registrado: <strong>{periodo_pred}</strong>.'
+        )
+
+    # Comparar con el último archivo importado del mismo tipo
+    ultimo = (ArchivoImportado.query
+              .filter_by(empresa_id=eid, tipo=tipo_upper)
+              .filter(ArchivoImportado.periodo.isnot(None))
+              .order_by(ArchivoImportado.id.desc())
+              .first())
+    if ultimo and ultimo.periodo and ultimo.periodo == periodo_pred and not avisos:
+        avisos.append(
+            f'El período <strong>{periodo_pred}</strong> de este archivo '
+            f'coincide con una importación anterior '
+            f'({ultimo.fecha_importacion.strftime("%d/%m/%Y")}). '
+            'Verifique que no sea un duplicado.'
+        )
+
+    return periodo_pred, (' '.join(avisos) if avisos else None)
 
 
 MESES_ES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -244,6 +303,10 @@ def subir(eid, tipo):
         )
         return redirect(url_for('importar.index', eid=eid))
 
+    # Snapshot de IDs actuales para detectar registros recién importados
+    max_doc_id = db.session.query(func.max(DocumentoSII.id)).filter_by(empresa_id=eid).scalar() or 0
+    max_mov_id = db.session.query(func.max(MovimientoBanco.id)).filter_by(empresa_id=eid).scalar() or 0
+
     try:
         tipo_upper = tipo.upper() if tipo != 'banco' else 'BANCO'
         if tipo == 'compras':
@@ -267,8 +330,12 @@ def subir(eid, tipo):
         flash(f'Error al procesar archivo: {e}', 'danger')
         return redirect(url_for('importar.index', eid=eid))
 
+    # Detectar período predominante y verificar coherencia
+    periodo_det, aviso_periodo = _detectar_coherencia_periodo(
+        eid, tipo_upper, max_doc_id, max_mov_id)
+
     # Register the imported file
-    periodo = _periodo_docs(eid, tipo_upper, datetime.now())
+    periodo = periodo_det or _periodo_docs(eid, tipo_upper, datetime.now())
     registro = ArchivoImportado(
         empresa_id=eid,
         tipo=tipo_upper,
@@ -282,13 +349,16 @@ def subir(eid, tipo):
     db.session.add(registro)
     db.session.commit()
 
-    return jsonify({
+    response = {
         'ok': True,
         'tipo': tipo,
         'importados': resultado.get('importados', 0),
         'errores': resultado.get('errores', []),
         'nombre': archivo.filename,
-    })
+    }
+    if aviso_periodo:
+        response['aviso'] = aviso_periodo
+    return jsonify(response)
 
 
 def _run_sii_batch_job(app, job_id, eid, rut, clave_sii, tipos, periodo):
