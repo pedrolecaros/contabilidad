@@ -23,6 +23,37 @@ def _migrar(app):
         "ALTER TABLE variables_mensuales ADD COLUMN tasa_sis REAL",
         "ALTER TABLE variables_mensuales ADD COLUMN tasas_afp_json TEXT",
         "CREATE TABLE IF NOT EXISTS valores_uf (id INTEGER PRIMARY KEY, fecha DATE UNIQUE NOT NULL, valor REAL NOT NULL)",
+        """CREATE TABLE IF NOT EXISTS prestamos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    empresa_relacionada_id INTEGER REFERENCES empresas(id),
+    nombre VARCHAR(200) NOT NULL,
+    tipo VARCHAR(10) NOT NULL,
+    moneda VARCHAR(5) DEFAULT 'PESOS',
+    monto_original REAL NOT NULL,
+    tasa_interes_anual REAL DEFAULT 0.0,
+    fecha_inicio DATE NOT NULL,
+    n_cuotas INTEGER,
+    periodicidad VARCHAR(10) DEFAULT 'MENSUAL',
+    acreedor_deudor VARCHAR(200),
+    activo INTEGER DEFAULT 1,
+    notas TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)""",
+        """CREATE TABLE IF NOT EXISTS cuotas_prestamo (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prestamo_id INTEGER NOT NULL REFERENCES prestamos(id),
+    numero_cuota INTEGER NOT NULL,
+    fecha_vencimiento DATE NOT NULL,
+    capital REAL DEFAULT 0,
+    interes REAL DEFAULT 0,
+    cuota_total REAL DEFAULT 0,
+    saldo_insoluto REAL DEFAULT 0,
+    pagada INTEGER DEFAULT 0,
+    fecha_pago DATE,
+    movimiento_banco_id INTEGER REFERENCES movimientos_banco(id),
+    notas VARCHAR(300)
+)""",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

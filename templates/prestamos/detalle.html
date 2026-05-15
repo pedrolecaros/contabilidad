@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+{% block title %}{{ prestamo.nombre }} – Préstamo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">
+    <i class="bi bi-bank me-2"></i>{{ prestamo.nombre }}
+    {% if prestamo.tipo == 'PAGAR' %}
+    <span class="badge bg-danger ms-1">Pagar</span>
+    {% else %}
+    <span class="badge bg-success ms-1">Cobrar</span>
+    {% endif %}
+    {% if not prestamo.activo %}
+    <span class="badge bg-secondary ms-1">Inactivo</span>
+    {% endif %}
+  </h5>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('prestamos.editar', eid=empresa.id, pid=prestamo.id) }}"
+       class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+    <a href="{{ url_for('prestamos.lista', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Volver
+    </a>
+  </div>
+</div>
+
+<!-- ── Info del préstamo ──────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-8">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="row g-2 small">
+          <div class="col-6 col-md-4">
+            <div class="text-muted">Moneda</div>
+            <div class="fw-semibold">
+              <span class="badge bg-secondary">{{ prestamo.moneda }}</span>
+            </div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="text-muted">Monto original</div>
+            <div class="fw-semibold">
+              {% if prestamo.moneda == 'UF' %}
+              UF {{ prestamo.monto_original|clp }}
+              {% else %}
+              $ {{ prestamo.monto_original|clp }}
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="text-muted">Tasa anual</div>
+            <div class="fw-semibold">{{ (prestamo.tasa_interes_anual * 100)|round(4) }}%</div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="text-muted">Fecha inicio</div>
+            <div class="fw-semibold">{{ prestamo.fecha_inicio|fecha_cl }}</div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="text-muted">Periodicidad</div>
+            <div class="fw-semibold">{{ prestamo.periodicidad }}</div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="text-muted">N° cuotas</div>
+            <div class="fw-semibold">{{ prestamo.n_cuotas or '—' }}</div>
+          </div>
+          {% if prestamo.acreedor_deudor %}
+          <div class="col-md-6">
+            <div class="text-muted">Acreedor / Deudor</div>
+            <div class="fw-semibold">{{ prestamo.acreedor_deudor }}</div>
+          </div>
+          {% endif %}
+          {% if prestamo.empresa_relacionada %}
+          <div class="col-md-6">
+            <div class="text-muted">Empresa relacionada</div>
+            <div class="fw-semibold">
+              <i class="bi bi-building me-1"></i>
+              {{ prestamo.empresa_relacionada.nombre_fantasia or prestamo.empresa_relacionada.razon_social }}
+            </div>
+          </div>
+          {% endif %}
+          {% if prestamo.notas %}
+          <div class="col-12">
+            <div class="text-muted">Notas</div>
+            <div>{{ prestamo.notas }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100 {% if prestamo.tipo == 'PAGAR' %}border-danger{% else %}border-success{% endif %}">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Capital pendiente</div>
+        <div class="fw-bold fs-4 {% if prestamo.tipo == 'PAGAR' %}text-danger{% else %}text-success{% endif %}">
+          {% if prestamo.moneda == 'UF' %}
+          UF {{ capital_pendiente|clp }}
+          {% else %}
+          $ {{ capital_pendiente|clp }}
+          {% endif %}
+        </div>
+        <hr class="my-2">
+        <div class="row g-1 small text-muted">
+          <div class="col-6">Total capital:</div>
+          <div class="col-6 text-end fw-semibold">
+            {% if prestamo.moneda == 'UF' %}UF {% else %}$ {% endif %}{{ total_capital|clp }}
+          </div>
+          <div class="col-6">Total interés:</div>
+          <div class="col-6 text-end fw-semibold">
+            {% if prestamo.moneda == 'UF' %}UF {% else %}$ {% endif %}{{ total_interes|clp }}
+          </div>
+          <div class="col-6">Total cuotas:</div>
+          <div class="col-6 text-end fw-semibold">
+            {% if prestamo.moneda == 'UF' %}UF {% else %}$ {% endif %}{{ total_cuotas|clp }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     PRÉSTAMO LIBRE: formulario de pago + tabla de pagos
+══════════════════════════════════════════════════════════════════════════════ -->
+{% if prestamo.periodicidad == 'LIBRE' %}
+
+<div class="card mb-4">
+  <div class="card-header py-2 fw-semibold small">
+    <i class="bi bi-cash-coin me-1"></i>Registrar Pago
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('prestamos.agregar_pago', eid=empresa.id, pid=prestamo.id) }}">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Fecha de pago</label>
+          <input type="date" name="fecha_pago" class="form-control form-control-sm"
+                 value="{{ hoy.isoformat() }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Capital</label>
+          <input type="number" name="capital" class="form-control form-control-sm"
+                 step="0.01" min="0" value="0">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Interés</label>
+          <input type="number" name="interes" class="form-control form-control-sm"
+                 step="0.01" min="0" value="0">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Notas</label>
+          <input type="text" name="notas" class="form-control form-control-sm"
+                 placeholder="Observación…">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-plus me-1"></i>Registrar
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if prestamo.cuotas %}
+<div class="card mb-4">
+  <div class="card-header py-2 fw-semibold small">
+    <i class="bi bi-list-ul me-1"></i>Pagos registrados ({{ prestamo.cuotas|length }})
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>N°</th>
+          <th>Fecha</th>
+          <th class="text-end">Capital</th>
+          <th class="text-end">Interés</th>
+          <th class="text-end">Total</th>
+          <th>Notas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in prestamo.cuotas %}
+        <tr>
+          <td>{{ c.numero_cuota }}</td>
+          <td>{{ c.fecha_pago|fecha_cl if c.fecha_pago else c.fecha_vencimiento|fecha_cl }}</td>
+          <td class="text-end">$ {{ c.capital|clp }}</td>
+          <td class="text-end">$ {{ c.interes|clp }}</td>
+          <td class="text-end fw-semibold">$ {{ c.cuota_total|clp }}</td>
+          <td class="text-muted small">{{ c.notas or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-semibold">
+        <tr>
+          <td colspan="2">Totales</td>
+          <td class="text-end">$ {{ total_capital|clp }}</td>
+          <td class="text-end">$ {{ total_interes|clp }}</td>
+          <td class="text-end">$ {{ total_cuotas|clp }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-muted small">No hay pagos registrados aún.</div>
+{% endif %}
+
+{% else %}
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     PRÉSTAMO FIJO: tabla de amortización
+══════════════════════════════════════════════════════════════════════════════ -->
+
+{% if prestamo.cuotas %}
+<div class="card">
+  <div class="card-header py-2 fw-semibold small d-flex justify-content-between">
+    <span><i class="bi bi-table me-1"></i>Tabla de amortización</span>
+    <span class="text-muted">
+      {{ prestamo.cuotas|selectattr('pagada')|list|length }}
+      / {{ prestamo.cuotas|length }} cuotas pagadas
+    </span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0" style="font-size:.83rem;">
+      <thead class="table-dark">
+        <tr>
+          <th class="text-center">N°</th>
+          <th>Vencimiento</th>
+          <th class="text-end">Capital</th>
+          <th class="text-end">Interés</th>
+          <th class="text-end">Cuota</th>
+          <th class="text-end">Saldo</th>
+          <th class="text-center">Pagado</th>
+          <th>Fecha pago</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in prestamo.cuotas %}
+        {% set vencida = c.fecha_vencimiento < hoy and not c.pagada %}
+        <tr style="
+          {% if c.pagada %}background: #f0fff4;{% elif vencida %}background: #fff5f5;{% endif %}
+        ">
+          <td class="text-center">{{ c.numero_cuota }}</td>
+          <td {% if vencida %}class="text-danger fw-semibold"{% endif %}>
+            {{ c.fecha_vencimiento|fecha_cl }}
+          </td>
+          <td class="text-end">
+            {% if prestamo.moneda == 'UF' %}UF {{ c.capital|clp }}{% else %}$ {{ c.capital|clp }}{% endif %}
+          </td>
+          <td class="text-end">
+            {% if prestamo.moneda == 'UF' %}UF {{ c.interes|clp }}{% else %}$ {{ c.interes|clp }}{% endif %}
+          </td>
+          <td class="text-end fw-semibold">
+            {% if prestamo.moneda == 'UF' %}
+            UF {{ c.cuota_total|clp }}
+            {% if uf_vals and c.fecha_vencimiento in uf_vals %}
+            <br><small class="text-muted fw-normal">
+              $ {{ (c.cuota_total * uf_vals[c.fecha_vencimiento])|clp }}
+            </small>
+            {% endif %}
+            {% else %}
+            $ {{ c.cuota_total|clp }}
+            {% endif %}
+          </td>
+          <td class="text-end text-muted">
+            {% if prestamo.moneda == 'UF' %}UF {{ c.saldo_insoluto|clp }}{% else %}$ {{ c.saldo_insoluto|clp }}{% endif %}
+          </td>
+          <td class="text-center">
+            {% if c.pagada %}
+            <form method="post"
+                  action="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}">
+              <button type="submit" class="btn btn-success btn-sm py-0 px-2"
+                      title="Marcar como no pagada" style="font-size:.75rem;">
+                <i class="bi bi-check2"></i> Desmarcar
+              </button>
+            </form>
+            {% else %}
+            <form method="post"
+                  action="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
+                  class="d-flex align-items-center gap-1">
+              <input type="date" name="fecha_pago" class="form-control form-control-sm py-0"
+                     style="width:130px; font-size:.75rem;"
+                     value="{{ hoy.isoformat() }}">
+              <button type="submit" class="btn btn-outline-success btn-sm py-0 px-2"
+                      style="font-size:.75rem;" title="Marcar como pagada">
+                <i class="bi bi-check2"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.pagada and c.fecha_pago %}
+            <span class="text-muted small">{{ c.fecha_pago|fecha_cl }}</span>
+            {% if prestamo.moneda == 'UF' and uf_vals and c.fecha_pago in uf_vals %}
+            <br><small class="text-muted" style="font-size:.7rem;">
+              UF1 = $ {{ uf_vals[c.fecha_pago]|clp }}
+            </small>
+            {% endif %}
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-semibold" style="font-size:.83rem;">
+        <tr>
+          <td colspan="2">Totales</td>
+          <td class="text-end">
+            {% if prestamo.moneda == 'UF' %}UF {{ total_capital|clp }}{% else %}$ {{ total_capital|clp }}{% endif %}
+          </td>
+          <td class="text-end">
+            {% if prestamo.moneda == 'UF' %}UF {{ total_interes|clp }}{% else %}$ {{ total_interes|clp }}{% endif %}
+          </td>
+          <td class="text-end">
+            {% if prestamo.moneda == 'UF' %}UF {{ total_cuotas|clp }}{% else %}$ {{ total_cuotas|clp }}{% endif %}
+          </td>
+          <td class="text-end text-danger">
+            {% if prestamo.moneda == 'UF' %}UF {{ capital_pendiente|clp }}{% else %}$ {{ capital_pendiente|clp }}{% endif %}
+            <div class="fw-normal text-muted" style="font-size:.72rem;">pendiente</div>
+          </td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+  No se han generado cuotas para este préstamo. Verifica que el número de cuotas esté configurado.
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

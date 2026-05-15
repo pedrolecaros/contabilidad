@@ -2,7 +2,7 @@ import os
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, send_file, current_app, request
-from models import db, Empresa, Asiento, ArchivoImportado, DocumentoSII, MovimientoBanco, Liquidacion
+from models import db, Empresa, Asiento, ArchivoImportado, DocumentoSII, MovimientoBanco, Liquidacion, Prestamo
 from sqlalchemy import func
 
 bp = Blueprint('main', __name__)
@@ -162,12 +162,21 @@ def consolidado():
         db_size_mb = None
         db_modified = None
 
+    # Inter-company loans: all loans between active companies
+    interempresa = (Prestamo.query
+        .filter(Prestamo.empresa_id.in_(ids),
+                Prestamo.empresa_relacionada_id.in_(ids),
+                Prestamo.activo == True)
+        .order_by(Prestamo.empresa_id, Prestamo.tipo)
+        .all())
+
     return render_template('consolidado.html',
         empresas=empresas, meses=meses,
         desde_mes=desde_mes, hasta_mes=hasta_mes,
         celda_data=celda_data,
         sin_respaldo=sin_respaldo,
-        db_size_mb=db_size_mb, db_modified=db_modified)
+        db_size_mb=db_size_mb, db_modified=db_modified,
+        interempresa=interempresa)
 
 
 @bp.route('/consolidado/financiero')

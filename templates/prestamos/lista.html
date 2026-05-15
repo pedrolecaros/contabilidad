@@ -1,0 +1,229 @@
+{% extends 'base.html' %}
+{% block title %}Préstamos – {{ empresa.nombre_fantasia or empresa.razon_social }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-bank me-2"></i>Préstamos</h5>
+  <a href="{{ url_for('prestamos.nuevo', eid=empresa.id) }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i>Nuevo Préstamo
+  </a>
+</div>
+
+<!-- ── Resumen cards ──────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-danger">
+      <div class="card-body py-3">
+        <div class="text-muted small mb-1"><i class="bi bi-arrow-up-circle me-1"></i>Por Pagar</div>
+        <div class="fw-bold fs-5 text-danger">$ {{ total_pagar|clp }}</div>
+        <div class="text-muted small">saldo pendiente de cuotas activas</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-success">
+      <div class="card-body py-3">
+        <div class="text-muted small mb-1"><i class="bi bi-arrow-down-circle me-1"></i>Por Cobrar</div>
+        <div class="fw-bold fs-5 text-success">$ {{ total_cobrar|clp }}</div>
+        <div class="text-muted small">saldo pendiente de cuotas activas</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card {% if vencidas %}border-warning{% endif %}">
+      <div class="card-body py-3">
+        <div class="text-muted small mb-1"><i class="bi bi-exclamation-triangle me-1"></i>Vencidas</div>
+        <div class="fw-bold fs-5 {% if vencidas %}text-warning{% else %}text-muted{% endif %}">
+          {{ vencidas|length }} cuota{% if vencidas|length != 1 %}s{% endif %}
+        </div>
+        <div class="text-muted small">sin pagar con fecha pasada</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Alertas cuotas vencidas ───────────────────────────────────────────── -->
+{% if vencidas %}
+<div class="alert alert-warning mb-4">
+  <div class="fw-semibold mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Cuotas vencidas sin pagar</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead>
+        <tr>
+          <th>Préstamo</th>
+          <th>Tipo</th>
+          <th>N° Cuota</th>
+          <th>Vencimiento</th>
+          <th class="text-end">Monto</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p, c in vencidas %}
+        <tr>
+          <td><a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}">{{ p.nombre }}</a></td>
+          <td>
+            {% if p.tipo == 'PAGAR' %}
+            <span class="badge bg-danger">Pagar</span>
+            {% else %}
+            <span class="badge bg-success">Cobrar</span>
+            {% endif %}
+          </td>
+          <td>{{ c.numero_cuota }}</td>
+          <td class="text-danger">{{ c.fecha_vencimiento|fecha_cl }}</td>
+          <td class="text-end">$ {{ c.cuota_total|clp }}</td>
+          <td>
+            <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
+               class="btn btn-outline-primary btn-sm">Ver</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Próximas cuotas (30 días) ─────────────────────────────────────────── -->
+{% if proximas %}
+<div class="card mb-4">
+  <div class="card-header py-2 fw-semibold small">
+    <i class="bi bi-calendar-event me-1"></i>Próximas cuotas (30 días)
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Préstamo</th>
+            <th>Tipo</th>
+            <th>N° Cuota</th>
+            <th>Vencimiento</th>
+            <th class="text-end">Cuota</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p, c in proximas %}
+          <tr>
+            <td><a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}" class="text-decoration-none">{{ p.nombre }}</a></td>
+            <td>
+              {% if p.tipo == 'PAGAR' %}
+              <span class="badge bg-danger">Pagar</span>
+              {% else %}
+              <span class="badge bg-success">Cobrar</span>
+              {% endif %}
+            </td>
+            <td>{{ c.numero_cuota }}</td>
+            <td>{{ c.fecha_vencimiento|fecha_cl }}</td>
+            <td class="text-end">$ {{ c.cuota_total|clp }}</td>
+            <td>
+              <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
+                 class="btn btn-outline-secondary btn-sm">Ver</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Tabla de préstamos ─────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-header py-2 fw-semibold small">
+    <i class="bi bi-list-ul me-1"></i>Todos los préstamos ({{ prestamos|length }})
+  </div>
+  {% if prestamos %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th data-sort="text">Nombre</th>
+          <th>Tipo</th>
+          <th>Moneda</th>
+          <th data-sort="clp" class="text-end">Monto original</th>
+          <th data-sort="clp" class="text-end">Saldo pendiente</th>
+          <th data-sort="date">Próx. cuota</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in prestamos %}
+        <tr class="{% if not p.activo %}text-muted{% endif %}">
+          <td>
+            <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
+               class="text-decoration-none fw-semibold {% if not p.activo %}text-muted{% endif %}">
+              {{ p.nombre }}
+            </a>
+            {% if p.acreedor_deudor %}
+            <div class="text-muted" style="font-size:.78rem;">{{ p.acreedor_deudor }}</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if p.tipo == 'PAGAR' %}
+            <span class="badge bg-danger">Pagar</span>
+            {% else %}
+            <span class="badge bg-success">Cobrar</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge bg-secondary">{{ p.moneda }}</span>
+          </td>
+          <td class="text-end">
+            {% if p.moneda == 'UF' %}
+            UF {{ p.monto_original|clp }}
+            {% else %}
+            $ {{ p.monto_original|clp }}
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if saldos[p.id] > 0 %}
+            {% if p.moneda == 'UF' %}
+            UF {{ saldos[p.id]|clp }}
+            {% else %}
+            $ {{ saldos[p.id]|clp }}
+            {% endif %}
+            {% else %}
+            <span class="text-success"><i class="bi bi-check2-circle"></i> Pagado</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if proxima_cuota[p.id] is defined and proxima_cuota[p.id] %}
+            {% set pc = proxima_cuota[p.id] %}
+            {% if pc.fecha_vencimiento < hoy %}
+            <span class="text-danger">{{ pc.fecha_vencimiento|fecha_cl }}</span>
+            {% else %}
+            {{ pc.fecha_vencimiento|fecha_cl }}
+            {% endif %}
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if p.activo %}
+            <span class="badge bg-success">Activo</span>
+            {% else %}
+            <span class="badge bg-secondary">Inactivo</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
+               class="btn btn-outline-secondary btn-sm">Ver</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-bank fs-1 mb-2 d-block"></i>
+    No hay préstamos registrados.
+    <a href="{{ url_for('prestamos.nuevo', eid=empresa.id) }}" class="d-block mt-2">Crear el primero</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

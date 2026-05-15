@@ -68,6 +68,9 @@
         <li><a class="nav-link {% if 'remuneraciones' in request.endpoint %}active{% endif %}"
                href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">
           <i class="bi bi-person-vcard me-2"></i>Remuneraciones</a></li>
+        <li><a class="nav-link {% if 'prestamos' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('prestamos.lista', eid=empresa.id) }}">
+          <i class="bi bi-bank me-2"></i>Préstamos</a></li>
         <li><a class="nav-link {% if 'validacion' in request.endpoint %}active{% endif %}"
                href="{{ url_for('validacion.index', eid=empresa.id) }}">
           <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>

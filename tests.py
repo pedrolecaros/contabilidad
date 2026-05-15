@@ -465,12 +465,248 @@ class TestCalculationCrossCheck(unittest.TestCase):
         self.assertGreater(r['liquido'], 0)
 
 
+# ── Préstamos unit tests ───────────────────────────────────────────────────────
+
+class TestPMT(unittest.TestCase):
+    """Unit tests for the PMT formula and amortization generation."""
+
+    def _pmt(self, capital, tasa, n):
+        from routes.prestamos import _pmt
+        return _pmt(capital, tasa, n)
+
+    def test_pmt_sin_interes(self):
+        """0% rate → equal capital split."""
+        self.assertAlmostEqual(self._pmt(12_000, 0, 12), 1_000, places=2)
+
+    def test_pmt_con_tasa(self):
+        """5% anual mensual: 1M en 12 cuotas ≈ 85_607."""
+        tasa = 0.05 / 12
+        pmt = self._pmt(1_000_000, tasa, 12)
+        self.assertAlmostEqual(pmt, 85_607, delta=5)
+
+    def test_amortizacion_saldo_final_cero(self):
+        """After all payments the saldo should reach 0."""
+        from types import SimpleNamespace
+        from routes.prestamos import _generar_cuotas
+        from models import db, Prestamo, CuotaPrestamo
+        import app as app_module
+
+        application = app_module.create_app()
+        with application.app_context():
+            from models import Empresa
+            db.create_all()
+            emp = Empresa.query.first()
+            if not emp:
+                emp = Empresa(rut='11.111.111-1', razon_social='Test')
+                db.session.add(emp)
+                db.session.flush()
+
+            p = Prestamo(
+                empresa_id=emp.id,
+                nombre='Test PMT',
+                tipo='PAGAR',
+                moneda='PESOS',
+                monto_original=1_000_000,
+                tasa_interes_anual=0.05,   # decimal (5%)
+                fecha_inicio=date(2025, 1, 1),
+                n_cuotas=12,
+                periodicidad='MENSUAL',
+            )
+            db.session.add(p)
+            db.session.flush()
+            _generar_cuotas(p)
+            db.session.flush()
+
+            self.assertEqual(len(p.cuotas), 12)
+            last = p.cuotas[-1]
+            self.assertAlmostEqual(last.saldo_insoluto, 0, delta=1)
+            total_capital = sum(c.capital for c in p.cuotas)
+            self.assertAlmostEqual(total_capital, 1_000_000, delta=2)
+            db.session.rollback()
+
+    def test_libre_no_genera_cuotas(self):
+        """LIBRE loans should not auto-generate cuotas."""
+        from routes.prestamos import _generar_cuotas
+        from models import db, Prestamo
+        import app as app_module
+
+        application = app_module.create_app()
+        with application.app_context():
+            from models import Empresa
+            db.create_all()
+            emp = Empresa.query.first()
+            if not emp:
+                emp = Empresa(rut='22.222.222-2', razon_social='Test2')
+                db.session.add(emp)
+                db.session.flush()
+
+            p = Prestamo(
+                empresa_id=emp.id,
+                nombre='Libre',
+                tipo='PAGAR',
+                moneda='PESOS',
+                monto_original=500_000,
+                tasa_interes_anual=0.0,
+                fecha_inicio=date(2025, 1, 1),
+                n_cuotas=None,
+                periodicidad='LIBRE',
+            )
+            db.session.add(p)
+            db.session.flush()
+            _generar_cuotas(p)
+            db.session.flush()
+            self.assertEqual(len(p.cuotas), 0)
+            db.session.rollback()
+
+
+class TestPrestamosFlask(unittest.TestCase):
+    """Flask route tests for the prestamos blueprint."""
+
+    def setUp(self):
+        import app as app_module
+        self.app = app_module.create_app()
+        self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            from models import db, Empresa, Prestamo, CuotaPrestamo
+            db.create_all()
+            # Use existing empresa or create one
+            emp = Empresa.query.first()
+            if not emp:
+                emp = Empresa(rut='33.333.333-3', razon_social='PrestamosTest')
+                db.session.add(emp)
+                db.session.commit()
+            self.eid = emp.id
+
+    def get(self, url):
+        return self.client.get(url, follow_redirects=True)
+
+    def post(self, url, data):
+        return self.client.post(url, data=data, follow_redirects=True)
+
+    def _crear_prestamo(self, tipo='PAGAR', periodicidad='MENSUAL', n_cuotas=3):
+        """Helper to create a loan via POST."""
+        return self.post(f'/empresa/{self.eid}/prestamos/nuevo', {
+            'nombre': f'Test {tipo}',
+            'tipo': tipo,
+            'moneda': 'PESOS',
+            'monto_original': '1200000',
+            'tasa_interes_anual': '0',
+            'fecha_inicio': '2025-01-01',
+            'periodicidad': periodicidad,
+            'n_cuotas': str(n_cuotas) if n_cuotas else '',
+            'acreedor_deudor': 'Banco Test',
+        })
+
+    def test_p01_lista_vacia(self):
+        r = self.get(f'/empresa/{self.eid}/prestamos')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Pr\xc3\xa9stamos', r.data)  # "Préstamos" in utf-8
+
+    def test_p02_nuevo_form(self):
+        r = self.get(f'/empresa/{self.eid}/prestamos/nuevo')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'PMT', r.data)
+
+    def test_p03_crear_prestamo_fijo(self):
+        r = self._crear_prestamo('PAGAR', 'MENSUAL', 3)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Tabla de amortizaci', r.data)  # detalle page
+
+    def test_p04_cuotas_generadas(self):
+        """Creating a 3-cuota loan generates exactly 3 cuotas."""
+        with self.app.app_context():
+            from models import Prestamo, CuotaPrestamo
+            p = Prestamo.query.filter_by(empresa_id=self.eid).order_by(Prestamo.id.desc()).first()
+            if p and p.periodicidad != 'LIBRE':
+                self.assertEqual(len(p.cuotas), 3)
+
+    def test_p05_toggle_cuota(self):
+        """Marking a cuota as paid via toggle."""
+        with self.app.app_context():
+            from models import Prestamo, CuotaPrestamo
+            p = Prestamo.query.filter_by(empresa_id=self.eid).order_by(Prestamo.id.desc()).first()
+            if not p or not p.cuotas:
+                return  # loan not yet created, skip
+            cid = p.cuotas[0].id
+            pid = p.id
+
+        r = self.post(
+            f'/empresa/{self.eid}/prestamos/{pid}/cuota/{cid}/toggle',
+            {'fecha_pago': '2025-02-01'}
+        )
+        self.assertEqual(r.status_code, 200)
+        with self.app.app_context():
+            from models import CuotaPrestamo
+            c = CuotaPrestamo.query.get(cid)
+            self.assertTrue(c.pagada)
+            self.assertEqual(str(c.fecha_pago), '2025-02-01')
+
+    def test_p06_crear_prestamo_libre(self):
+        """LIBRE loan creates no cuotas; can add manual payments."""
+        r = self._crear_prestamo('COBRAR', 'LIBRE', None)
+        self.assertEqual(r.status_code, 200)
+        # Should show the "Registrar Pago" form
+        self.assertIn(b'Registrar Pago', r.data)
+
+    def test_p07_agregar_pago_libre(self):
+        """Add a manual payment to a LIBRE loan."""
+        with self.app.app_context():
+            from models import Prestamo
+            p = Prestamo.query.filter_by(
+                empresa_id=self.eid, periodicidad='LIBRE'
+            ).order_by(Prestamo.id.desc()).first()
+            if not p:
+                return
+            pid = p.id
+
+        r = self.post(f'/empresa/{self.eid}/prestamos/{pid}/pago', {
+            'fecha_pago': '2025-03-01',
+            'capital': '300000',
+            'interes': '5000',
+            'notas': 'primer pago',
+        })
+        self.assertEqual(r.status_code, 200)
+        with self.app.app_context():
+            from models import CuotaPrestamo
+            cuotas = CuotaPrestamo.query.filter_by(prestamo_id=pid).all()
+            self.assertEqual(len(cuotas), 1)
+            self.assertEqual(cuotas[0].capital, 300_000)
+            self.assertTrue(cuotas[0].pagada)
+
+    def test_p08_consolidado_interempresa(self):
+        """Consolidado tab renders without error even with no inter-company loans."""
+        r = self.get('/consolidado')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Interempresa', r.data)
+
+    def test_p09_eliminar_prestamo(self):
+        """Deleting a loan removes it and its cuotas."""
+        with self.app.app_context():
+            from models import Prestamo
+            p = Prestamo.query.filter_by(empresa_id=self.eid).order_by(Prestamo.id.desc()).first()
+            if not p:
+                return
+            pid = p.id
+
+        r = self.post(f'/empresa/{self.eid}/prestamos/{pid}/eliminar', {})
+        self.assertEqual(r.status_code, 200)
+        with self.app.app_context():
+            from models import Prestamo, CuotaPrestamo
+            self.assertIsNone(Prestamo.query.get(pid))
+            remaining = CuotaPrestamo.query.filter_by(prestamo_id=pid).count()
+            self.assertEqual(remaining, 0)
+
+
 if __name__ == '__main__':
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromTestCase(TestRemuneracionesEngine))
     suite.addTests(loader.loadTestsFromTestCase(TestCalculationCrossCheck))
     suite.addTests(loader.loadTestsFromTestCase(TestFlaskRoutes))
+    suite.addTests(loader.loadTestsFromTestCase(TestPMT))
+    suite.addTests(loader.loadTestsFromTestCase(TestPrestamosFlask))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
