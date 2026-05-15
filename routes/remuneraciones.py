@@ -969,59 +969,74 @@ def _scrape_previred(periodo: str) -> dict:
 @bp.route('/remuneraciones/uf-tabla')
 def uf_tabla():
     from datetime import date
+    import calendar
     hoy = date.today()
     anio = request.args.get('anio', hoy.year, type=int)
-    mes  = request.args.get('mes',  hoy.month, type=int)
-    from datetime import date as dt
-    desde = dt(anio, mes, 1)
-    import calendar
-    ultimo = calendar.monthrange(anio, mes)[1]
-    hasta = dt(anio, mes, ultimo)
+    desde = date(anio, 1, 1)
+    hasta = date(anio, 12, 31)
     filas = (ValorUF.query
              .filter(ValorUF.fecha >= desde, ValorUF.fecha <= hasta)
              .order_by(ValorUF.fecha)
              .all())
+    # dict date -> valor for fast lookup in template
+    uf_dict = {f.fecha: f.valor for f in filas}
+    # expected days = all days up to today (or end of year if past)
+    limite = min(hasta, hoy)
+    n_esperados = (limite - desde).days + 1 if limite >= desde else 0
+    n_cargados = len(filas)
+    # per-month info: list of (mes_num, nombre, [(day, valor|None), ...])
+    MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+             'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+    meses_data = []
+    for m in range(1, 13):
+        ultimo_dia = calendar.monthrange(anio, m)[1]
+        dias = []
+        for d in range(1, ultimo_dia + 1):
+            fd = date(anio, m, d)
+            dias.append((d, uf_dict.get(fd), fd))
+        meses_data.append((m, MESES[m-1], dias))
     return render_template('remuneraciones/uf_tabla.html',
-                           filas=filas, anio=anio, mes=mes, hoy=hoy)
+                           meses_data=meses_data, uf_dict=uf_dict,
+                           anio=anio, hoy=hoy,
+                           n_esperados=n_esperados, n_cargados=n_cargados)
 
 
 @bp.route('/remuneraciones/uf-tabla/actualizar', methods=['POST'])
 def uf_actualizar():
-    """Descarga los valores de UF del mes desde mindicador.cl y los guarda."""
-    from datetime import date
-    import requests as req, calendar
-    hoy = date.today()
+    """Descarga todos los valores UF del año desde mindicador.cl."""
+    from datetime import date as dt
+    import requests as req
+    hoy = dt.today()
     anio = request.form.get('anio', hoy.year, type=int)
-    mes  = request.form.get('mes',  hoy.month, type=int)
-    ultimo = calendar.monthrange(anio, mes)[1]
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        r = req.get(f'https://mindicador.cl/api/uf', timeout=15, headers=headers)
+        headers = {'User-Agent': 'Mozilla/5.0 (compatible; contabilidad-app)'}
+        # mindicador.cl supports /api/uf/{year} for full-year data
+        r = req.get(f'https://mindicador.cl/api/uf/{anio}', timeout=20, headers=headers)
         if r.status_code != 200:
             flash(f'Error al consultar mindicador.cl: HTTP {r.status_code}', 'danger')
-            return redirect(url_for('remuneraciones.uf_tabla', anio=anio, mes=mes))
+            return redirect(url_for('remuneraciones.uf_tabla', anio=anio))
         serie = r.json().get('serie', [])
         actualizados = 0
         for item in serie:
-            raw_fecha = item.get('fecha', '')[:10]  # YYYY-MM-DD
+            raw_fecha = item.get('fecha', '')[:10]
             try:
-                from datetime import date as dt
                 fecha = dt.fromisoformat(raw_fecha)
-                if fecha.year == anio and fecha.month == mes:
-                    valor = float(item['valor'])
-                    existing = ValorUF.query.filter_by(fecha=fecha).first()
-                    if existing:
-                        existing.valor = valor
-                    else:
-                        db.session.add(ValorUF(fecha=fecha, valor=valor))
-                    actualizados += 1
+                if fecha.year != anio:
+                    continue
+                valor = float(item['valor'])
+                existing = ValorUF.query.filter_by(fecha=fecha).first()
+                if existing:
+                    existing.valor = valor
+                else:
+                    db.session.add(ValorUF(fecha=fecha, valor=valor))
+                actualizados += 1
             except Exception:
                 pass
         db.session.commit()
-        flash(f'{actualizados} valores UF actualizados para {mes:02d}/{anio}.', 'success')
+        flash(f'{actualizados} valores UF actualizados para {anio}.', 'success')
     except Exception as e:
-        flash(f'Error: {e}', 'danger')
-    return redirect(url_for('remuneraciones.uf_tabla', anio=anio, mes=mes))
+        flash(f'Error al conectar con mindicador.cl: {e}', 'danger')
+    return redirect(url_for('remuneraciones.uf_tabla', anio=anio))
 
 
 @bp.route('/remuneraciones/uf-tabla/guardar', methods=['POST'])

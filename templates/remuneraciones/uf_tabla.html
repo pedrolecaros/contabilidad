@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Tabla UF{% endblock %}
+{% block title %}Tabla UF {{ anio }}{% endblock %}
 {% block breadcrumb %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
@@ -10,14 +10,10 @@
 {% endblock %}
 {% block content %}
 
-{% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
-
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
-    <h4 class="mb-0"><i class="bi bi-table me-2"></i>Tabla UF Diaria</h4>
-    <div class="text-muted small mt-1">
-      {{ meses[mes-1] }} {{ anio }} — fuente: mindicador.cl
-    </div>
+    <h4 class="mb-0"><i class="bi bi-calendar3 me-2"></i>Tabla UF Diaria — {{ anio }}</h4>
+    <div class="text-muted small mt-1">Fuente: mindicador.cl · {{ n_cargados }} días cargados de {{ n_esperados }} esperados hasta hoy</div>
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('remuneraciones.variables') }}" class="btn btn-outline-secondary btn-sm">
@@ -26,32 +22,44 @@
   </div>
 </div>
 
-<!-- Navegación de mes -->
+{# ── Barra de estado + controles ── #}
 <div class="card shadow-sm mb-3">
   <div class="card-body py-2">
     <div class="d-flex align-items-center gap-3 flex-wrap">
-      {% set prev_mes = mes - 1 if mes > 1 else 12 %}
-      {% set prev_anio = anio if mes > 1 else anio - 1 %}
-      {% set next_mes = mes + 1 if mes < 12 else 1 %}
-      {% set next_anio = anio if mes < 12 else anio + 1 %}
-      <a href="{{ url_for('remuneraciones.uf_tabla', anio=prev_anio, mes=prev_mes) }}" class="btn btn-outline-secondary btn-sm">
-        <i class="bi bi-chevron-left"></i>
+      {# Navegación año #}
+      <a href="{{ url_for('remuneraciones.uf_tabla', anio=anio-1) }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-chevron-left"></i> {{ anio - 1 }}
       </a>
-      <strong>{{ meses[mes-1] }} {{ anio }}</strong>
-      <a href="{{ url_for('remuneraciones.uf_tabla', anio=next_anio, mes=next_mes) }}" class="btn btn-outline-secondary btn-sm">
-        <i class="bi bi-chevron-right"></i>
+      <strong class="fs-5">{{ anio }}</strong>
+      {% if anio < hoy.year %}
+      <a href="{{ url_for('remuneraciones.uf_tabla', anio=anio+1) }}" class="btn btn-outline-secondary btn-sm">
+        {{ anio + 1 }} <i class="bi bi-chevron-right"></i>
       </a>
+      {% else %}
+      <span class="btn btn-outline-secondary btn-sm disabled">{{ anio + 1 }} <i class="bi bi-chevron-right"></i></span>
+      {% endif %}
 
-      <!-- Actualizar desde mindicador.cl -->
-      <form method="post" action="{{ url_for('remuneraciones.uf_actualizar') }}" class="d-flex gap-2 ms-auto">
+      {# Barra de progreso #}
+      {% if n_esperados > 0 %}
+      {% set pct = (n_cargados / n_esperados * 100)|int %}
+      <div class="flex-grow-1 mx-2" style="min-width:120px;">
+        <div class="progress" style="height:8px;" title="{{ n_cargados }}/{{ n_esperados }} días">
+          <div class="progress-bar {% if pct == 100 %}bg-success{% elif pct > 80 %}bg-info{% else %}bg-warning{% endif %}"
+               style="width:{{ pct }}%"></div>
+        </div>
+        <div class="text-muted" style="font-size:.72rem;">{{ pct }}% completo</div>
+      </div>
+      {% endif %}
+
+      {# Actualizar desde mindicador.cl #}
+      <form method="post" action="{{ url_for('remuneraciones.uf_actualizar') }}" class="ms-auto">
         <input type="hidden" name="anio" value="{{ anio }}">
-        <input type="hidden" name="mes" value="{{ mes }}">
         <button type="submit" class="btn btn-info btn-sm">
-          <i class="bi bi-cloud-arrow-down me-1"></i>Actualizar desde mindicador.cl
+          <i class="bi bi-cloud-arrow-down me-1"></i>Actualizar {{ anio }} desde mindicador.cl
         </button>
       </form>
 
-      <!-- Agregar valor manual -->
+      {# Valor manual #}
       <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalUF">
         <i class="bi bi-plus-circle me-1"></i>Manual
       </button>
@@ -59,43 +67,65 @@
   </div>
 </div>
 
-{% if filas %}
-<div class="card shadow-sm">
-  <div class="table-responsive">
-    <table class="table table-sm table-hover mb-0">
-      <thead class="table-dark">
-        <tr>
-          <th>Fecha</th>
-          <th class="text-end">Valor UF</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for f in filas %}
-        <tr {% if f.fecha == hoy %}class="table-warning"{% endif %}>
-          <td>{{ f.fecha | fecha_cl }}</td>
-          <td class="text-end"><strong>$ {{ f.valor | clp }}</strong></td>
-          <td class="text-end">
-            <button class="btn btn-outline-secondary btn-sm py-0 px-1"
-                    onclick="editarUF('{{ f.fecha }}', {{ f.valor }})"
-                    title="Editar">
-              <i class="bi bi-pencil"></i>
+{# ── Cuadrícula 4x3 de meses ── #}
+<div class="row g-2">
+{% for mes_num, mes_nombre, dias in meses_data %}
+{% set dias_con_valor = dias | selectattr(1) | list | length %}
+{% set total_dias = dias | length %}
+<div class="col-lg-3 col-md-4 col-sm-6">
+  <div class="card h-100">
+    <div class="card-header py-1 d-flex justify-content-between align-items-center">
+      <span class="fw-semibold small">{{ mes_nombre }}</span>
+      <span class="badge {% if dias_con_valor == total_dias %}bg-success{% elif dias_con_valor > 0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
+            style="font-size:.7rem;">
+        {{ dias_con_valor }}/{{ total_dias }}
+      </span>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0" style="font-size:.78rem;">
+        <thead>
+          <tr class="table-secondary">
+            <th class="py-0 px-2">Día</th>
+            <th class="py-0 px-2 text-end">UF ($)</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for dia_num, valor, fecha in dias %}
+        {% set es_hoy = (fecha == hoy) %}
+        {% set es_futuro = (fecha > hoy) %}
+        <tr {% if es_hoy %}class="table-warning fw-bold"{% elif es_futuro %}class="text-muted"{% elif not valor %}class="table-danger"{% endif %}>
+          <td class="py-0 px-2">
+            {{ dia_num }}
+            {% if es_hoy %}<i class="bi bi-arrow-left-short text-warning"></i>{% endif %}
+          </td>
+          <td class="py-0 px-2 text-end">
+            {% if valor %}
+            <span {% if not es_futuro %}onclick="editarUF('{{ fecha }}', {{ valor }})"
+                  style="cursor:pointer;" title="Editar"{% endif %}>
+              {{ '{:,.2f}'.format(valor).replace(',', '.') }}
+            </span>
+            {% elif es_futuro %}
+            <span class="text-muted">—</span>
+            {% else %}
+            <button class="btn btn-link btn-sm py-0 px-0 text-danger"
+                    style="font-size:.72rem;"
+                    onclick="editarUF('{{ fecha }}', '')"
+                    title="Agregar UF para {{ fecha }}">
+              <i class="bi bi-plus-circle"></i>
             </button>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
-{% else %}
-<div class="alert alert-info">
-  No hay valores UF para {{ meses[mes-1] }} {{ anio }}.
-  Presiona <strong>Actualizar desde mindicador.cl</strong> para descargarlos.
+{% endfor %}
 </div>
-{% endif %}
 
-<!-- Modal agregar/editar UF manual -->
+{# ── Modal agregar/editar UF manual ── #}
 <div class="modal fade" id="modalUF" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
