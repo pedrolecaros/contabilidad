@@ -31,9 +31,15 @@ def _run_sii_job(app, job_id, eid, rut, clave_sii, tipo, periodo):
 
     try:
         up(5,  'Iniciando navegador…')
-        from importers.sii_scraper import descargar, SIILoginError, SIIDownloadError
+        from importers.sii_scraper import descargar, SIILoginError, SIIDownloadError, SIIEmptyPeriodError
         up(10, 'Conectando al portal SII…')
-        contenido = descargar(rut, clave_sii, periodo, tipo)
+        try:
+            contenido = descargar(rut, clave_sii, periodo, tipo)
+        except SIIEmptyPeriodError as e:
+            _job_set(job_id, status='done', pct=100, message='Sin movimientos',
+                     result={'ok': True, 'tipo': tipo, 'importados': 0, 'errores': [],
+                             'nombre': '', 'aviso': str(e)})
+            return
 
         up(75, 'Verificando duplicados…')
         sha    = hashlib.sha256(contenido).hexdigest()
@@ -391,7 +397,7 @@ def _run_sii_batch_job(app, job_id, eid, rut, clave_sii, tipos, periodo):
         _job_set(job_id, **kw)
 
     try:
-        from importers.sii_scraper import descargar_lote, SIILoginError, SIIDownloadError
+        from importers.sii_scraper import descargar_lote, SIILoginError, SIIDownloadError, SIIEmptyPeriodError
 
         # Pre-chequeo: filtrar tipos ya importados
         with app.app_context():
@@ -429,6 +435,11 @@ def _run_sii_batch_job(app, job_id, eid, rut, clave_sii, tipos, periodo):
             for i, tipo in enumerate(tipos_a_bajar):
                 up(85 + int((i / len(tipos_a_bajar)) * 10), f'Guardando {tipo}…', tipo)
                 contenido = contenidos.get(tipo)
+
+                if isinstance(contenido, SIIEmptyPeriodError):
+                    results[tipo] = {'ok': True, 'tipo': tipo, 'importados': 0, 'errores': [],
+                                     'nombre': '', 'aviso': str(contenido)}
+                    continue
 
                 if isinstance(contenido, Exception):
                     results[tipo] = {'ok': False, 'tipo': tipo, 'error': str(contenido)}
@@ -572,7 +583,7 @@ def sii_auto(eid):
 def _run_sii_bulk_job(app, job_id, empresas_data, periodo):
     """Descarga compras+ventas+honorarios de todas las empresas, una a una."""
     from werkzeug.datastructures import FileStorage
-    from importers.sii_scraper import descargar_lote
+    from importers.sii_scraper import descargar_lote, SIIEmptyPeriodError
 
     n = len(empresas_data)
 
@@ -626,6 +637,10 @@ def _run_sii_bulk_job(app, job_id, empresas_data, periodo):
                 with app.app_context():
                     for tipo in tipos_a_bajar:
                         contenido = contenidos.get(tipo)
+                        if isinstance(contenido, SIIEmptyPeriodError):
+                            tipo_results[tipo] = {'ok': True, 'importados': 0,
+                                                   'aviso': str(contenido)}
+                            continue
                         if isinstance(contenido, Exception):
                             tipo_results[tipo] = {'ok': False, 'error': str(contenido)}
                             continue

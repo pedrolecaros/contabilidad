@@ -27,6 +27,10 @@ class SIILoginError(Exception):
 class SIIDownloadError(Exception):
     pass
 
+class SIIEmptyPeriodError(Exception):
+    """Período válido pero sin movimientos — no es un error, solo 0 registros."""
+    pass
+
 
 def _rut_partes(rut: str):
     """'12.345.678-9' → ('12345678', '9')"""
@@ -219,6 +223,19 @@ def _rcv_descargar_detalles(page, tipo_label: str, periodo_yyyymm: str) -> bytes
             except Exception:
                 continue
 
+        # Verificar si el período simplemente no tiene movimientos
+        content = page.content().lower()
+        frases_vacias = [
+            'no existen registros', 'no hay registros', 'sin registros',
+            'no se encontraron registros', 'no existen documentos',
+            'no hay documentos', 'sin documentos', '0 documentos',
+            'sin movimientos', 'no hay movimientos',
+            'no existen datos', 'no hay datos',
+        ]
+        if any(f in content for f in frases_vacias):
+            raise SIIEmptyPeriodError(
+                f"Sin movimientos de {tipo_label} para el período {periodo_yyyymm[:4]}-{periodo_yyyymm[4:6]}."
+            )
         raise SIIDownloadError(
             f"No se encontró el botón 'Descargar Detalles' en el RCV ({tipo_label}). "
             f"URL: {page.url} — ver /tmp/sii_rcv_{tipo_label}_{periodo_yyyymm}_antes_descarga.png"
@@ -312,9 +329,10 @@ def _descargar_honorarios(page, rut: str, periodo_yyyymm: str) -> bytes:
     if planilla.count() == 0:
         # Puede ser que no hay boletas para este período
         content = page.content().lower()
-        if 'no existen boletas' in content or 'sin boletas' in content or 'no hay boletas' in content:
-            raise SIIDownloadError(
-                f"No hay boletas de honorarios recibidas para {periodo_yyyymm[:4]}-{mes_zz}."
+        if any(f in content for f in ['no existen boletas', 'sin boletas', 'no hay boletas',
+                                       'no existen registros', 'sin registros', 'no hay registros']):
+            raise SIIEmptyPeriodError(
+                f"Sin boletas de honorarios para el período {periodo_yyyymm[:4]}-{mes_zz}."
             )
         raise SIIDownloadError(
             f"No se encontró el botón de descarga en la página de BHE. "
@@ -388,7 +406,7 @@ def descargar_lote(rut: str, clave: str, periodo: str, tipos: list,
                 except Exception as e:
                     resultados['honorarios'] = e
 
-        except (SIILoginError, SIIDownloadError):
+        except (SIILoginError, SIIDownloadError, SIIEmptyPeriodError):
             raise
         except PWTimeout as e:
             raise SIIDownloadError(f'Timeout al conectar con SII: {e}')
