@@ -113,6 +113,15 @@ def lista(eid):
     hoy = date.today()
     en_30_dias = hoy + relativedelta(days=30)
 
+    # UF de hoy para convertir cuotas UF → pesos
+    uf_row = ValorUF.query.filter(ValorUF.fecha <= hoy).order_by(ValorUF.fecha.desc()).first()
+    uf_hoy = uf_row.valor if uf_row else None
+
+    def _a_pesos(prestamo, monto_uf_o_pesos):
+        if prestamo.moneda == 'UF' and uf_hoy:
+            return monto_uf_o_pesos * uf_hoy
+        return monto_uf_o_pesos
+
     total_pagar = 0.0
     total_cobrar = 0.0
     proximas = []
@@ -122,7 +131,7 @@ def lista(eid):
         if not p.activo:
             continue
         cuotas_pend = [c for c in p.cuotas if not c.pagada]
-        monto_pend = sum(c.cuota_total for c in cuotas_pend)
+        monto_pend = sum(_a_pesos(p, c.cuota_total) for c in cuotas_pend)
         if p.tipo == 'PAGAR':
             total_pagar += monto_pend
         else:
@@ -137,11 +146,11 @@ def lista(eid):
     proximas.sort(key=lambda x: x[1].fecha_vencimiento)
     vencidas.sort(key=lambda x: x[1].fecha_vencimiento)
 
-    # Saldo pendiente por prestamo (for table display)
+    # Saldo pendiente por prestamo en pesos (for table display)
     saldos = {}
     for p in prestamos:
         cuotas_pend = [c for c in p.cuotas if not c.pagada]
-        saldos[p.id] = sum(c.cuota_total for c in cuotas_pend)
+        saldos[p.id] = sum(_a_pesos(p, c.cuota_total) for c in cuotas_pend)
 
     # Proxima cuota por prestamo
     proxima_cuota = {}
@@ -150,7 +159,7 @@ def lista(eid):
         if cuotas_pend:
             proxima_cuota[p.id] = min(cuotas_pend, key=lambda c: c.fecha_vencimiento)
 
-    # Month-by-month cash flow projection (pending cuotas, next 24 months)
+    # Month-by-month cash flow projection (pending cuotas, next 24 months, en pesos)
     from collections import defaultdict
     proyeccion = defaultdict(lambda: {'capital': 0.0, 'interes': 0.0, 'total': 0.0})
     for p in prestamos:
@@ -160,9 +169,9 @@ def lista(eid):
             if c.pagada:
                 continue
             mes = c.fecha_vencimiento.strftime('%Y-%m')
-            proyeccion[mes]['capital'] += c.capital or 0
-            proyeccion[mes]['interes'] += c.interes or 0
-            proyeccion[mes]['total'] += c.cuota_total or 0
+            proyeccion[mes]['capital'] += _a_pesos(p, c.capital or 0)
+            proyeccion[mes]['interes'] += _a_pesos(p, c.interes or 0)
+            proyeccion[mes]['total']   += _a_pesos(p, c.cuota_total or 0)
     proyeccion_list = sorted(proyeccion.items())
 
     return render_template('prestamos/lista.html',
@@ -175,6 +184,7 @@ def lista(eid):
                            saldos=saldos,
                            proxima_cuota=proxima_cuota,
                            proyeccion=proyeccion_list,
+                           uf_hoy=uf_hoy,
                            hoy=hoy)
 
 

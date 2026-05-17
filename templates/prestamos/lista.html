@@ -80,7 +80,14 @@
           </td>
           <td>{{ c.numero_cuota }}</td>
           <td class="text-danger">{{ c.fecha_vencimiento|fecha_cl }}</td>
-          <td class="text-end">$ {{ c.cuota_total|clp }}</td>
+          <td class="text-end">
+            {% if p.moneda == 'UF' %}
+              <span class="text-muted small">UF {{ "%.4f"|format(c.cuota_total) }}</span><br>
+              {% if uf_hoy %}$ {{ (c.cuota_total * uf_hoy)|clp }}{% endif %}
+            {% else %}
+              $ {{ c.cuota_total|clp }}
+            {% endif %}
+          </td>
           <td>
             <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
                class="btn btn-outline-primary btn-sm">Ver</a>
@@ -125,7 +132,14 @@
             </td>
             <td>{{ c.numero_cuota }}</td>
             <td>{{ c.fecha_vencimiento|fecha_cl }}</td>
-            <td class="text-end">$ {{ c.cuota_total|clp }}</td>
+            <td class="text-end">
+              {% if p.moneda == 'UF' %}
+                <span class="text-muted small">UF {{ "%.4f"|format(c.cuota_total) }}</span><br>
+                {% if uf_hoy %}$ {{ (c.cuota_total * uf_hoy)|clp }}{% endif %}
+              {% else %}
+                $ {{ c.cuota_total|clp }}
+              {% endif %}
+            </td>
             <td>
               <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
                  class="btn btn-outline-secondary btn-sm">Ver</a>
@@ -190,11 +204,10 @@
           </td>
           <td class="text-end">
             {% if saldos[p.id] > 0 %}
-            {% if p.moneda == 'UF' %}
-            UF {{ saldos[p.id]|clp }}
-            {% else %}
-            $ {{ saldos[p.id]|clp }}
-            {% endif %}
+              $ {{ saldos[p.id]|clp }}
+              {% if p.moneda == 'UF' and uf_hoy %}
+              <div class="text-muted" style="font-size:.75rem;">≈ UF {{ "%.2f"|format(saldos[p.id] / uf_hoy) }}</div>
+              {% endif %}
             {% else %}
             <span class="text-success"><i class="bi bi-check2-circle"></i> Pagado</span>
             {% endif %}
