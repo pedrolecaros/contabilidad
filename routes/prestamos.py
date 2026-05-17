@@ -159,20 +159,35 @@ def lista(eid):
         if cuotas_pend:
             proxima_cuota[p.id] = min(cuotas_pend, key=lambda c: c.fecha_vencimiento)
 
-    # Month-by-month cash flow projection (pending cuotas, next 24 months, en pesos)
+    # Month-by-month cash flow projection separada por tipo
     from collections import defaultdict
-    proyeccion = defaultdict(lambda: {'capital': 0.0, 'interes': 0.0, 'total': 0.0})
+    def _new_row(): return {'capital': 0.0, 'interes': 0.0, 'total': 0.0}
+    proy_pagar   = defaultdict(_new_row)
+    proy_cobrar  = defaultdict(_new_row)
+    proy_total   = defaultdict(_new_row)
     for p in prestamos:
         if not p.activo:
             continue
+        bucket = proy_pagar if p.tipo == 'PAGAR' else proy_cobrar
         for c in p.cuotas:
             if c.pagada:
                 continue
             mes = c.fecha_vencimiento.strftime('%Y-%m')
-            proyeccion[mes]['capital'] += _a_pesos(p, c.capital or 0)
-            proyeccion[mes]['interes'] += _a_pesos(p, c.interes or 0)
-            proyeccion[mes]['total']   += _a_pesos(p, c.cuota_total or 0)
-    proyeccion_list = sorted(proyeccion.items())
+            cap = _a_pesos(p, c.capital or 0)
+            ints = _a_pesos(p, c.interes or 0)
+            tot = _a_pesos(p, c.cuota_total or 0)
+            bucket[mes]['capital'] += cap
+            bucket[mes]['interes'] += ints
+            bucket[mes]['total']   += tot
+            proy_total[mes]['capital'] += cap
+            proy_total[mes]['interes'] += ints
+            proy_total[mes]['total']   += tot
+
+    # Unión de todas las fechas
+    all_meses = sorted(set(list(proy_pagar) + list(proy_cobrar)))
+    proyeccion_list = [(m, proy_pagar.get(m, _new_row()),
+                           proy_cobrar.get(m, _new_row()),
+                           proy_total.get(m, _new_row())) for m in all_meses]
 
     return render_template('prestamos/lista.html',
                            empresa=empresa,

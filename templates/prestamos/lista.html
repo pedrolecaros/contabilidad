@@ -250,73 +250,140 @@
 </div>
 
 {% if proyeccion %}
-{# Agrupar proyección por año #}
-{% set anos = {} %}
-{% for mes, datos in proyeccion %}
+{# Agrupar proyección por año — separado en pagar / cobrar / total #}
+{% set anos_pagar  = {} %}
+{% set anos_cobrar = {} %}
+{% set anos_total  = {} %}
+{% for mes, dp, dc, dt in proyeccion %}
   {% set anio = mes[:4] %}
-  {% if anio not in anos %}
-    {% set _ = anos.update({anio: {'capital': 0, 'interes': 0, 'total': 0, 'meses': []}}) %}
-  {% endif %}
-  {% set _ = anos[anio]['meses'].append((mes, datos)) %}
-  {% set _ = anos[anio].update({
-    'capital': anos[anio]['capital'] + datos.capital,
-    'interes': anos[anio]['interes'] + datos.interes,
-    'total':   anos[anio]['total']   + datos.total
-  }) %}
+  {% for bucket, datos in [(anos_pagar, dp), (anos_cobrar, dc), (anos_total, dt)] %}
+    {% if anio not in bucket %}
+      {% set _ = bucket.update({anio: {'capital': 0, 'interes': 0, 'total': 0, 'meses': []}}) %}
+    {% endif %}
+    {% set _ = bucket[anio]['meses'].append((mes, datos)) %}
+    {% set _ = bucket[anio].update({
+      'capital': bucket[anio]['capital'] + datos.capital,
+      'interes': bucket[anio]['interes'] + datos.interes,
+      'total':   bucket[anio]['total']   + datos.total
+    }) %}
+  {% endfor %}
 {% endfor %}
 {% set anio_actual = hoy.strftime('%Y') %}
 
+<!-- Proyección de flujo -->
 <div class="card mt-4">
-  <div class="card-header fw-semibold">
-    <i class="bi bi-bar-chart-line me-1"></i>Proyección de flujo mensual (cuotas pendientes)
-    <span class="text-muted fw-normal small ms-2">— haz clic en el año para ver los meses</span>
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-bar-chart-line me-1"></i>Proyección de flujo (cuotas pendientes)</span>
+    <div class="btn-group btn-group-sm" role="group" id="vista-proy-btns">
+      <button type="button" class="btn btn-outline-secondary active" onclick="setVistaProy('total', this)">Consolidado</button>
+      <button type="button" class="btn btn-outline-danger"           onclick="setVistaProy('pagar', this)">Por Pagar</button>
+      <button type="button" class="btn btn-outline-success"          onclick="setVistaProy('cobrar', this)">Por Cobrar</button>
+    </div>
   </div>
+
+  <!-- Tabla consolidado -->
+  <div class="tabla-proy" id="tabla-proy-total">
   <div class="table-responsive">
-    <table class="table table-sm mb-0" id="tabla-proyeccion">
-      <thead class="table-dark">
-        <tr>
-          <th style="width:40px"></th>
-          <th>Período</th>
-          <th class="text-end">Capital</th>
-          <th class="text-end">Interés</th>
-          <th class="text-end">Total cuota</th>
-        </tr>
-      </thead>
+    <table class="table table-sm mb-0">
+      <thead class="table-dark"><tr>
+        <th style="width:36px"></th><th>Período</th>
+        <th class="text-end">Capital</th><th class="text-end">Interés</th><th class="text-end">Total cuota</th>
+      </tr></thead>
       <tbody>
-        {% for anio, ag in anos.items() %}
-        {% set open = (anio == anio_actual) %}
-        <tr class="table-secondary year-header" style="cursor:pointer"
-            onclick="toggleProyAnio('{{ anio }}')" id="yr-{{ anio }}">
-          <td class="text-center">
-            <i class="bi bi-chevron-{% if open %}down{% else %}right{% endif %}" id="icon-{{ anio }}"></i>
-          </td>
+        {% for anio, ag in anos_total.items() %}{% set open=(anio==anio_actual) %}
+        <tr class="table-secondary" style="cursor:pointer" onclick="toggleProyAnio('t{{ anio }}')" id="yr-t{{ anio }}">
+          <td class="text-center"><i class="bi bi-chevron-{% if open %}down{% else %}right{% endif %}" id="icon-t{{ anio }}"></i></td>
           <td class="fw-semibold">{{ anio }}</td>
           <td class="text-end fw-semibold">$ {{ ag.capital|clp }}</td>
           <td class="text-end fw-semibold">$ {{ ag.interes|clp }}</td>
           <td class="text-end fw-bold">$ {{ ag.total|clp }}</td>
         </tr>
         {% for mes, datos in ag.meses %}
-        <tr class="month-row anio-{{ anio }}"{% if not open %} style="display:none"{% endif %}>
-          <td></td>
-          <td class="small ps-4 text-muted">{{ mes }}</td>
+        <tr class="month-row anio-t{{ anio }}"{% if not open %} style="display:none"{% endif %}>
+          <td></td><td class="small ps-4 text-muted">{{ mes }}</td>
           <td class="text-end small">$ {{ datos.capital|clp }}</td>
           <td class="text-end small">$ {{ datos.interes|clp }}</td>
           <td class="text-end small fw-semibold">$ {{ datos.total|clp }}</td>
         </tr>
-        {% endfor %}
-        {% endfor %}
+        {% endfor %}{% endfor %}
       </tbody>
     </table>
-  </div>
+  </div></div>
+
+  <!-- Tabla por pagar -->
+  <div class="tabla-proy d-none" id="tabla-proy-pagar">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-danger"><tr>
+        <th style="width:36px"></th><th>Período</th>
+        <th class="text-end">Capital</th><th class="text-end">Interés</th><th class="text-end">Total cuota</th>
+      </tr></thead>
+      <tbody>
+        {% for anio, ag in anos_pagar.items() %}{% set open=(anio==anio_actual) %}
+        <tr class="table-secondary" style="cursor:pointer" onclick="toggleProyAnio('p{{ anio }}')" id="yr-p{{ anio }}">
+          <td class="text-center"><i class="bi bi-chevron-{% if open %}down{% else %}right{% endif %}" id="icon-p{{ anio }}"></i></td>
+          <td class="fw-semibold">{{ anio }}</td>
+          <td class="text-end fw-semibold">$ {{ ag.capital|clp }}</td>
+          <td class="text-end fw-semibold">$ {{ ag.interes|clp }}</td>
+          <td class="text-end fw-bold text-danger">$ {{ ag.total|clp }}</td>
+        </tr>
+        {% for mes, datos in ag.meses %}
+        <tr class="month-row anio-p{{ anio }}"{% if not open %} style="display:none"{% endif %}>
+          <td></td><td class="small ps-4 text-muted">{{ mes }}</td>
+          <td class="text-end small">$ {{ datos.capital|clp }}</td>
+          <td class="text-end small">$ {{ datos.interes|clp }}</td>
+          <td class="text-end small fw-semibold text-danger">$ {{ datos.total|clp }}</td>
+        </tr>
+        {% endfor %}{% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+
+  <!-- Tabla por cobrar -->
+  <div class="tabla-proy d-none" id="tabla-proy-cobrar">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-success"><tr>
+        <th style="width:36px"></th><th>Período</th>
+        <th class="text-end">Capital</th><th class="text-end">Interés</th><th class="text-end">Total cuota</th>
+      </tr></thead>
+      <tbody>
+        {% for anio, ag in anos_cobrar.items() %}{% set open=(anio==anio_actual) %}
+        <tr class="table-secondary" style="cursor:pointer" onclick="toggleProyAnio('c{{ anio }}')" id="yr-c{{ anio }}">
+          <td class="text-center"><i class="bi bi-chevron-{% if open %}down{% else %}right{% endif %}" id="icon-c{{ anio }}"></i></td>
+          <td class="fw-semibold">{{ anio }}</td>
+          <td class="text-end fw-semibold">$ {{ ag.capital|clp }}</td>
+          <td class="text-end fw-semibold">$ {{ ag.interes|clp }}</td>
+          <td class="text-end fw-bold text-success">$ {{ ag.total|clp }}</td>
+        </tr>
+        {% for mes, datos in ag.meses %}
+        <tr class="month-row anio-c{{ anio }}"{% if not open %} style="display:none"{% endif %}>
+          <td></td><td class="small ps-4 text-muted">{{ mes }}</td>
+          <td class="text-end small">$ {{ datos.capital|clp }}</td>
+          <td class="text-end small">$ {{ datos.interes|clp }}</td>
+          <td class="text-end small fw-semibold text-success">$ {{ datos.total|clp }}</td>
+        </tr>
+        {% endfor %}{% endfor %}
+      </tbody>
+    </table>
+  </div></div>
 </div>
 
 <script>
-function toggleProyAnio(anio) {
-  const rows  = document.querySelectorAll('.anio-' + anio);
-  const icon  = document.getElementById('icon-' + anio);
-  const open  = rows.length > 0 && rows[0].style.display !== 'none';
-  rows.forEach(r => r.style.display = open ? 'none' : '');
-  icon.className = open ? 'bi bi-chevron-right' : 'bi bi-chevron-down';
+function toggleProyAnio(key) {
+  document.querySelectorAll('.anio-' + key).forEach(r => {
+    r.style.display = r.style.display === 'none' ? '' : 'none';
+  });
+  const icon = document.getElementById('icon-' + key);
+  if (icon) icon.className = icon.className.includes('right') ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
+}
+function setVistaProy(vista, btn) {
+  document.querySelectorAll('.tabla-proy').forEach(el => el.classList.add('d-none'));
+  document.getElementById('tabla-proy-' + vista).classList.remove('d-none');
+  document.querySelectorAll('#vista-proy-btns button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (window._chartVenc) window._chartVenc.destroy();
+  buildChart(vista);
 }
 </script>
 
@@ -332,43 +399,51 @@ function toggleProyAnio(anio) {
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
-(function() {
-  const labels   = [{% for anio, ag in anos.items() %}'{{ anio }}'{% if not loop.last %},{% endif %}{% endfor %}];
-  const capital  = [{% for anio, ag in anos.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}];
-  const interes  = [{% for anio, ag in anos.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}];
-
-  const fmt = v => '$ ' + v.toLocaleString('es-CL');
-
-  new Chart(document.getElementById('grafico-vencimientos'), {
+const PROY_DATA = {
+  total:  { labels: [{% for a in anos_total %}'{{ a }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            capital:[{% for a,ag in anos_total.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}],
+            interes:[{% for a,ag in anos_total.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}] },
+  pagar:  { labels: [{% for a in anos_pagar %}'{{ a }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            capital:[{% for a,ag in anos_pagar.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}],
+            interes:[{% for a,ag in anos_pagar.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}] },
+  cobrar: { labels: [{% for a in anos_cobrar %}'{{ a }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            capital:[{% for a,ag in anos_cobrar.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}],
+            interes:[{% for a,ag in anos_cobrar.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}] },
+};
+const COLORES = {
+  total:  { cap: 'rgba(13,110,253,0.75)',  int: 'rgba(255,193,7,0.75)'  },
+  pagar:  { cap: 'rgba(220,53,69,0.75)',   int: 'rgba(253,126,20,0.75)' },
+  cobrar: { cap: 'rgba(25,135,84,0.75)',   int: 'rgba(32,201,151,0.75)' },
+};
+const fmt = v => '$ ' + v.toLocaleString('es-CL');
+function buildChart(vista) {
+  const d = PROY_DATA[vista], col = COLORES[vista];
+  window._chartVenc = new Chart(document.getElementById('grafico-vencimientos'), {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Capital',
-          data: capital,
-          backgroundColor: 'rgba(13,110,253,0.75)',
-          borderColor: 'rgba(13,110,253,1)',
-          borderWidth: 1,
-          borderRadius: 4,
-        },
-        {
-          label: 'Interés',
-          data: interes,
-          backgroundColor: 'rgba(255,193,7,0.75)',
-          borderColor: 'rgba(255,193,7,1)',
-          borderWidth: 1,
-          borderRadius: 4,
-        },
-      ],
-    },
+    data: { labels: d.labels, datasets: [
+      { label: 'Capital', data: d.capital, backgroundColor: col.cap, borderRadius: 4 },
+      { label: 'Interés', data: d.interes, backgroundColor: col.int, borderRadius: 4 },
+    ]},
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position: 'top' },
-        tooltip: {
-          callbacks: {
+        tooltip: { callbacks: {
+          label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}`,
+          footer: items => `Total: ${fmt(items.reduce((s,i) => s+i.parsed.y, 0))}`,
+        }},
+      },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, ticks: { callback: v => v>=1e6 ? '$'+(v/1e6).toLocaleString('es-CL',{maximumFractionDigits:1})+'M' : '$'+v.toLocaleString('es-CL') }},
+      },
+    },
+  });
+}
+buildChart('total');
+</script>
+{% endif %}
             label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
             footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.parsed.y, 0))}`,
           },
