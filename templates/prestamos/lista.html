@@ -319,5 +319,75 @@ function toggleProyAnio(anio) {
   icon.className = open ? 'bi bi-chevron-right' : 'bi bi-chevron-down';
 }
 </script>
+
+<!-- Gráfico perfil de vencimientos -->
+<div class="card mt-4">
+  <div class="card-header fw-semibold">
+    <i class="bi bi-bar-chart-steps me-1"></i>Perfil de vencimientos por año
+  </div>
+  <div class="card-body">
+    <canvas id="grafico-vencimientos" style="max-height:320px"></canvas>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const labels   = [{% for anio, ag in anos.items() %}'{{ anio }}'{% if not loop.last %},{% endif %}{% endfor %}];
+  const capital  = [{% for anio, ag in anos.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}];
+  const interes  = [{% for anio, ag in anos.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}];
+
+  const fmt = v => '$ ' + v.toLocaleString('es-CL');
+
+  new Chart(document.getElementById('grafico-vencimientos'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Capital',
+          data: capital,
+          backgroundColor: 'rgba(13,110,253,0.75)',
+          borderColor: 'rgba(13,110,253,1)',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: 'Interés',
+          data: interes,
+          backgroundColor: 'rgba(255,193,7,0.75)',
+          borderColor: 'rgba(255,193,7,1)',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
+            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.parsed.y, 0))}`,
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true },
+        y: {
+          stacked: true,
+          ticks: {
+            callback: v => '$ ' + (v >= 1e6
+              ? (v/1e6).toLocaleString('es-CL', {maximumFractionDigits:1}) + 'M'
+              : v.toLocaleString('es-CL')),
+          },
+        },
+      },
+    },
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}
