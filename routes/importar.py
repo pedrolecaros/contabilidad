@@ -229,13 +229,29 @@ def index(eid):
         .filter_by(empresa_id=eid, procesado=False)
         .group_by(MovimientoBanco.archivo_origen).all()
     )
+    doc_cont = dict(
+        db.session.query(DocumentoSII.archivo_origen, func.count(DocumentoSII.id))
+        .filter_by(empresa_id=eid, procesado=True)
+        .group_by(DocumentoSII.archivo_origen).all()
+    )
+    mov_cont = dict(
+        db.session.query(MovimientoBanco.archivo_origen, func.count(MovimientoBanco.id))
+        .filter_by(empresa_id=eid, procesado=True)
+        .group_by(MovimientoBanco.archivo_origen).all()
+    )
     def _pendientes(a):
         if a.tipo == 'BANCO':
             return mov_pend.get(a.nombre_archivo, 0)
         return doc_pend.get(a.nombre_archivo, 0)
 
+    def _contabilizados(a):
+        if a.tipo == 'BANCO':
+            return mov_cont.get(a.nombre_archivo, 0)
+        return doc_cont.get(a.nombre_archivo, 0)
+
     return render_template('importar/index.html', empresa=empresa, archivos=archivos,
                            pendientes_fn=_pendientes,
+                           contabilizados_fn=_contabilizados,
                            hoy=hoy.isoformat(),
                            mes_anterior=mes_anterior.strftime('%Y-%m'))
 

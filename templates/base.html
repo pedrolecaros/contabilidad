@@ -111,6 +111,22 @@
           <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>
       </ul>
 
+      <div class="nav-section mt-2">Módulos</div>
+      <ul class="nav flex-column">
+        <li><a class="nav-link {% if 'contrapartes' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('contrapartes.index', eid=empresa.id) }}">
+          <i class="bi bi-people me-2"></i>Proveedores / Clientes</a></li>
+        <li><a class="nav-link {% if 'prestamos' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('prestamos.lista', eid=empresa.id) }}">
+          <i class="bi bi-bank me-2"></i>Préstamos</a></li>
+        <li><a class="nav-link {% if 'activos' in request.endpoint %}active{% endif %}"
+               href="{{ url_for('activos.lista', eid=empresa.id) }}">
+          <i class="bi bi-boxes me-2"></i>Activos Fijos</a></li>
+        <li><a class="nav-link {% if request.endpoint=='reportes.ajuste_uf' %}active{% endif %}"
+               href="{{ url_for('reportes.ajuste_uf', eid=empresa.id) }}">
+          <i class="bi bi-currency-exchange me-2"></i>Ajuste UF</a></li>
+      </ul>
+
       <div class="nav-section mt-2">Remuneraciones</div>
       <ul class="nav flex-column">
         <li><a class="nav-link {% if 'remuneraciones' in request.endpoint and 'vacacion' not in request.endpoint %}active{% endif %}"
@@ -141,19 +157,6 @@
         <li><a class="nav-link {% if request.endpoint=='tributario.rre' %}active{% endif %}"
                href="{{ url_for('tributario.rre', eid=empresa.id) }}">
           <i class="bi bi-journal-richtext me-2"></i>Reg. Rentas Emp.</a></li>
-      </ul>
-
-      <div class="nav-section mt-2">Módulos</div>
-      <ul class="nav flex-column">
-        <li><a class="nav-link {% if 'contrapartes' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('contrapartes.index', eid=empresa.id) }}">
-          <i class="bi bi-people me-2"></i>Proveedores / Clientes</a></li>
-        <li><a class="nav-link {% if 'prestamos' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('prestamos.lista', eid=empresa.id) }}">
-          <i class="bi bi-bank me-2"></i>Préstamos</a></li>
-        <li><a class="nav-link {% if 'activos' in request.endpoint %}active{% endif %}"
-               href="{{ url_for('activos.lista', eid=empresa.id) }}">
-          <i class="bi bi-boxes me-2"></i>Activos Fijos</a></li>
       </ul>
 
       <div class="nav-section mt-2">
@@ -187,9 +190,6 @@
           <li><a class="nav-link {% if request.endpoint=='reportes.aging' %}active{% endif %}"
                  href="{{ url_for('reportes.aging', eid=empresa.id) }}">
             <i class="bi bi-hourglass-split me-2"></i>Antigüedad Saldos</a></li>
-          <li><a class="nav-link {% if request.endpoint=='reportes.ajuste_uf' %}active{% endif %}"
-                 href="{{ url_for('reportes.ajuste_uf', eid=empresa.id) }}">
-            <i class="bi bi-currency-exchange me-2"></i>Ajuste UF</a></li>
           {% if empresa.contribuyente_iva %}
           <li><a class="nav-link {% if request.endpoint=='reportes.flujo_iva' %}active{% endif %}"
                  href="{{ url_for('reportes.flujo_iva', eid=empresa.id) }}">

@@ -98,7 +98,14 @@
   </div>
 </div>
 
-<div class="row g-3">
+<!-- Accordion: importar tipo específico -->
+<div class="mb-3">
+  <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#importar-especifico">
+    <i class="bi bi-chevron-down me-1"></i>Importar un tipo de archivo específico
+  </a>
+</div>
+<div class="collapse mb-3" id="importar-especifico">
+  <div class="row g-3">
 
   <!-- Compras -->
   <div class="col-md-6">
@@ -191,7 +198,8 @@
       </div>
     </div>
   </div>
-</div>
+  </div><!-- /row -->
+</div><!-- /collapse -->
 
 {% if archivos %}
 <hr class="mt-4">
@@ -205,6 +213,7 @@
         <th data-sort="text">Tipo</th>
         <th data-sort="text">Archivo</th>
         <th class="text-end" data-sort="num">Registros</th>
+        <th class="text-end" data-sort="num">Contabilizados</th>
         <th class="text-end" data-sort="num">Pendientes</th>
         <th></th>
       </tr>
@@ -212,6 +221,7 @@
     <tbody>
       {% for a in archivos %}
       {% set pend = pendientes_fn(a) %}
+      {% set cont = contabilizados_fn(a) %}
       <tr>
         <td class="small text-nowrap">{{ a.fecha_importacion|fecha_cl }}</td>
         <td class="small">{{ a.periodo or '—' }}</td>
@@ -227,6 +237,21 @@
         <td class="small text-muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
             title="{{ a.nombre_archivo }}">{{ a.nombre_archivo }}</td>
         <td class="text-end small">{{ a.ndocs or 0 }}</td>
+        <td class="text-end small">
+          {% if cont > 0 %}
+            {% if a.periodo %}
+            <a class="text-success text-decoration-none"
+               href="{{ url_for('asientos.lista', eid=empresa.id, desde=a.periodo+'-01', hasta=a.periodo+'-31') }}"
+               title="Ver asientos del período {{ a.periodo }}">
+              {{ cont }} <i class="bi bi-box-arrow-up-right" style="font-size:.7rem"></i>
+            </a>
+            {% else %}
+            <span class="text-success">{{ cont }}</span>
+            {% endif %}
+          {% else %}
+            <span class="text-muted">0</span>
+          {% endif %}
+        </td>
         <td class="text-end small">
           {% if pend > 0 %}
             <span class="badge bg-warning text-dark">{{ pend }}</span>
