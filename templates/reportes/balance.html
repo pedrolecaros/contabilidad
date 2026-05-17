@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item active">Balance General</li>
   </ol>
 </nav>
@@ -14,10 +14,13 @@
 <style>
   #tablaBalance {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 9pt;
+    font-size: 0.8rem;
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
+  }
+  @media print {
+    #tablaBalance { font-size: 8pt !important; }
   }
   #tablaBalance col.c-cod { width: 6%; }
   #tablaBalance col.c-nom { width: 22%; }
@@ -52,7 +55,7 @@
   }
   #tablaBalance thead tr.fila-cols th.text-left { text-align: left; }
 
-  #tablaBalance tbody tr td { font-size: 8.5pt; }
+  #tablaBalance tbody tr td { font-size: 0.8rem; }
   #tablaBalance tbody td.num { text-align: right; }
   #tablaBalance tbody td.cod {
     font-family: 'Courier New', monospace;
@@ -73,13 +76,13 @@
   #tablaBalance tbody tr.titulo td {
     font-weight: bold;
     background: #f4f4f4;
-    font-size: 8.5pt;
+    font-size: 0.8rem;
     color: #333;
   }
   /* Fila de subtotal por sección */
   #tablaBalance tbody tr.subtotal td {
     font-weight: bold;
-    font-size: 8.5pt;
+    font-size: 0.8rem;
     text-align: right;
     border-top: 2px solid #555;
     background: #e8ecf0;
@@ -90,7 +93,7 @@
     font-weight: bold;
     background: #c8d4e8;
     border-top: 3px double #000;
-    font-size: 8.5pt;
+    font-size: 0.8rem;
     text-align: right;
   }
   #tablaBalance tfoot tr.totales td:first-child { text-align: left; }
@@ -98,13 +101,13 @@
   #tablaBalance tfoot tr.resultado-util td {
     font-weight: bold;
     background: #d4edda;
-    font-size: 8.5pt;
+    font-size: 0.8rem;
     text-align: right;
   }
   #tablaBalance tfoot tr.resultado-perd td {
     font-weight: bold;
     background: #f8d7da;
-    font-size: 8.5pt;
+    font-size: 0.8rem;
     text-align: right;
   }
   #tablaBalance tfoot tr.resultado-util td:first-child,
@@ -151,28 +154,24 @@
 
 <form class="row g-2 mb-3 align-items-center" method="get">
   <div class="col-auto">
-    <label class="form-label mb-0 small fw-semibold">Período</label>
+    <div class="border rounded px-2 py-1 d-flex align-items-center gap-2 bg-light">
+      <label class="form-label mb-0 small fw-semibold text-nowrap">Período actual:</label>
+      <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+      <span class="d-inline-block">—</span>
+      <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+    </div>
   </div>
   <div class="col-auto">
-    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
-  </div>
-  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
-  <div class="col-auto">
-    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
-  </div>
-  <div class="col-auto ms-3">
-    <label class="form-label mb-0 small fw-semibold text-muted">Comparar con</label>
-  </div>
-  <div class="col-auto">
-    <input type="date" name="comparar_desde"
-           value="{{ comparar_desde.isoformat() if comparar_desde else '' }}"
-           class="form-control form-control-sm" placeholder="Desde anterior">
-  </div>
-  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
-  <div class="col-auto">
-    <input type="date" name="comparar_hasta"
-           value="{{ comparar_hasta.isoformat() if comparar_hasta else '' }}"
-           class="form-control form-control-sm" placeholder="Hasta anterior">
+    <div class="border rounded px-2 py-1 d-flex align-items-center gap-2">
+      <label class="form-label mb-0 small fw-semibold text-muted text-nowrap">Comparar con (opcional):</label>
+      <input type="date" name="comparar_desde"
+             value="{{ comparar_desde.isoformat() if comparar_desde else '' }}"
+             class="form-control form-control-sm" placeholder="Desde anterior">
+      <span class="d-inline-block">—</span>
+      <input type="date" name="comparar_hasta"
+             value="{{ comparar_hasta.isoformat() if comparar_hasta else '' }}"
+             class="form-control form-control-sm" placeholder="Hasta anterior">
+    </div>
   </div>
   <div class="col-auto">
     <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
@@ -321,7 +320,7 @@
     ({{ comparar_desde.strftime('%d/%m/%Y') }} al {{ comparar_hasta.strftime('%d/%m/%Y') }})
   </h6>
   <div class="table-responsive">
-    <table class="table table-sm table-bordered" style="font-size:8.5pt; max-width:600px">
+    <table class="table table-sm table-bordered" style="font-size:0.8rem; max-width:600px">
       <thead class="table-secondary">
         <tr>
           <th>Concepto</th>

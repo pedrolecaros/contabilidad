@@ -13,6 +13,13 @@ def index(eid):
 
     ano  = request.args.get('ano',  hoy.year,  type=int)
     mes  = request.args.get('mes',  hoy.month, type=int)
+    periodo = request.args.get('periodo', '')
+    if periodo:
+        try:
+            ano = int(periodo[:4])
+            mes = int(periodo[5:7])
+        except (ValueError, IndexError):
+            pass
     ultimo_dia = _ultimo_dia(ano, mes)
     desde = date(ano, mes, 1)
     hasta = date(ano, mes, ultimo_dia)

@@ -117,43 +117,6 @@
           <div class="form-text">Dejar vacío para calcular manualmente</div>
         </div>
 
-        <!-- Acreedor/Deudor -->
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Acreedor / Deudor — Nombre</label>
-          <input type="text" name="acreedor_deudor" id="acreedor_deudor" class="form-control"
-                 placeholder="Banco, persona, institución…"
-                 value="{{ prestamo.acreedor_deudor if prestamo and prestamo.acreedor_deudor else '' }}"
-                 list="contrapartes-list">
-          <datalist id="contrapartes-list">
-            {% for cp in contrapartes %}
-            <option value="{{ cp.razon_social }}" data-rut="{{ cp.rut }}">{{ cp.rut }}</option>
-            {% endfor %}
-          </datalist>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">RUT Acreedor / Deudor</label>
-          <input type="text" name="acreedor_rut" id="acreedor_rut" class="form-control"
-                 placeholder="12.345.678-9"
-                 value="{{ prestamo.acreedor_rut if prestamo and prestamo.acreedor_rut else '' }}">
-        </div>
-
-        <!-- Empresa relacionada -->
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Empresa relacionada</label>
-          <select name="empresa_relacionada_id" id="empresa_relacionada_id" class="form-select">
-            <option value="">— Ninguna —</option>
-            {% for emp in empresas_rel %}
-            {% if emp.id != empresa.id %}
-            <option value="{{ emp.id }}" data-rut="{{ emp.rut }}"
-              {% if prestamo and prestamo.empresa_relacionada_id == emp.id %}selected{% endif %}>
-              {{ emp.nombre_fantasia or emp.razon_social }}
-            </option>
-            {% endif %}
-            {% endfor %}
-          </select>
-          <div class="form-text">Se detecta automáticamente por RUT</div>
-        </div>
-
         <!-- Activo (edit mode only) -->
         {% if prestamo %}
         <div class="col-md-4">
@@ -166,11 +129,60 @@
         </div>
         {% endif %}
 
-        <!-- Notas -->
-        <div class="col-12">
-          <label class="form-label fw-semibold">Notas</label>
-          <textarea name="notas" class="form-control" rows="3"
-                    placeholder="Observaciones, condiciones especiales…">{{ prestamo.notas if prestamo and prestamo.notas else '' }}</textarea>
+        <!-- Datos adicionales (collapse) -->
+        <div class="col-12 mt-2">
+          <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#extra-prestamo">
+            <i class="bi bi-plus-circle me-1"></i>Datos adicionales (acreedor, notas…)
+          </a>
+        </div>
+        <div class="collapse {% if prestamo and (prestamo.acreedor_deudor or prestamo.notas) %}show{% endif %}" id="extra-prestamo">
+          <div class="row g-3 mt-1">
+
+            <!-- Acreedor/Deudor -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Acreedor / Deudor — Nombre</label>
+              <input type="text" name="acreedor_deudor" id="acreedor_deudor" class="form-control"
+                     placeholder="Banco, persona, institución…"
+                     value="{{ prestamo.acreedor_deudor if prestamo and prestamo.acreedor_deudor else '' }}"
+                     list="contrapartes-list">
+              <datalist id="contrapartes-list">
+                {% for cp in contrapartes %}
+                <option value="{{ cp.razon_social }}" data-rut="{{ cp.rut }}">{{ cp.rut }}</option>
+                {% endfor %}
+              </datalist>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">RUT Acreedor / Deudor</label>
+              <input type="text" name="acreedor_rut" id="acreedor_rut" class="form-control"
+                     placeholder="12.345.678-9"
+                     value="{{ prestamo.acreedor_rut if prestamo and prestamo.acreedor_rut else '' }}">
+            </div>
+
+            <!-- Empresa relacionada -->
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Empresa relacionada</label>
+              <select name="empresa_relacionada_id" id="empresa_relacionada_id" class="form-select">
+                <option value="">— Ninguna —</option>
+                {% for emp in empresas_rel %}
+                {% if emp.id != empresa.id %}
+                <option value="{{ emp.id }}" data-rut="{{ emp.rut }}"
+                  {% if prestamo and prestamo.empresa_relacionada_id == emp.id %}selected{% endif %}>
+                  {{ emp.nombre_fantasia or emp.razon_social }}
+                </option>
+                {% endif %}
+                {% endfor %}
+              </select>
+              <div class="form-text">Se detecta automáticamente por RUT</div>
+            </div>
+
+            <!-- Notas -->
+            <div class="col-12">
+              <label class="form-label fw-semibold">Notas</label>
+              <textarea name="notas" class="form-control" rows="3"
+                        placeholder="Observaciones, condiciones especiales…">{{ prestamo.notas if prestamo and prestamo.notas else '' }}</textarea>
+            </div>
+
+          </div>
         </div>
 
       </div><!-- /row -->

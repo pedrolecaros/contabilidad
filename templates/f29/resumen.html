@@ -64,6 +64,7 @@
                  step="0.01" min="0" max="10" value="{{ datos.tasa_ppm_pct }}">
           <span class="input-group-text">%</span>
         </div>
+        <small class="text-muted">Se guarda como predeterminado de la empresa</small>
       </div>
       <div class="col-auto">
         <button type="submit" class="btn btn-primary btn-sm">
@@ -321,6 +322,18 @@
         Remanente de crédito fiscal ${{ datos.remanente|clp }} pasa al mes siguiente.
       </div>
       {% endif %}
+
+      <!-- Generar asiento de pago -->
+      <div class="card-footer py-2 no-print">
+        <form method="post" action="{{ url_for('f29.generar_asiento_f29', eid=empresa.id) }}" class="d-inline">
+          <input type="hidden" name="anio" value="{{ anio }}">
+          <input type="hidden" name="mes" value="{{ mes }}">
+          <input type="hidden" name="tasa_ppm" value="{{ datos.tasa_ppm_pct }}">
+          <button type="submit" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-journal-plus me-1"></i>Generar asiento de pago
+          </button>
+        </form>
+      </div>
 
       <!-- Fuente de datos -->
       <div class="card-footer text-muted small no-print">

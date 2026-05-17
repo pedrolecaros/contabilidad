@@ -398,7 +398,7 @@ def aging(eid):
 
     # Documentos no conciliados con total > 0
     docs = (DocumentoSII.query
-            .filter_by(empresa_id=eid, tipo_libro=tipo_libro)
+            .filter_by(empresa_id=eid, tipo_libro=tipo_libro, procesado=False)
             .filter(DocumentoSII.conciliacion_id.is_(None))
             .filter(DocumentoSII.total > 0)
             .order_by(DocumentoSII.fecha)

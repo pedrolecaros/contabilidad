@@ -187,7 +187,8 @@ def editar(eid, cid):
         cp.activo = bool(request.form.get('activo'))
         db.session.commit()
         flash('Contraparte actualizada', 'success')
-        return redirect(url_for('contrapartes.detalle', eid=eid, cid=cid))
+        vista = request.form.get('vista', request.args.get('vista', ''))
+        return redirect(url_for('contrapartes.index', eid=eid, vista=vista) if vista else url_for('contrapartes.detalle', eid=eid, cid=cid))
 
     return render_template('contrapartes/form.html',
                            empresa=empresa, cp=cp,
@@ -203,7 +204,8 @@ def eliminar(eid, cid):
     db.session.delete(cp)
     db.session.commit()
     flash('Contraparte eliminada', 'warning')
-    return redirect(url_for('contrapartes.index', eid=eid))
+    vista = request.form.get('vista', request.args.get('vista', ''))
+    return redirect(url_for('contrapartes.index', eid=eid, vista=vista) if vista else url_for('contrapartes.index', eid=eid))
 
 
 @bp.route('/empresa/<int:eid>/contrapartes/<int:cid>')

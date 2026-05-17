@@ -340,5 +340,5 @@ H. MEJORAS PEQUEÑAS DE CALIDAD DE VIDA
 
 - Punto 1 — F29 ✅                                                                                                                                                                             
   - Puntos 4, 5, 6, 9, 10 — ✅ mergeados y 70/70 tests OK                                                                                                                                        
-  - Puntos 2, 3 — ✅ implementados
+  - Puntos 2, 3 — ✅ implementados (EFE en reportes/efe, activos en routes/activos.py)
   - Punto 58 — ✅ breadcrumbs en 40 templates

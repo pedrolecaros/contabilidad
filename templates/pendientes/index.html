@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item active">Pendientes</li>
   </ol>
 </nav>
@@ -17,10 +17,11 @@
     <form method="get" id="formPeriodo" class="d-flex gap-1 align-items-center flex-wrap">
       <label class="small text-muted mb-0">Desde:</label>
       <input type="month" name="desde" value="{{ desde_mes }}"
-             class="form-control form-control-sm filtro-auto" style="width:140px">
+             class="form-control form-control-sm" style="width:140px">
       <label class="small text-muted mb-0">Hasta:</label>
       <input type="month" name="hasta" value="{{ hasta_mes }}"
-             class="form-control form-control-sm filtro-auto" style="width:140px">
+             class="form-control form-control-sm" style="width:140px">
+      <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2">Aplicar</button>
       <a href="{{ url_for('pendientes.index', eid=empresa.id, desde='', hasta='') }}"
          class="btn btn-sm btn-outline-secondary py-0" title="Ver todos">
         <i class="bi bi-x"></i>
@@ -90,7 +91,7 @@
             <input type="hidden" name="confirmar" value="1">
             <button class="btn btn-xs btn-sm btn-success py-0 px-1"
                     title="Generar asiento y confirmar">
-              <i class="bi bi-check2-circle"></i>
+              <i class="bi bi-check2-circle me-1"></i>Registrar
             </button>
           </form>
           <!-- Solo borrador -->
@@ -99,7 +100,7 @@
                 class="d-inline">
             <button class="btn btn-xs btn-sm btn-outline-primary py-0 px-1"
                     title="Generar asiento en borrador">
-              <i class="bi bi-journal-plus"></i>
+              <i class="bi bi-journal-plus me-1"></i>Borrador
             </button>
           </form>
           <!-- Eliminar -->
@@ -127,10 +128,31 @@
 <!-- Movimientos Bancarios -->
 {% if movs %}
 <h6 class="text-muted">Movimientos Bancarios ({{ movs|length }})</h6>
+
+<!-- Batch action bar (hidden until checkboxes selected) -->
+<div id="batch-bank-bar" class="alert alert-secondary py-2 mb-2 d-none">
+  <form method="post" action="{{ url_for('pendientes.contabilizar_banco_lote', eid=empresa.id) }}"
+        class="d-flex flex-wrap align-items-center gap-2">
+    <span class="small fw-semibold"><span id="batch-bank-count">0</span> seleccionado(s)</span>
+    <div id="batch-bank-checkboxes" class="d-none"></div>
+    <select name="cuenta_id_lote" class="ts-banco-lote" style="min-width:280px" required>
+      <option value="">-- cuenta para todos --</option>
+      {% for c in cuentas %}
+      <option value="{{ c.id }}">{{ c.codigo }} – {{ c.nombre }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-success"
+            onclick="return confirm('¿Contabilizar los movimientos seleccionados?')">
+      <i class="bi bi-check2-all me-1"></i>Contabilizar seleccionados (<span id="batch-bank-count2">0</span>)
+    </button>
+  </form>
+</div>
+
 <div class="table-responsive">
   <table class="table table-sm table-hover">
     <thead class="table-dark">
       <tr>
+        <th><input type="checkbox" id="check-all-bank" class="form-check-input"></th>
         <th data-sort="date">Fecha</th>
         <th data-sort="text">Banco</th>
         <th data-sort="text">Descripción</th>
@@ -143,6 +165,7 @@
     <tbody>
       {% for m in movs %}
       <tr class="align-middle">
+        <td class="py-1"><input type="checkbox" class="form-check-input check-bank" name="mov_ids[]" value="{{ m.id }}"></td>
         <td class="small py-1">{{ m.fecha|fecha_cl }}</td>
         <td class="small py-1">{{ m.banco }}</td>
         <td class="small py-1">{{ (m.descripcion or '')[:45] }}{% if m.descripcion and m.descripcion|length > 45 %}…{% endif %}</td>
@@ -209,6 +232,7 @@
 <style>
   .ts-banco-cuenta + .ts-wrapper { min-width: 340px; flex: 1; }
   .ts-doc-sel + .ts-wrapper { min-width: 340px; }
+  .ts-banco-lote + .ts-wrapper { min-width: 280px; }
 </style>
 <script>
 const cuentasMap     = {{ cuentas_map_json | safe }};       // {id: codigo}
@@ -268,5 +292,48 @@ document.querySelectorAll('.ts-banco-cuenta').forEach(function(sel) {
     onChange: function(value) { onCuentaChange(mid, value); },
   });
 });
+
+// Batch bank processing
+const checkAllBank = document.getElementById('check-all-bank');
+if (checkAllBank) {
+  checkAllBank.addEventListener('change', function() {
+    document.querySelectorAll('.check-bank').forEach(cb => cb.checked = this.checked);
+    updateBatchBar();
+  });
+}
+document.querySelectorAll('.check-bank').forEach(cb => cb.addEventListener('change', updateBatchBar));
+
+function updateBatchBar() {
+  const checked = document.querySelectorAll('.check-bank:checked');
+  const n = checked.length;
+  const bar = document.getElementById('batch-bank-bar');
+  if (n > 0) {
+    bar.classList.remove('d-none');
+    document.getElementById('batch-bank-count').textContent = n;
+    document.getElementById('batch-bank-count2').textContent = n;
+    // Sync selected ids into the batch form
+    const container = document.getElementById('batch-bank-checkboxes');
+    container.innerHTML = '';
+    checked.forEach(cb => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'mov_ids[]';
+      inp.value = cb.value;
+      container.appendChild(inp);
+    });
+  } else {
+    bar.classList.add('d-none');
+  }
+}
+
+// Init TomSelect for batch account selector
+const loteSelEl = document.querySelector('.ts-banco-lote');
+if (loteSelEl) {
+  new TomSelect(loteSelEl, {
+    create: false,
+    placeholder: '-- cuenta para todos --',
+    maxOptions: 200,
+  });
+}
 </script>
 {% endblock %}

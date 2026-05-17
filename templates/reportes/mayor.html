@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item active">Libro Mayor</li>
   </ol>
 </nav>
@@ -26,9 +26,9 @@
   {% endif %}
 </div>
 
-<form class="row g-2 mb-4" method="get">
+<form class="row g-2 mb-4 align-items-center" method="get">
   <div class="col-auto">
-    <select name="cuenta_id" class="form-select form-select-sm">
+    <select name="cuenta_id" id="select-cuenta-mayor" class="form-select form-select-sm">
       <option value="">-- Seleccione cuenta --</option>
       {% for c in cuentas %}
       <option value="{{ c.id }}" {{ 'selected' if cuenta_sel and cuenta_sel.id==c.id }}>
@@ -38,10 +38,16 @@
     </select>
   </div>
   <div class="col-auto">
-    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+    <label class="form-label mb-0 small text-muted">Ver mes:</label>
   </div>
   <div class="col-auto">
-    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+    <input type="month" id="mes-rapido-mayor" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="desde" id="mayor-desde" value="{{ desde }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="hasta" id="mayor-hasta" value="{{ hasta }}" class="form-control form-control-sm">
   </div>
   <div class="col-auto">
     <button class="btn btn-outline-secondary btn-sm">Ver</button>
@@ -75,9 +81,9 @@
       <tr>
         <td class="small">{{ l.asiento.fecha|fecha_cl }}</td>
         <td class="small">
-          <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=l.asiento.id) }}"
+          <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=l.asiento.id) }}"
              target="_blank"
-             title="Editar asiento N°{{ l.asiento.numero }}">{{ l.asiento.numero }}</a>
+             title="Ver asiento N°{{ l.asiento.numero }}">{{ l.asiento.numero }}</a>
         </td>
         <td class="small">{{ l.descripcion or l.asiento.descripcion or '' }}</td>
         <td class="text-end small">{% if l.debe %}{{ l.debe|clp }}{% endif %}</td>
@@ -100,4 +106,29 @@
   </table>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// TomSelect en el selector de cuenta
+new TomSelect('#select-cuenta-mayor', {
+  placeholder: 'Todas las cuentas…',
+  allowEmptyOption: true,
+  maxOptions: 300,
+});
+
+// Selector rápido de mes
+document.getElementById('mes-rapido-mayor').addEventListener('change', function() {
+  const val = this.value; // "YYYY-MM"
+  if (!val) return;
+  const [year, month] = val.split('-').map(Number);
+  const primerDia = new Date(year, month - 1, 1);
+  const ultimoDia = new Date(year, month, 0);
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  document.getElementById('mayor-desde').value = fmt(primerDia);
+  document.getElementById('mayor-hasta').value = fmt(ultimoDia);
+  this.closest('form').submit();
+});
+</script>
 {% endblock %}

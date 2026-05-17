@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, redirect, url_for
 from models import db, DocumentoSII, Liquidacion, Empresa
 from datetime import date
 import calendar
@@ -127,6 +127,16 @@ def index(eid):
     except (ValueError, TypeError):
         anio, mes, tasa_ppm = anio_def, mes_def, float(empresa.tasa_ppm or 1.0)
 
+    # Persist tasa_ppm back to empresa if explicitly provided and different
+    if 'tasa_ppm' in request.values and request.values.get('tasa_ppm') != str(empresa.tasa_ppm or 1.0):
+        try:
+            new_tasa = float(request.values['tasa_ppm'])
+            if 0 < new_tasa < 100:
+                empresa.tasa_ppm = new_tasa
+                db.session.commit()
+        except ValueError:
+            pass
+
     datos = _calcular_f29(eid, anio, mes, tasa_ppm)
 
     return render_template(
@@ -135,6 +145,16 @@ def index(eid):
         datos=datos,
         anio=anio,
         mes=mes,
+        tasa_ppm=tasa_ppm,
         meses=MESES,
         anios=list(range(hoy.year - 3, hoy.year + 1)),
     )
+
+
+@bp.route('/empresa/<int:eid>/f29/generar-asiento', methods=['POST'])
+def generar_asiento_f29(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    anio = int(request.form.get('anio', date.today().year))
+    mes = int(request.form.get('mes', date.today().month))
+    desc = f"Pago F29 {MESES[mes-1]} {anio}"
+    return redirect(url_for('asientos.nuevo', eid=eid, descripcion=desc, origen='MANUAL'))

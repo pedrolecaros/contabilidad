@@ -64,10 +64,10 @@ def calcular(emp, utm: float, uf: float = None,
         sueldo_bruto = round(emp.sueldo_base)
 
     grat = round(min(sueldo_bruto * 0.25, tope_grat))
-    return _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra, otros, sis)
+    return _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra, otros, sis, tope_imponible)
 
 
-def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra, otros, tasa_sis=TASA_SIS):
+def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra, otros, tasa_sis=TASA_SIS, tope_imponible=None):
     bono_colacion   = round(getattr(emp, 'bono_colacion', 0) or 0)
     bono_movil      = round(getattr(emp, 'bono_movilizacion', 0) or 0)
     otros_haberes   = round((getattr(emp, 'otros_haberes', 0) or 0) + otros)
@@ -75,14 +75,16 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
 
     total_haberes   = sueldo_bruto + grat + he_monto + bono_colacion + bono_movil + otros_haberes
     renta_imponible = sueldo_bruto + grat + he_monto + otros_haberes
+    # Cotizaciones previsionales se calculan sobre renta acotada al tope imponible (~90 UF)
+    renta_cot = min(renta_imponible, tope_imponible) if tope_imponible else renta_imponible
 
     # Prefer employee's stored commission; fall back to the AFP dict
     emp_comision = getattr(emp, 'tasa_afp_comision', None) or 0
     dict_comision = AFP_COMISIONES.get(getattr(emp, 'afp', ''), None)
     tasa_afp_total = TASA_AFP_OBLIGATORIO + (emp_comision if emp_comision > 0 else (dict_comision or 0.0127))
 
-    afp_desc        = round(renta_imponible * tasa_afp_total)
-    salud_legal     = round(renta_imponible * TASA_SALUD_FONASA)
+    afp_desc        = round(renta_cot * tasa_afp_total)
+    salud_legal     = round(renta_cot * TASA_SALUD_FONASA)
 
     if getattr(emp, 'tipo_salud', 'FONASA') == 'FONASA':
         salud_desc    = salud_legal
@@ -91,7 +93,7 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
         salud_desc    = salud_legal
         extra_isapre  = max(0, monto_isapre - salud_legal)
 
-    cesantia_trab   = round(renta_imponible * TASA_CESANTIA_TRAB)
+    cesantia_trab   = round(renta_cot * TASA_CESANTIA_TRAB)
 
     # APV: Tipo A reduce la base imponible para impuesto 2ª categoría
     apv_monto = round(getattr(emp, 'apv_monto', 0) or 0)
@@ -104,9 +106,9 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
     total_descuentos = afp_desc + salud_desc + cesantia_trab + impuesto + extra_isapre + apv_monto
     liquido          = total_haberes - total_descuentos
 
-    sis_emp         = round(renta_imponible * tasa_sis)
-    cesantia_emp    = round(renta_imponible * TASA_CESANTIA_EMP)
-    mutual_emp      = round(renta_imponible * (getattr(emp, 'tasa_mutual', 0) or 0))
+    sis_emp         = round(renta_cot * tasa_sis)
+    cesantia_emp    = round(renta_cot * TASA_CESANTIA_EMP)
+    mutual_emp      = round(renta_cot * (getattr(emp, 'tasa_mutual', 0) or 0))
     costo_empresa   = total_haberes + sis_emp + cesantia_emp + mutual_emp
 
     return {

@@ -253,8 +253,8 @@
         <tr>
           <th class="text-center">N°</th>
           <th>Vencimiento</th>
-          <th class="text-end">Capital</th>
-          <th class="text-end">Interés</th>
+          <th class="text-end d-none d-xl-table-cell">Capital</th>
+          <th class="text-end d-none d-xl-table-cell">Interés</th>
           <th class="text-end">Cuota</th>
           {% if prestamo.moneda == 'UF' %}<th class="text-end">Cuota CLP</th>{% endif %}
           <th class="text-end">Saldo</th>
@@ -273,10 +273,10 @@
           <td {% if vencida %}class="text-danger fw-semibold"{% endif %}>
             {{ c.fecha_vencimiento|fecha_cl }}
           </td>
-          <td class="text-end">
+          <td class="text-end d-none d-xl-table-cell">
             {% if prestamo.moneda == 'UF' %}UF {{ c.capital|clp }}{% else %}$ {{ c.capital|clp }}{% endif %}
           </td>
-          <td class="text-end">
+          <td class="text-end d-none d-xl-table-cell">
             {% if prestamo.moneda == 'UF' %}UF {{ c.interes|clp }}{% else %}$ {{ c.interes|clp }}{% endif %}
           </td>
           <td class="text-end fw-semibold">
@@ -314,12 +314,19 @@
               <input type="date" class="form-control form-control-sm py-0 fecha-pago-input"
                      style="width:130px; font-size:.75rem;"
                      value="{{ hoy.isoformat() }}">
-              <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 btn-pagar-cuota"
-                      style="font-size:.75rem;" title="Pagar cuota"
+              <form method="post" action="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}" style="display:inline;">
+                <input type="hidden" name="fecha_pago" class="fecha-pago-ref">
+                <button type="submit" class="btn btn-success btn-sm py-0 px-2" style="font-size:.75rem;" title="Confirmar pago directo (sin editar asiento)"
+                        onclick="this.previousElementSibling.value=this.closest('.d-flex').querySelector('.fecha-pago-input').value">
+                  <i class="bi bi-check2"></i>
+                </button>
+              </form>
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 btn-pagar-cuota"
+                      style="font-size:.75rem;" title="Ver y editar asiento antes de confirmar"
                       data-preview-url="{{ url_for('prestamos.cuota_preview', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
                       data-toggle-url="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
                       data-cuota="{{ c.numero_cuota }}">
-                <i class="bi bi-check2"></i>
+                <i class="bi bi-eye"></i>
               </button>
             </div>
             {% endif %}
@@ -352,10 +359,10 @@
       <tfoot class="table-light fw-semibold" style="font-size:.83rem;">
         <tr>
           <td colspan="2">Totales</td>
-          <td class="text-end">
+          <td class="text-end d-none d-xl-table-cell">
             {% if prestamo.moneda == 'UF' %}UF {{ total_capital|clp }}{% else %}$ {{ total_capital|clp }}{% endif %}
           </td>
-          <td class="text-end">
+          <td class="text-end d-none d-xl-table-cell">
             {% if prestamo.moneda == 'UF' %}UF {{ total_interes|clp }}{% else %}$ {{ total_interes|clp }}{% endif %}
           </td>
           <td class="text-end">

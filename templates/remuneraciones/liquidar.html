@@ -63,7 +63,7 @@
           {% else %}
           <div class="alert alert-warning py-2 small mb-0">
             No hay variables para este período.
-            <a href="{{ url_for('remuneraciones.variables') }}">Cargar variables →</a>
+            <a href="{{ url_for('remuneraciones.variables') }}" target="_blank">Cargar variables →</a>
           </div>
           {% endif %}
         </div>
@@ -224,9 +224,24 @@
   <div class="col-12">
     <form method="post">
       <input type="hidden" name="periodo"         value="{{ form_data.periodo }}">
-      <input type="hidden" name="horas_extra"     value="{{ form_data.horas_extra }}">
-      <input type="hidden" name="otros"           value="{{ form_data.otros }}">
       <input type="hidden" name="dias_trabajados" value="{{ form_data.dias_trabajados | default(30) }}">
+      <div class="row g-2 mb-3">
+        <div class="col-auto">
+          <label class="form-label small mb-1">Horas extra ($)</label>
+          <input type="number" name="horas_extra" class="form-control form-control-sm"
+                 min="0" step="1" value="{{ form_data.horas_extra }}" style="width:130px">
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Otros haberes variables ($)</label>
+          <input type="number" name="otros" class="form-control form-control-sm"
+                 min="0" step="1" value="{{ form_data.otros }}" style="width:130px">
+        </div>
+        <div class="col-auto d-flex align-items-end">
+          <button type="submit" name="accion" value="calcular" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-clockwise me-1"></i>Recalcular
+          </button>
+        </div>
+      </div>
       <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Guardar Borrador
       </button>
@@ -272,7 +287,7 @@ async function cargarVariables(periodo) {
       varsInfo.innerHTML = `
         <div class="alert alert-warning py-2 small mb-0">
           No hay variables para este período.
-          <a href="${varUrl}">Cargar variables →</a>
+          <a href="${varUrl}" target="_blank">Cargar variables →</a>
         </div>`;
     }
   } catch (e) {

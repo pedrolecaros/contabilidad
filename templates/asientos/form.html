@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">Asientos</a></li>
     <li class="breadcrumb-item active">{% if asiento %}Editar Asiento{% else %}Nuevo Asiento{% endif %}</li>
   </ol>
@@ -20,7 +20,7 @@
     {% if asiento and asiento.estado == 'CONFIRMADO' %}
     <div class="alert alert-info py-2 small">
       <i class="bi bi-info-circle me-1"></i>
-      Este asiento está <strong>confirmado</strong>. Al guardar los cambios quedará confirmado automáticamente si cuadra.
+      Editar un asiento confirmado lo revertirá a BORRADOR hasta que lo confirmes nuevamente.
     </div>
     {% endif %}
     <div class="card shadow-sm">

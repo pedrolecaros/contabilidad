@@ -17,22 +17,17 @@
 <!-- Selector de período -->
 <form class="row g-2 mb-4" method="get">
   <div class="col-auto">
-    <select name="mes" class="form-select form-select-sm">
-      {% for m in range(1, 13) %}
-      <option value="{{ m }}" {% if m == mes %}selected{% endif %}>
-        {{ ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-            'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][m-1] }}
-      </option>
-      {% endfor %}
-    </select>
+    <input type="month" name="periodo" class="form-control form-control-sm"
+           value="{{ ano }}-{{ '%02d' % mes }}">
   </div>
   <div class="col-auto">
-    <select name="ano" class="form-select form-select-sm">
-      {% for y in range(ano - 2, ano + 2) %}
-      <option value="{{ y }}" {% if y == ano %}selected{% endif %}>{{ y }}</option>
-      {% endfor %}
-    </select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Validar</button>
   </div>
+</form>
+
+<!-- Saldo cartola (formulario separado para no cambiar el período) -->
+<form class="row g-2 mb-4" method="get">
+  <input type="hidden" name="periodo" value="{{ ano }}-{{ '%02d' % mes }}">
   <div class="col-auto">
     <input type="number" name="saldo_cartola" class="form-control form-control-sm"
            placeholder="Saldo cartola banco ($)"
@@ -40,7 +35,7 @@
            style="width:200px">
   </div>
   <div class="col-auto">
-    <button type="submit" class="btn btn-sm btn-outline-secondary">Validar</button>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Conciliar</button>
   </div>
 </form>
 
@@ -94,6 +89,9 @@
         </li>
         {% endfor %}
       </ul>
+      <div class="card-body py-2">
+        <a href="{{ url_for('asientos.lista', eid=empresa.id, estado='BORRADOR') }}" class="btn btn-outline-warning btn-sm">Confirmar borradores →</a>
+      </div>
       {% else %}
       <div class="card-body py-2 small text-muted">No hay borradores pendientes de confirmar.</div>
       {% endif %}
@@ -129,6 +127,11 @@
             {% endif %}
           </span>
         </li>
+        {% if docs_pendientes or movs_pendientes %}
+        <li class="list-group-item py-2">
+          <a href="{{ url_for('pendientes.index', eid=empresa.id) }}" class="btn btn-outline-primary btn-sm">Ir a Pendientes →</a>
+        </li>
+        {% endif %}
       </ul>
     </div>
   </div>
@@ -165,9 +168,12 @@
         </li>
         {% else %}
         <li class="list-group-item py-2 small text-muted">
-          Ingresa el saldo de la cartola en el filtro de arriba para conciliar.
+          Ingresa el saldo de la cartola en el formulario de arriba para conciliar.
         </li>
         {% endif %}
+        <li class="list-group-item py-2">
+          <a href="{{ url_for('conciliacion.index', eid=empresa.id) }}" class="btn btn-outline-info btn-sm">Ir a Conciliación →</a>
+        </li>
       </ul>
     </div>
   </div>
@@ -233,6 +239,9 @@
         Todos los gastos manuales del período tienen respaldo.
       </div>
       {% endif %}
+      <div class="card-body py-2 border-top">
+        <a href="{{ url_for('asientos.lista', eid=empresa.id, origen='MANUAL') }}" class="btn btn-outline-secondary btn-sm">Ver asientos manuales →</a>
+      </div>
     </div>
   </div>
 

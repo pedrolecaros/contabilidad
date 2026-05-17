@@ -99,7 +99,8 @@
     </select>
   </div>
   <div class="col-md-3">
-    <label class="form-label">Comisión AFP (%) <small class="text-muted">solo comisión, sin los 10%</small></label>
+    <label class="form-label">Comisión AFP (%)</label>
+    <div class="form-text mb-1">Comisión de administración del AFP (se autocompleta al elegir AFP. El sistema suma el 10% obligatorio automáticamente).</div>
     <input type="number" name="tasa_afp_comision" id="tasa_afp_comision" class="form-control"
            min="0" max="5" step="0.001"
            value="{{ (emp.tasa_afp_comision * 100) | round(3) if emp else 1.27 }}">

@@ -214,7 +214,7 @@ def historial(eid, emp_id):
     empresa = Empresa.query.get_or_404(eid)
     emp = Empleado.query.filter_by(id=emp_id, empresa_id=eid).first_or_404()
     liqs = (Liquidacion.query
-            .filter_by(empleado_id=emp_id)
+            .filter_by(empleado_id=emp_id, empresa_id=eid)
             .order_by(Liquidacion.periodo.desc())
             .all())
     return render_template('remuneraciones/historial.html', empresa=empresa, emp=emp, liqs=liqs)

@@ -26,7 +26,7 @@ def index(eid):
                        .filter(
                            CuotaPrestamo.pagada == False,
                            CuotaPrestamo.fecha_vencimiento < hoy,
-                           db.text(f'prestamos.empresa_id = {eid}')
+                           db.text('prestamos.empresa_id = :eid').bindparams(eid=eid)
                        ).count())
 
     # Último período con liquidaciones emitidas

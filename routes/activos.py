@@ -162,9 +162,22 @@ def detalle(eid, aid):
     tabla = _tabla_depreciacion(activo)
     hoy = date.today()
     periodo_actual = hoy.strftime('%Y-%m')
+
+    # Summary card calculations
+    total_depreciado = sum(r.monto for r in activo.depreciaciones)
+    valor_neto = activo.valor_compra - total_depreciado
+    pct_depreciado = (total_depreciado / activo.valor_compra * 100) if activo.valor_compra > 0 else 0
+    diff_hoy = relativedelta(hoy, activo.fecha_compra)
+    meses_transcurridos = diff_hoy.years * 12 + diff_hoy.months
+    meses_restantes = max(0, activo.vida_util_meses - meses_transcurridos)
+
     return render_template('activos/detalle.html', empresa=empresa, activo=activo,
                            tabla=tabla, categorias=CATEGORIA_NOMBRES,
-                           periodo_actual=periodo_actual)
+                           periodo_actual=periodo_actual,
+                           total_depreciado=total_depreciado,
+                           valor_neto=valor_neto,
+                           pct_depreciado=pct_depreciado,
+                           meses_restantes=meses_restantes)
 
 
 @bp.route('/empresa/<int:eid>/activos/<int:aid>/depreciar', methods=['POST'])
@@ -332,6 +345,53 @@ def depreciar_todos(eid):
         flash('No hay activos activos para depreciar en este período.', 'warning')
 
     return redirect(url_for('activos.lista', eid=eid))
+
+
+@bp.route('/empresa/<int:eid>/activos/depreciar-preview')
+def depreciar_preview(eid):
+    from flask import jsonify
+    Empresa.query.get_or_404(eid)
+    periodo = request.args.get('periodo', '')
+    if not periodo:
+        return jsonify(activos=[], total=0)
+    try:
+        periodo_date = date.fromisoformat(periodo + '-01')
+    except ValueError:
+        return jsonify(activos=[], total=0)
+
+    activos_todos = ActivoFijo.query.filter_by(empresa_id=eid, activo=True).all()
+    preview = []
+    for activo in activos_todos:
+        if DepreciacionRegistro.query.filter_by(activo_fijo_id=activo.id, periodo=periodo).first():
+            continue
+        diff = relativedelta(periodo_date, activo.fecha_compra)
+        mes_num = diff.years * 12 + diff.months + 1
+        if mes_num < 1 or mes_num > activo.vida_util_meses:
+            continue
+        if not activo.cuenta_dep_id:
+            continue
+        cuota = _calcular_cuota(activo, mes_num)
+        if cuota > 0:
+            preview.append({'nombre': activo.nombre, 'monto': round(cuota)})
+
+    return jsonify(activos=preview, total=sum(a['monto'] for a in preview))
+
+
+@bp.route('/empresa/<int:eid>/activos/<int:aid>/editar', methods=['POST'])
+def editar(eid, aid):
+    activo = ActivoFijo.query.filter_by(id=aid, empresa_id=eid).first_or_404()
+    activo.nombre = request.form.get('nombre', activo.nombre).strip()
+    activo.descripcion = request.form.get('descripcion', '').strip() or None
+    try:
+        activo.valor_compra = float(request.form['valor_compra'])
+        activo.valor_residual = float(request.form.get('valor_residual', 0) or 0)
+        activo.vida_util_meses = int(request.form['vida_util_meses'])
+    except (ValueError, KeyError):
+        flash('Datos inválidos.', 'danger')
+        return redirect(url_for('activos.lista', eid=eid))
+    db.session.commit()
+    flash(f'Activo "{activo.nombre}" actualizado.', 'success')
+    return redirect(url_for('activos.detalle', eid=eid, aid=aid))
 
 
 @bp.route('/empresa/<int:eid>/activos/<int:aid>/desactivar', methods=['POST'])

@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item active">Estado de Resultados</li>
   </ol>
 </nav>
@@ -14,28 +14,24 @@
 
 <form class="row g-2 mb-1 align-items-center" method="get">
   <div class="col-auto">
-    <label class="form-label mb-0 small fw-semibold">Período</label>
+    <div class="border rounded px-2 py-1 d-flex align-items-center gap-2 bg-light">
+      <label class="form-label mb-0 small fw-semibold text-nowrap">Período actual:</label>
+      <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+      <span class="d-inline-block">—</span>
+      <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+    </div>
   </div>
   <div class="col-auto">
-    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
-  </div>
-  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
-  <div class="col-auto">
-    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
-  </div>
-  <div class="col-auto ms-3">
-    <label class="form-label mb-0 small fw-semibold text-muted">Comparar con</label>
-  </div>
-  <div class="col-auto">
-    <input type="date" name="comparar_desde"
-           value="{{ comparar_desde.isoformat() if comparar_desde else '' }}"
-           class="form-control form-control-sm" placeholder="Desde anterior">
-  </div>
-  <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
-  <div class="col-auto">
-    <input type="date" name="comparar_hasta"
-           value="{{ comparar_hasta.isoformat() if comparar_hasta else '' }}"
-           class="form-control form-control-sm" placeholder="Hasta anterior">
+    <div class="border rounded px-2 py-1 d-flex align-items-center gap-2">
+      <label class="form-label mb-0 small fw-semibold text-muted text-nowrap">Comparar con (opcional):</label>
+      <input type="date" name="comparar_desde"
+             value="{{ comparar_desde.isoformat() if comparar_desde else '' }}"
+             class="form-control form-control-sm" placeholder="Desde anterior">
+      <span class="d-inline-block">—</span>
+      <input type="date" name="comparar_hasta"
+             value="{{ comparar_hasta.isoformat() if comparar_hasta else '' }}"
+             class="form-control form-control-sm" placeholder="Hasta anterior">
+    </div>
   </div>
   <div class="col-auto">
     <button class="btn btn-outline-secondary btn-sm">Actualizar</button>

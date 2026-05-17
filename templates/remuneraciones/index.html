@@ -16,18 +16,22 @@
     <a href="{{ url_for('remuneraciones.variables') }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-calculator me-1"></i>Variables
     </a>
-    <a href="{{ url_for('remuneraciones.libro', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-journal-text me-1"></i>Libro
-    </a>
     <a href="{{ url_for('remuneraciones.vacaciones', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-calendar-range me-1"></i>Vacaciones
     </a>
-    <a href="{{ url_for('remuneraciones.provision_vacaciones', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-umbrella me-1"></i>Provisión
-    </a>
-    <a href="{{ url_for('remuneraciones.informe_renta', eid=empresa.id) }}" class="btn btn-outline-info btn-sm">
-      <i class="bi bi-person-lines-fill me-1"></i>Informe Renta
-    </a>
+    <div class="dropdown">
+      <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+        <i class="bi bi-file-earmark-bar-graph me-1"></i>Reportes
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="{{ url_for('remuneraciones.libro', eid=empresa.id) }}">
+          <i class="bi bi-journal-text me-2"></i>Libro de Remuneraciones</a></li>
+        <li><a class="dropdown-item" href="{{ url_for('remuneraciones.informe_renta', eid=empresa.id) }}">
+          <i class="bi bi-file-earmark-text me-2"></i>Informe de Renta</a></li>
+        <li><a class="dropdown-item" href="{{ url_for('remuneraciones.provision_vacaciones', eid=empresa.id) }}">
+          <i class="bi bi-calendar-check me-2"></i>Provisión Vacaciones</a></li>
+      </ul>
+    </div>
     <a href="{{ url_for('remuneraciones.nuevo', eid=empresa.id) }}" class="btn btn-primary btn-sm">
       <i class="bi bi-plus-circle me-1"></i>Nuevo Empleado
     </a>
@@ -70,13 +74,16 @@
             <a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=e.id) }}"
                class="btn btn-outline-secondary btn-sm" title="Historial"><i class="bi bi-clock-history"></i></a>
             <a href="{{ url_for('remuneraciones.liquidar', eid=empresa.id, emp_id=e.id) }}"
-               class="btn btn-outline-primary btn-sm" title="Nueva liquidación"><i class="bi bi-file-earmark-plus"></i></a>
+               class="btn btn-primary btn-sm" title="Nueva liquidación"><i class="bi bi-file-earmark-plus me-1"></i>Liquidar</a>
             <a href="{{ url_for('remuneraciones.editar', eid=empresa.id, emp_id=e.id) }}"
                class="btn btn-outline-secondary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
             <form method="post" action="{{ url_for('remuneraciones.eliminar', eid=empresa.id, emp_id=e.id) }}"
                   style="display:inline"
-                  onsubmit="return confirm('¿Marcar como inactivo a {{ e.nombre }}? Sus liquidaciones se conservarán.')">
-              <button class="btn btn-outline-warning btn-sm" title="Desactivar"><i class="bi bi-person-dash"></i></button>
+                  onsubmit="return confirm('¿Desactivar a {{ e.nombre }}?')">
+              <button class="btn btn-outline-warning btn-sm" title="Desactivar"
+                      onclick="return confirm('¿Desactivar a {{ e.nombre }}?')">
+                <i class="bi bi-person-dash me-1"></i>Desactivar
+              </button>
             </form>
           </td>
         </tr>

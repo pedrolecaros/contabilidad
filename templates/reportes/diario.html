@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item active">Libro Diario</li>
   </ol>
 </nav>
@@ -24,13 +24,19 @@
   </div>
 </div>
 
-<form class="row g-2 mb-3" method="get">
+<form class="row g-2 mb-3 align-items-center" method="get">
   <div class="col-auto">
-    <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+    <label class="form-label mb-0 small text-muted">Ver mes:</label>
+  </div>
+  <div class="col-auto">
+    <input type="month" id="mes-rapido-diario" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="desde" id="diario-desde" value="{{ desde }}" class="form-control form-control-sm">
   </div>
   <div class="col-auto"><span class="pt-1 d-inline-block">—</span></div>
   <div class="col-auto">
-    <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+    <input type="date" name="hasta" id="diario-hasta" value="{{ hasta }}" class="form-control form-control-sm">
   </div>
   <div class="col-auto">
     <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
@@ -95,4 +101,22 @@
 {% else %}
 <div class="text-muted small py-4 text-center">Sin asientos confirmados en el período.</div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Selector rápido de mes
+document.getElementById('mes-rapido-diario').addEventListener('change', function() {
+  const val = this.value; // "YYYY-MM"
+  if (!val) return;
+  const [year, month] = val.split('-').map(Number);
+  const primerDia = new Date(year, month - 1, 1);
+  const ultimoDia = new Date(year, month, 0);
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  document.getElementById('diario-desde').value = fmt(primerDia);
+  document.getElementById('diario-hasta').value = fmt(ultimoDia);
+  this.closest('form').submit();
+});
+</script>
 {% endblock %}

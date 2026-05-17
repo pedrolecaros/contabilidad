@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item active">Conciliación</li>
   </ol>
 </nav>
@@ -127,9 +127,15 @@
               <tr>
                 <th style="width:26%">Cuenta contable</th>
                 <th style="width:100px">Monto ($)</th>
-                <th style="width:160px">Descripción</th>
-                <th style="width:140px" title="Link respaldo"><i class="bi bi-link-45deg me-1"></i>Respaldo</th>
-                <th style="width:160px" title="Vincular cuota de préstamo"><i class="bi bi-bank me-1"></i>Cuota préstamo</th>
+                <th style="width:160px">Descripción
+                  <a href="#" class="ms-1 text-muted" style="font-size:.75rem;font-weight:normal"
+                     id="toggle-extra-conc"
+                     onclick="event.preventDefault();document.querySelectorAll('.col-extra-conc').forEach(el=>el.classList.toggle('d-none'));this.textContent=this.textContent.includes('+')?'– Menos':'+ Más opciones'">
+                    + Más opciones
+                  </a>
+                </th>
+                <th class="col-extra-conc d-none" style="width:140px" title="Link respaldo"><i class="bi bi-link-45deg me-1"></i>Respaldo</th>
+                <th class="col-extra-conc d-none" style="width:160px" title="Vincular cuota de préstamo"><i class="bi bi-bank me-1"></i>Cuota préstamo</th>
                 <th style="width:36px"></th>
               </tr>
             </thead>
@@ -153,6 +159,13 @@
       </div>
     </div>
   </div>
+
+  <div class="alert alert-info alert-dismissible py-2 small mb-3" id="conc-instrucciones">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>Cómo conciliar:</strong> Marca un movimiento bancario (izquierda) y el documento SII correspondiente (derecha), luego haz clic en <strong>Conciliar</strong>. Puedes seleccionar varios a la vez.
+    <button type="button" class="btn-close btn-sm" onclick="localStorage.setItem('conc-help-hidden','1');this.closest('.alert').remove()"></button>
+  </div>
+  <script>if(localStorage.getItem('conc-help-hidden'))document.getElementById('conc-instrucciones')?.remove();</script>
 
   <div class="row g-3">
 
@@ -1013,7 +1026,9 @@ function _addLinea(monto) {
   const td2 = document.createElement('td'); td2.appendChild(inpMonto);
   const td3 = document.createElement('td'); td3.appendChild(igNota);
   const td4 = document.createElement('td'); td4.appendChild(inpRespaldo);
+  td4.className = 'col-extra-conc d-none';
   const td5 = tdCuota;
+  td5.className = 'col-extra-conc d-none';
   const td6 = document.createElement('td'); td6.appendChild(btnDel);
   tr.append(td1, td2, td3, td4, td5, td6);
   tbody.appendChild(tr);

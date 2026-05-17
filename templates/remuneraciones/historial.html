@@ -29,6 +29,9 @@
 {% if liqs %}
 
 {# ── Vista comparativa ── #}
+<div class="text-end mb-1 small">
+  <a href="#" id="toggle-cols-historial" onclick="event.preventDefault();document.querySelectorAll('.col-hist-extra').forEach(function(el){el.classList.toggle('d-none');el.classList.toggle('d-xl-table-cell')});this.textContent=this.textContent.includes('Mostrar')?'Ocultar campos adicionales':'Mostrar todos los campos'">Mostrar todos los campos</a>
+</div>
 <div class="card shadow-sm mb-3">
   <div class="card-header py-2 d-flex justify-content-between align-items-center">
     <strong>Tabla comparativa</strong>
@@ -44,12 +47,12 @@
         <tr>
           <th class="text-nowrap">Período</th>
           <th class="text-end text-nowrap">Sueldo Base</th>
-          <th class="text-end text-nowrap">Gratificación</th>
-          <th class="text-end text-nowrap">Otros Haberes</th>
+          <th class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">Gratificación</th>
+          <th class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">Otros Haberes</th>
           <th class="text-end text-nowrap">Total Haberes</th>
-          <th class="text-end text-nowrap">AFP</th>
-          <th class="text-end text-nowrap">Salud</th>
-          <th class="text-end text-nowrap">Imp. Renta</th>
+          <th class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">AFP</th>
+          <th class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">Salud</th>
+          <th class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">Imp. Renta</th>
           <th class="text-end text-nowrap">Total Desc.</th>
           <th class="text-end text-nowrap fw-bold">Líquido</th>
           <th class="text-end text-nowrap">Costo Empresa</th>
@@ -76,12 +79,12 @@
         <tr>
           <td class="text-nowrap"><strong>{{ l.periodo }}</strong></td>
           <td class="text-end text-nowrap">$ {{ num(l.sueldo_base) }}</td>
-          <td class="text-end text-nowrap">$ {{ num(l.gratificacion) }}</td>
-          <td class="text-end text-nowrap">$ {{ num(l.otros_haberes) }}</td>
+          <td class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">$ {{ num(l.gratificacion) }}</td>
+          <td class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">$ {{ num(l.otros_haberes) }}</td>
           <td class="text-end text-nowrap">$ {{ num(l.total_haberes) }}</td>
-          <td class="text-end text-nowrap text-danger">$ {{ num(l.afp) }}</td>
-          <td class="text-end text-nowrap text-danger">$ {{ num(l.salud) }}</td>
-          <td class="text-end text-nowrap text-danger">$ {{ num(l.impuesto_renta) }}</td>
+          <td class="text-end text-nowrap text-danger col-hist-extra d-none d-xl-table-cell">$ {{ num(l.afp) }}</td>
+          <td class="text-end text-nowrap text-danger col-hist-extra d-none d-xl-table-cell">$ {{ num(l.salud) }}</td>
+          <td class="text-end text-nowrap text-danger col-hist-extra d-none d-xl-table-cell">$ {{ num(l.impuesto_renta) }}</td>
           <td class="text-end text-nowrap text-danger">$ {{ num(l.total_descuentos) }}</td>
           <td class="text-end text-nowrap text-success fw-bold">$ {{ num(l.liquido) }}</td>
           <td class="text-end text-nowrap">$ {{ num(l.costo_empresa) }}</td>
@@ -100,11 +103,11 @@
             $ {{ num(ns.sum_sueldo) }}<br>
             <span class="fw-normal text-muted small">$ {{ num(ns.sum_sueldo / ns.count) }}</span>
           </td>
-          <td class="text-end text-nowrap">
+          <td class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">
             $ {{ num(ns.sum_grati) }}<br>
             <span class="fw-normal text-muted small">$ {{ num(ns.sum_grati / ns.count) }}</span>
           </td>
-          <td class="text-end text-nowrap">
+          <td class="text-end text-nowrap col-hist-extra d-none d-xl-table-cell">
             $ {{ num(ns.sum_otros) }}<br>
             <span class="fw-normal text-muted small">$ {{ num(ns.sum_otros / ns.count) }}</span>
           </td>
@@ -112,15 +115,15 @@
             $ {{ num(ns.sum_haberes) }}<br>
             <span class="fw-normal text-muted small">$ {{ num(ns.sum_haberes / ns.count) }}</span>
           </td>
-          <td class="text-end text-nowrap text-danger">
+          <td class="text-end text-nowrap text-danger col-hist-extra d-none d-xl-table-cell">
             $ {{ num(ns.sum_afp) }}<br>
             <span class="fw-normal text-muted small">$ {{ num(ns.sum_afp / ns.count) }}</span>
           </td>
-          <td class="text-end text-nowrap text-danger">
+          <td class="text-end text-nowrap text-danger col-hist-extra d-none d-xl-table-cell">
             $ {{ num(ns.sum_salud) }}<br>
             <span class="fw-normal text-muted small">$ {{ num(ns.sum_salud / ns.count) }}</span>
           </td>
-          <td class="text-end text-nowrap text-danger">
+          <td class="text-end text-nowrap text-danger col-hist-extra d-none d-xl-table-cell">
             $ {{ num(ns.sum_imp) }}<br>
             <span class="fw-normal text-muted small">$ {{ num(ns.sum_imp / ns.count) }}</span>
           </td>

@@ -210,6 +210,37 @@ def eliminar_banco(eid, mid):
     return redirect(url_for('pendientes.index', eid=eid))
 
 
+@bp.route('/empresa/<int:eid>/pendientes/contabilizar-banco-lote', methods=['POST'])
+def contabilizar_banco_lote(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    mov_ids = request.form.getlist('mov_ids[]')
+    cuenta_id = request.form.get('cuenta_id_lote', '').strip()
+    if not mov_ids or not cuenta_id:
+        flash('Selecciona movimientos y una cuenta contable.', 'warning')
+        return redirect(url_for('pendientes.index', eid=eid))
+    cuenta = Cuenta.query.filter_by(id=int(cuenta_id), empresa_id=eid, activa=True).first()
+    if not cuenta:
+        flash('Cuenta no encontrada.', 'danger')
+        return redirect(url_for('pendientes.index', eid=eid))
+    procesados = 0
+    for mid in mov_ids:
+        mov = MovimientoBanco.query.get(int(mid))
+        if not mov or mov.empresa_id != eid or mov.procesado:
+            continue
+        try:
+            asiento = motor.generar_asiento_banco(mov, cuenta.id)
+            confirmar_asiento(asiento)
+            mov.procesado = True
+            mov.asiento_id = asiento.id
+            db.session.flush()
+            procesados += 1
+        except Exception:
+            db.session.rollback()
+    db.session.commit()
+    flash(f'{procesados} movimiento(s) contabilizados.', 'success')
+    return redirect(url_for('pendientes.index', eid=eid))
+
+
 @bp.route('/empresa/<int:eid>/pendientes/contabilizar-lote', methods=['POST'])
 def contabilizar_lote(eid):
     """Contabiliza los documentos SII pendientes visibles (respeta rango desde/hasta)."""

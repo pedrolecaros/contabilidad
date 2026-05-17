@@ -189,7 +189,10 @@ def _build_grilla(archivos, ano_actual):
         raw[period_key(a)][a.tipo].append(a)
 
     def sort_key(k):
-        return (int(k[:4]), int(k[5:7])) if len(k) == 7 else (int(k), 0)
+        try:
+            return (int(k[:4]), int(k[5:7])) if len(k) == 7 else (int(k), 0)
+        except (ValueError, TypeError):
+            return (0, 0)
 
     grilla = []
     for k in sorted(raw.keys(), key=sort_key, reverse=True):

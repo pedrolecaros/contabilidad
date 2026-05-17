@@ -4,7 +4,7 @@
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('contrapartes.index', eid=empresa.id) }}">Proveedores / Clientes</a></li>
     <li class="breadcrumb-item active">Nueva Contraparte</li>
   </ol>
@@ -28,6 +28,7 @@
 {% endwith %}
 
 <form method="post" class="row g-3" style="max-width:560px">
+  <input type="hidden" name="vista" value="{{ request.args.get('vista', '') }}">
   <div class="col-sm-5">
     <label class="form-label fw-semibold">RUT <span class="text-danger">*</span></label>
     <input type="text" name="rut" class="form-control"

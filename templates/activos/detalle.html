@@ -16,6 +16,10 @@
     <i class="bi bi-arrow-left"></i>
   </a>
   <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>{{ activo.nombre }}</h5>
+  <button type="button" class="btn btn-outline-secondary btn-sm ms-auto"
+          data-bs-toggle="modal" data-bs-target="#modalEditarActivo">
+    <i class="bi bi-pencil me-1"></i>Editar datos
+  </button>
 </div>
 
 <div class="row g-3 mb-4">
@@ -57,6 +61,39 @@
     </div>
   </div>
   {% endif %}
+</div>
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card h-100 border-primary">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted small">Valor Neto Actual</div>
+        <div class="fw-bold fs-5 text-primary">${{ valor_neto|clp }}</div>
+        <div class="text-muted small">Depreciado: ${{ total_depreciado|clp }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted small">% Depreciado</div>
+        <div class="fw-bold fs-5">{{ pct_depreciado|round(1) }}%</div>
+        <div class="progress mt-1" style="height:6px;">
+          <div class="progress-bar" style="width:{{ [pct_depreciado, 100]|min }}%;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted small">Meses Restantes</div>
+        <div class="fw-bold fs-5">{{ meses_restantes }}</div>
+        <div class="text-muted small">de {{ activo.vida_util_meses }} meses vida útil</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Generar depreciación -->
@@ -120,4 +157,52 @@
   <button class="btn btn-outline-danger btn-sm mt-3">Desactivar Activo</button>
 </form>
 {% endif %}
+
+<!-- Modal Editar Activo -->
+<div class="modal fade" id="modalEditarActivo" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('activos.editar', eid=empresa.id, aid=activo.id) }}">
+        <div class="modal-header py-2">
+          <h6 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar activo</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label fw-semibold">Nombre</label>
+              <input type="text" name="nombre" class="form-control" value="{{ activo.nombre }}" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Descripción</label>
+              <input type="text" name="descripcion" class="form-control"
+                     value="{{ activo.descripcion or '' }}" placeholder="Marca, modelo, N° serie…">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Valor de Compra ($)</label>
+              <input type="number" name="valor_compra" class="form-control"
+                     min="0" step="1" value="{{ activo.valor_compra|int }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Valor Residual ($)</label>
+              <input type="number" name="valor_residual" class="form-control"
+                     min="0" step="1" value="{{ activo.valor_residual|int }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Vida Útil (meses)</label>
+              <input type="number" name="vida_util_meses" class="form-control"
+                     min="1" step="1" value="{{ activo.vida_util_meses }}" required>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-check2 me-1"></i>Guardar cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
