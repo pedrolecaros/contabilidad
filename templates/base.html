@@ -206,6 +206,9 @@
         <li><a class="nav-link {% if request.endpoint in ('empresas.editar',) %}active{% endif %}"
                href="{{ url_for('empresas.editar', eid=empresa.id) }}">
           <i class="bi bi-building-gear me-2"></i>Empresa</a></li>
+        <li><a class="nav-link {% if request.endpoint == 'main.db_manager' %}active{% endif %}"
+               href="{{ url_for('main.db_manager') }}">
+          <i class="bi bi-database-gear me-2"></i>Gestionar BD</a></li>
       </ul>
 
     </nav>
