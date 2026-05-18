@@ -13,7 +13,8 @@ PLAN_CUENTAS_CHILE = [
     ('1.1.06', 'PPM',                                   'ACTIVO',    'DEUDORA',   False, 3),
     ('1.1.07', 'Anticipos a Proveedores',               'ACTIVO',    'DEUDORA',   False, 3),
     ('1.1.08', 'Existencias',                           'ACTIVO',    'DEUDORA',   False, 3),
-    ('1.1.09', 'Otros Activos Circulantes',             'ACTIVO',    'DEUDORA',   False, 3),
+    ('1.1.09', 'Inversiones en Fondos Mutuos',          'ACTIVO',    'DEUDORA',   False, 3),
+    ('1.1.10', 'Otros Activos Circulantes',             'ACTIVO',    'DEUDORA',   False, 3),
     ('1.2',    'Activo Fijo',                           'ACTIVO',    'DEUDORA',   True,  2),
     ('1.2.01', 'Terrenos',                              'ACTIVO',    'DEUDORA',   False, 3),
     ('1.2.02', 'Construcciones y Obras',                'ACTIVO',    'DEUDORA',   False, 3),
@@ -56,6 +57,7 @@ PLAN_CUENTAS_CHILE = [
     ('3.1.03', 'Utilidades Acumuladas',                 'PATRIMONIO','ACREEDORA', False, 3),
     ('3.1.04', 'Pérdidas Acumuladas',                   'PATRIMONIO','DEUDORA',   False, 3),
     ('3.1.05', 'Resultado del Ejercicio',               'PATRIMONIO','ACREEDORA', False, 3),
+    ('3.1.06', 'Retiros del Ejercicio',                 'PATRIMONIO','DEUDORA',   False, 3),
 
     # ── INGRESOS ──────────────────────────────────────────────────────────────
     ('4',      'INGRESOS',                              'INGRESO',   'ACREEDORA', True,  1),
