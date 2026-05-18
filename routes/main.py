@@ -14,7 +14,8 @@ bp = Blueprint('main', __name__)
 @bp.route('/')
 def index():
     empresas = Empresa.query.filter_by(activa=True).order_by(Empresa.razon_social).all()
-    return render_template('index.html', empresas=empresas)
+    archivadas = Empresa.query.filter_by(activa=False).order_by(Empresa.razon_social).all()
+    return render_template('index.html', empresas=empresas, archivadas=archivadas)
 
 
 @bp.route('/consolidado')

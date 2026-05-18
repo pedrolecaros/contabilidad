@@ -108,6 +108,18 @@
                    placeholder="URL de la imagen del logo (o ruta relativa)">
             <div class="form-text">Se mostrará en liquidaciones impresas. Deje en blanco si no hay logo.</div>
           </div>
+          {% if empresa %}
+          <hr>
+          <h6 class="text-muted small mb-2"><i class="bi bi-archive me-1"></i>Estado</h6>
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" name="activa" id="empresa_activa"
+                     {% if empresa.activa %}checked{% endif %}>
+              <label class="form-check-label" for="empresa_activa">Empresa vigente (activa)</label>
+            </div>
+            <div class="form-text">Si se desactiva, la empresa quedará archivada y no aparecerá en resúmenes ni consolidados.</div>
+          </div>
+          {% endif %}
           {% if not empresa %}
           <hr>
           <h6 class="text-muted small mb-2"><i class="bi bi-list-ul me-1"></i>Plan de Cuentas</h6>

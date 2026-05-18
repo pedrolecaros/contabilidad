@@ -102,4 +102,42 @@
   <a href="{{ url_for('empresas.nueva') }}">Crea la primera empresa</a>.</p>
 </div>
 {% endif %}
+
+{% if archivadas %}
+<div class="mt-4">
+  <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#empresas-archivadas">
+    <i class="bi bi-archive me-1"></i>{{ archivadas|length }} empresa{% if archivadas|length != 1 %}s{% endif %} archivada{% if archivadas|length != 1 %}s{% endif %}
+    <i class="bi bi-chevron-down ms-1" style="font-size:.75rem"></i>
+  </a>
+  <div class="collapse mt-2" id="empresas-archivadas">
+    <table class="table table-sm table-hover text-muted">
+      <thead class="table-light">
+        <tr>
+          <th>RUT</th>
+          <th>Razón Social</th>
+          <th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in archivadas %}
+        <tr>
+          <td class="font-monospace small">{{ e.rut }}</td>
+          <td>
+            <i class="bi bi-archive me-1 text-muted"></i>
+            {{ e.nombre_fantasia or e.razon_social }}
+            <span class="badge bg-secondary ms-1" style="font-size:.65rem">Archivada</span>
+          </td>
+          <td class="text-center">
+            <a href="{{ url_for('empresas.editar', eid=e.id) }}"
+               class="btn btn-sm btn-outline-secondary py-0 px-2" title="Editar / Reactivar">
+              <i class="bi bi-pencil"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
