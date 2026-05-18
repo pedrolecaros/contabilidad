@@ -258,32 +258,58 @@ def editar(eid, aid):
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/eliminar', methods=['POST'])
 def eliminar(eid, aid):
-    from models import AsientoAudit, VacacionEmpleado, DepreciacionRegistro
+    from models import AsientoAudit, VacacionEmpleado, DepreciacionRegistro, Conciliacion
     asiento = Asiento.query.get_or_404(aid)
     if asiento.estado == 'CONFIRMADO':
         flash('No se puede eliminar un asiento confirmado. Primero anúlalo.', 'danger')
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
-    # Desligar registros con asiento_id nullable
-    DocumentoSII.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
-    MovimientoBanco.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
+
+    # Recolectar conciliaciones asociadas antes de desligar
+    conc_ids = set()
+    for m in MovimientoBanco.query.filter_by(asiento_id=aid).all():
+        if m.conciliacion_id:
+            conc_ids.add(m.conciliacion_id)
+        m.procesado = False
+        m.asiento_id = None
+        m.conciliacion_id = None
+    for d in DocumentoSII.query.filter_by(asiento_id=aid).all():
+        if d.conciliacion_id:
+            conc_ids.add(d.conciliacion_id)
+        d.procesado = False
+        d.asiento_id = None
+        d.conciliacion_id = None
+
     for cuota in CuotaPrestamo.query.filter_by(asiento_id=aid).all():
         if cuota.movimiento_banco_id:
             mov = MovimientoBanco.query.get(cuota.movimiento_banco_id)
             if mov:
                 mov.procesado = False
                 mov.asiento_id = None
+                mov.conciliacion_id = None
         cuota.asiento_id = None
         cuota.movimiento_banco_id = None
         cuota.pagada = False
         cuota.fecha_pago = None
         cuota.uf_valor_pago = None
         cuota.cuota_total_pesos = None
+
     VacacionEmpleado.query.filter_by(asiento_id=aid).update({'asiento_id': None})
     DepreciacionRegistro.query.filter_by(asiento_id=aid).update({'asiento_id': None})
-    # Borrar registros con FK NOT NULL antes de borrar el asiento
+
+    # Borrar registros con FK NOT NULL
     AsientoAudit.query.filter_by(asiento_id=aid).delete()
     LineaAsiento.query.filter_by(asiento_id=aid).delete()
     db.session.delete(asiento)
+
+    # Eliminar conciliaciones que quedaron sin movimientos ni documentos
+    for cid in conc_ids:
+        tiene_movs = MovimientoBanco.query.filter_by(conciliacion_id=cid).first()
+        tiene_docs = DocumentoSII.query.filter_by(conciliacion_id=cid).first()
+        if not tiene_movs and not tiene_docs:
+            conc = Conciliacion.query.get(cid)
+            if conc:
+                db.session.delete(conc)
+
     db.session.commit()
     flash('Borrador eliminado', 'success')
     return redirect(url_for('asientos.lista', eid=eid))
