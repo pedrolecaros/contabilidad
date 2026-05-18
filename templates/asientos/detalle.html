@@ -132,10 +132,10 @@
   <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
     <span>{{ asiento.descripcion or '(sin descripción)' }}</span>
     {% if asiento.respaldo_url %}
-      <a href="{{ asiento.respaldo_url }}" target="_blank"
+      <a href="{{ attachment_url(asiento.respaldo_url) }}" target="_blank"
          class="badge bg-info text-dark text-decoration-none ms-2"
          title="Ver respaldo">
-        <i class="bi bi-link-45deg me-1"></i>Respaldo
+        <i class="bi bi-{% if is_image(asiento.respaldo_url) %}image{% else %}paperclip{% endif %} me-1"></i>Respaldo
       </a>
     {% elif asiento.origen == 'MANUAL' %}
       <span class="badge bg-warning text-dark ms-2" title="Sin link de respaldo">

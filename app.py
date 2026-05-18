@@ -104,6 +104,11 @@ def create_app(config_override=None):
         except Exception:
             return {}
 
+    from storage import attachment_url as _attachment_url, attachment_label as _attachment_label, is_image as _is_image
+    app.jinja_env.globals['attachment_url'] = _attachment_url
+    app.jinja_env.globals['attachment_label'] = _attachment_label
+    app.jinja_env.globals['is_image'] = _is_image
+
     # Auto-fetch UF for the current year if today's value is missing
     t = threading.Thread(target=_auto_fetch_uf, args=(app,), daemon=True)
     t.start()

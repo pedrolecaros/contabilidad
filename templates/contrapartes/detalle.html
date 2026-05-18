@@ -216,7 +216,7 @@
               <span class="badge bg-danger-subtle text-danger" style="font-size:.7rem">Dif {{ dif|clp }}</span>
             {% endif %}
             {% if c.respaldo_url %}
-              <a href="{{ c.respaldo_url }}" target="_blank" class="ms-1 text-info" title="Ver respaldo">
+              <a href="{{ attachment_url(c.respaldo_url) }}" target="_blank" class="ms-1 text-info" title="Ver respaldo">
                 <i class="bi bi-link-45deg"></i>
               </a>
             {% endif %}

@@ -25,7 +25,7 @@
     {% endif %}
     <div class="card shadow-sm">
       <div class="card-body">
-        <form method="post" id="formAsiento" class="warn-unsaved">
+        <form method="post" id="formAsiento" class="warn-unsaved" enctype="multipart/form-data">
           <div class="row g-3 mb-4">
             <div class="col-md-3">
               <label class="form-label fw-semibold">Fecha <span class="text-danger">*</span></label>
@@ -40,11 +40,23 @@
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold text-muted">
-                <i class="bi bi-link-45deg me-1"></i>Link respaldo
+                <i class="bi bi-paperclip me-1"></i>Respaldo
               </label>
-              <input type="url" name="respaldo_url" class="form-control"
-                     value="{{ asiento.respaldo_url if asiento else '' }}"
-                     placeholder="https://drive.google.com/…">
+              {% if asiento and asiento.respaldo_url %}
+                <div class="mb-2 small">
+                  {% set url = attachment_url(asiento.respaldo_url) %}
+                  {% set label = attachment_label(asiento.respaldo_url) %}
+                  <a href="{{ url }}" target="_blank" class="text-info">
+                    <i class="bi bi-{% if is_image(asiento.respaldo_url) %}image{% else %}file-earmark{% endif %} me-1"></i>{{ label[:40] }}
+                  </a>
+                  <span class="text-muted d-block">Sube un nuevo archivo para reemplazar</span>
+                </div>
+              {% endif %}
+              <input type="file" name="respaldo_file" class="form-control form-control-sm mb-1"
+                     accept="image/*,.pdf">
+              <input type="url" name="respaldo_url" class="form-control form-control-sm"
+                     value="{{ asiento.respaldo_url if asiento and asiento.respaldo_url and not (asiento.respaldo_url or '').startswith('local:') else '' }}"
+                     placeholder="O pega un link (Drive, etc.)">
             </div>
           </div>
 

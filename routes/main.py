@@ -317,6 +317,19 @@ def _get_db_path():
     return db_path
 
 
+@bp.route('/adjunto/<filename>')
+def servir_adjunto(filename):
+    from flask import abort
+    # Prevent path traversal
+    if '/' in filename or '\\' in filename or '..' in filename:
+        abort(404)
+    folder = current_app.config['UPLOAD_FOLDER']
+    path = os.path.join(folder, filename)
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path)
+
+
 @bp.route('/backup')
 def backup():
     db_path = _get_db_path()

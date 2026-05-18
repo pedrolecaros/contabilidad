@@ -1,5 +1,5 @@
 import json
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, current_app
 from datetime import date
 from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion, CuotaPrestamo
 from engine.asientos import confirmar_asiento, anular_asiento
@@ -161,7 +161,16 @@ def nuevo(eid):
         numero = (ultimo.numero or 0) + 1 if ultimo else 1
 
         accion = request.form.get('accion', 'confirmar')
-        respaldo_url = request.form.get('respaldo_url', '').strip() or None
+        from storage import save_attachment
+        respaldo_file = request.files.get('respaldo_file')
+        if respaldo_file and respaldo_file.filename:
+            try:
+                respaldo_url = save_attachment(respaldo_file, respaldo_file.filename, current_app.config['UPLOAD_FOLDER'])
+            except ValueError as e:
+                flash(str(e), 'warning')
+                respaldo_url = None
+        else:
+            respaldo_url = request.form.get('respaldo_url', '').strip() or None
         asiento = Asiento(empresa_id=eid, fecha=fecha, numero=numero,
                           descripcion=descripcion, respaldo_url=respaldo_url,
                           origen='MANUAL', estado='BORRADOR')
@@ -208,7 +217,16 @@ def editar(eid, aid):
             return redirect(url_for('asientos.editar', eid=eid, aid=aid))
         accion = request.form.get('accion', 'confirmar')
         asiento.descripcion = request.form['descripcion'].strip()
-        asiento.respaldo_url = request.form.get('respaldo_url', '').strip() or None
+        from storage import save_attachment
+        respaldo_file = request.files.get('respaldo_file')
+        if respaldo_file and respaldo_file.filename:
+            try:
+                asiento.respaldo_url = save_attachment(respaldo_file, respaldo_file.filename, current_app.config['UPLOAD_FOLDER'])
+            except ValueError as e:
+                flash(str(e), 'warning')
+        elif request.form.get('respaldo_url', '').strip():
+            asiento.respaldo_url = request.form.get('respaldo_url').strip()
+        # else: keep existing respaldo_url unchanged
         asiento.estado = 'BORRADOR'
         _guardar_lineas(asiento.id, request.form)
         if accion == 'borrador':
