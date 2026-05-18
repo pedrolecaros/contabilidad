@@ -262,6 +262,44 @@ def index(eid):
                            mes_anterior=mes_anterior.strftime('%Y-%m'))
 
 
+@bp.route('/empresa/<int:eid>/importar/<int:aid>/detalle')
+def detalle_archivo(eid, aid):
+    from flask import jsonify
+    archivo = ArchivoImportado.query.filter_by(id=aid, empresa_id=eid).first_or_404()
+    filas = []
+    if archivo.tipo == 'BANCO':
+        movs = (MovimientoBanco.query
+                .filter_by(empresa_id=eid, archivo_origen=archivo.nombre_archivo)
+                .order_by(MovimientoBanco.fecha).all())
+        for m in movs:
+            filas.append({
+                'fecha': m.fecha.strftime('%d/%m/%Y') if m.fecha else '',
+                'descripcion': (m.descripcion or '')[:80],
+                'cargo': m.cargo or 0,
+                'abono': m.abono or 0,
+                'estado': 'Contabilizado' if m.procesado else 'Pendiente',
+            })
+    else:
+        docs = (DocumentoSII.query
+                .filter_by(empresa_id=eid, archivo_origen=archivo.nombre_archivo,
+                           tipo_libro=archivo.tipo)
+                .order_by(DocumentoSII.fecha).all())
+        for d in docs:
+            filas.append({
+                'fecha': d.fecha.strftime('%d/%m/%Y') if d.fecha else '',
+                'tipo_dte': d.tipo_dte or '',
+                'folio': d.folio or '',
+                'razon_social': (d.razon_social_contraparte or '')[:40],
+                'rut': d.rut_contraparte or '',
+                'neto': d.monto_neto or 0,
+                'iva': d.iva or 0,
+                'total': d.total or 0,
+                'estado': 'Contabilizado' if d.procesado else 'Pendiente',
+            })
+    return jsonify({'tipo': archivo.tipo, 'filas': filas,
+                    'nombre': archivo.nombre_archivo, 'periodo': archivo.periodo or ''})
+
+
 @bp.route('/empresa/<int:eid>/importar/<int:aid>/revertir', methods=['POST'])
 def revertir(eid, aid):
     """Elimina los documentos/movimientos pendientes (no procesados) de un archivo importado."""
