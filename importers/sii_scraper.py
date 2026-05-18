@@ -111,8 +111,8 @@ def _login(page, rut: str, clave: str):
 
     time.sleep(2)
 
-    # Si ya estamos en www4.sii.cl, el login fue exitoso — no revisar errores
-    if 'www4.sii.cl' in page.url:
+    # Si ya estamos en www4.sii.cl como HOST, el login fue exitoso
+    if page.url.startswith('https://www4.sii.cl'):
         return
 
     page_text = page.content().lower()
