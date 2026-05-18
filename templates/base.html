@@ -135,8 +135,8 @@
         <li><a class="nav-link {% if 'vacacion' in request.endpoint %}active{% endif %}"
                href="{{ url_for('remuneraciones.vacaciones', eid=empresa.id) }}">
           <i class="bi bi-calendar-check me-2"></i>Vacaciones</a></li>
-        <li><a class="nav-link {% if request.endpoint=='remuneraciones.variables' %}active{% endif %}"
-               href="{{ url_for('remuneraciones.variables') }}">
+        <li><a class="nav-link {% if request.endpoint in ('remuneraciones.variables', 'remuneraciones.variables_eid') %}active{% endif %}"
+               href="{{ url_for('remuneraciones.variables_eid', eid=empresa.id) }}">
           <i class="bi bi-calculator me-2"></i>Indicadores</a></li>
       </ul>
 

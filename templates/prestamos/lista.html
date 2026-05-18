@@ -444,25 +444,4 @@ function buildChart(vista) {
 buildChart('total');
 </script>
 {% endif %}
-            label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
-            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.parsed.y, 0))}`,
-          },
-        },
-      },
-      scales: {
-        x: { stacked: true },
-        y: {
-          stacked: true,
-          ticks: {
-            callback: v => '$ ' + (v >= 1e6
-              ? (v/1e6).toLocaleString('es-CL', {maximumFractionDigits:1}) + 'M'
-              : v.toLocaleString('es-CL')),
-          },
-        },
-      },
-    },
-  });
-})();
-</script>
-{% endif %}
 {% endblock %}

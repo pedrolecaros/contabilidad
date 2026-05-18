@@ -793,10 +793,11 @@ def variables():
     return render_template('remuneraciones/variables.html', vars_list=vars_list)
 
 
-# Ruta legacy con eid → redirige a la global
 @bp.route('/empresa/<int:eid>/remuneraciones/variables')
-def variables_legacy(eid):
-    return redirect(url_for('remuneraciones.variables'))
+def variables_eid(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    vars_list = VariablesMensuales.query.order_by(VariablesMensuales.periodo.desc()).all()
+    return render_template('remuneraciones/variables.html', vars_list=vars_list, empresa=empresa)
 
 
 @bp.route('/remuneraciones/variables/guardar', methods=['POST'])
