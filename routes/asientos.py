@@ -258,11 +258,12 @@ def editar(eid, aid):
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/eliminar', methods=['POST'])
 def eliminar(eid, aid):
+    from models import AsientoAudit, VacacionEmpleado, DepreciacionRegistro
     asiento = Asiento.query.get_or_404(aid)
     if asiento.estado == 'CONFIRMADO':
         flash('No se puede eliminar un asiento confirmado. Primero anúlalo.', 'danger')
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
-    # Desligar documentos, movimientos y cuotas de préstamos
+    # Desligar registros con asiento_id nullable
     DocumentoSII.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
     MovimientoBanco.query.filter_by(asiento_id=aid).update({'procesado': False, 'asiento_id': None})
     for cuota in CuotaPrestamo.query.filter_by(asiento_id=aid).all():
@@ -277,10 +278,15 @@ def eliminar(eid, aid):
         cuota.fecha_pago = None
         cuota.uf_valor_pago = None
         cuota.cuota_total_pesos = None
-    asiento.estado = 'ANULADO'
+    VacacionEmpleado.query.filter_by(asiento_id=aid).update({'asiento_id': None})
+    DepreciacionRegistro.query.filter_by(asiento_id=aid).update({'asiento_id': None})
+    # Borrar registros con FK NOT NULL antes de borrar el asiento
+    AsientoAudit.query.filter_by(asiento_id=aid).delete()
+    LineaAsiento.query.filter_by(asiento_id=aid).delete()
+    db.session.delete(asiento)
     db.session.commit()
-    flash('Asiento anulado', 'success')
-    return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
+    flash('Borrador eliminado', 'success')
+    return redirect(url_for('asientos.lista', eid=eid))
 
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>')
