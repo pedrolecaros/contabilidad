@@ -110,6 +110,11 @@ def _login(page, rut: str, clave: str):
         pass
 
     time.sleep(2)
+
+    # Si ya estamos en www4.sii.cl, el login fue exitoso — no revisar errores
+    if 'www4.sii.cl' in page.url:
+        return
+
     page_text = page.content().lower()
 
     if 'máximo de sesiones' in page_text or 'maximo de sesiones' in page_text \
@@ -118,8 +123,7 @@ def _login(page, rut: str, clave: str):
             "SII bloqueó el acceso: demasiadas sesiones activas. "
             "Espera unos minutos o cierra sesión en el portal SII."
         )
-    if '429' in page_text or 'demasiados intentos' in page_text \
-            or 'bloqueado temporalmente' in page_text:
+    if 'demasiados intentos' in page_text or 'bloqueado temporalmente' in page_text:
         raise SIILoginError(
             "SII bloqueó temporalmente (demasiados intentos). "
             "Espera 5-10 minutos."
