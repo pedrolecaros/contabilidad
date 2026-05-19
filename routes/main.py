@@ -1,7 +1,4 @@
 import os
-import shutil
-import sqlite3
-import tempfile
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, send_file, current_app, request, flash, redirect, url_for
@@ -370,85 +367,4 @@ def db_manager():
         db_size_mb = None
         db_modified = None
 
-    # Lista de respaldos automáticos guardados en la carpeta backups/
-    backups_dir = os.path.join(current_app.root_path, 'backups')
-    respaldos = []
-    if os.path.isdir(backups_dir):
-        for f in sorted(os.listdir(backups_dir), reverse=True):
-            if f.endswith('.db'):
-                fp = os.path.join(backups_dir, f)
-                st2 = os.stat(fp)
-                respaldos.append({
-                    'nombre': f,
-                    'size_mb': round(st2.st_size / 1024 / 1024, 2),
-                    'fecha': datetime.fromtimestamp(st2.st_mtime).strftime('%d/%m/%Y %H:%M'),
-                })
-
-    return render_template('db.html',
-        db_size_mb=db_size_mb, db_modified=db_modified,
-        respaldos=respaldos)
-
-
-@bp.route('/db/restaurar', methods=['POST'])
-def db_restaurar():
-    archivo = request.files.get('db_file')
-    if not archivo or not archivo.filename:
-        flash('Debes seleccionar un archivo .db para restaurar.', 'warning')
-        return redirect(url_for('main.db_manager'))
-
-    # Guardar el archivo subido en un temporal
-    tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-    archivo.save(tmp.name)
-    tmp.close()
-
-    # Validar que es un SQLite válido
-    try:
-        con = sqlite3.connect(tmp.name)
-        con.execute('SELECT name FROM sqlite_master LIMIT 1')
-        con.close()
-    except Exception:
-        os.unlink(tmp.name)
-        flash('El archivo no es una base de datos SQLite válida.', 'danger')
-        return redirect(url_for('main.db_manager'))
-
-    db_path = _get_db_path()
-
-    # Crear respaldo automático de la BD actual
-    backups_dir = os.path.join(current_app.root_path, 'backups')
-    os.makedirs(backups_dir, exist_ok=True)
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_nombre = f'contabilidad_antes_restauracion_{ts}.db'
-    backup_path = os.path.join(backups_dir, backup_nombre)
-    try:
-        con = sqlite3.connect(db_path)
-        con.execute(f"VACUUM INTO '{backup_path}'")
-        con.close()
-    except Exception as e:
-        os.unlink(tmp.name)
-        flash(f'No se pudo crear el respaldo automático: {e}', 'danger')
-        return redirect(url_for('main.db_manager'))
-
-    # Cerrar todas las conexiones de SQLAlchemy y reemplazar la BD
-    db.engine.dispose()
-    shutil.copy2(tmp.name, db_path)
-    os.unlink(tmp.name)
-
-    flash(
-        f'Base de datos restaurada exitosamente. Respaldo automático guardado como "{backup_nombre}".',
-        'success'
-    )
-    return redirect(url_for('main.index'))
-
-
-@bp.route('/db/descargar-respaldo/<nombre>')
-def db_descargar_respaldo(nombre):
-    # Solo permitir nombres de archivo sin rutas
-    if '/' in nombre or '\\' in nombre or '..' in nombre:
-        flash('Nombre de archivo inválido.', 'danger')
-        return redirect(url_for('main.db_manager'))
-    backups_dir = os.path.join(current_app.root_path, 'backups')
-    path = os.path.join(backups_dir, nombre)
-    if not os.path.isfile(path):
-        flash('Respaldo no encontrado.', 'danger')
-        return redirect(url_for('main.db_manager'))
-    return send_file(path, as_attachment=True, download_name=nombre)
+    return render_template('db.html', db_size_mb=db_size_mb, db_modified=db_modified)

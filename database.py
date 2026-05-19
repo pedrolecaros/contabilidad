@@ -40,33 +40,8 @@ def _migrar(app):
     notas TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )""",
-        """CREATE TABLE IF NOT EXISTS cuotas_prestamo (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    prestamo_id INTEGER NOT NULL REFERENCES prestamos(id),
-    numero_cuota INTEGER NOT NULL,
-    fecha_vencimiento DATE NOT NULL,
-    capital REAL DEFAULT 0,
-    interes REAL DEFAULT 0,
-    cuota_total REAL DEFAULT 0,
-    saldo_insoluto REAL DEFAULT 0,
-    pagada INTEGER DEFAULT 0,
-    fecha_pago DATE,
-    movimiento_banco_id INTEGER REFERENCES movimientos_banco(id),
-    notas VARCHAR(300)
-)""",
         "ALTER TABLE empresas ADD COLUMN contribuyente_iva INTEGER DEFAULT 1",
         "ALTER TABLE empresas ADD COLUMN tasa_ppm REAL DEFAULT 1.0",
-        """CREATE TABLE IF NOT EXISTS vacaciones_empleado (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
-    empleado_id INTEGER NOT NULL REFERENCES empleados(id),
-    fecha_inicio DATE NOT NULL,
-    fecha_fin DATE NOT NULL,
-    dias_habiles INTEGER DEFAULT 0,
-    notas VARCHAR(300),
-    asiento_id INTEGER REFERENCES asientos(id),
-    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
-)""",
         """CREATE TABLE IF NOT EXISTS asientos_audit (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     asiento_id INTEGER NOT NULL REFERENCES asientos(id),
@@ -75,51 +50,14 @@ def _migrar(app):
     creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
 )""",
         'ALTER TABLE prestamos ADD COLUMN acreedor_rut VARCHAR(20)',
-        'ALTER TABLE cuotas_prestamo ADD COLUMN asiento_id INTEGER REFERENCES asientos(id)',
-        'ALTER TABLE cuotas_prestamo ADD COLUMN uf_valor_pago REAL',
-        'ALTER TABLE cuotas_prestamo ADD COLUMN cuota_total_pesos REAL',
         "ALTER TABLE empleados ADD COLUMN apv_monto REAL DEFAULT 0.0",
         "ALTER TABLE empleados ADD COLUMN apv_tipo VARCHAR(1) DEFAULT 'A'",
         "ALTER TABLE liquidaciones ADD COLUMN apv REAL DEFAULT 0.0",
         "ALTER TABLE empresas ADD COLUMN regimen VARCHAR(10) DEFAULT 'GENERAL'",
         'ALTER TABLE empresas ADD COLUMN logo_url VARCHAR(500)',
-        # Integrity: one bank movement can only link to one asiento, and one cuota
+        # Integrity: one bank movement can only link to one asiento
         'CREATE UNIQUE INDEX IF NOT EXISTS uix_movimientos_banco_asiento ON movimientos_banco(asiento_id) WHERE asiento_id IS NOT NULL',
-        'CREATE UNIQUE INDEX IF NOT EXISTS uix_cuotas_prestamo_movbanco ON cuotas_prestamo(movimiento_banco_id) WHERE movimiento_banco_id IS NOT NULL',
-        "ALTER TABLE cuotas_prestamo ADD COLUMN tipo VARCHAR(20) DEFAULT 'REGULAR'",
-        """CREATE TABLE IF NOT EXISTS pagos_cuota (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    cuota_id INTEGER NOT NULL REFERENCES cuotas_prestamo(id),
-    monto REAL NOT NULL,
-    fecha DATE NOT NULL,
-    asiento_id INTEGER REFERENCES asientos(id),
-    sin_efecto_contable INTEGER DEFAULT 0,
-    notas VARCHAR(300),
-    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
-)""",
-        """CREATE TABLE IF NOT EXISTS activos_fijos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
-    nombre VARCHAR(200) NOT NULL,
-    descripcion VARCHAR(500),
-    categoria VARCHAR(15) NOT NULL,
-    valor_compra REAL NOT NULL,
-    valor_residual REAL DEFAULT 0.0,
-    vida_util_meses INTEGER NOT NULL DEFAULT 60,
-    fecha_compra DATE NOT NULL,
-    metodo VARCHAR(10) DEFAULT 'LINEAL',
-    cuenta_activo_id INTEGER REFERENCES cuentas(id),
-    cuenta_dep_id INTEGER REFERENCES cuentas(id),
-    activo INTEGER DEFAULT 1,
-    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
-)""",
-        """CREATE TABLE IF NOT EXISTS depreciacion_registros (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    activo_fijo_id INTEGER NOT NULL REFERENCES activos_fijos(id),
-    periodo VARCHAR(7) NOT NULL,
-    monto REAL NOT NULL,
-    asiento_id INTEGER REFERENCES asientos(id)
-)""",
+        "ALTER TABLE asientos ADD COLUMN prestamo_sentido VARCHAR(5) DEFAULT '-'",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

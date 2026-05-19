@@ -173,26 +173,12 @@ def contabilizar_banco(eid, mid):
     cuenta_id = request.form.get('cuenta_id', type=int)
     confirmar = request.form.get('confirmar') == '1'
     doc_conciliar_id = request.form.get('doc_conciliar_id', type=int)
-    cuota_id = request.form.get('cuota_id', type=int)
     if not cuenta_id:
         MovimientoBanco.query.filter_by(id=mid).update({'procesado': False})
         db.session.commit()
         return _err('Seleccione una cuenta contraparte.', eid)
     try:
-        if cuota_id:
-            from models import CuotaPrestamo
-            from engine.asientos import generar_asiento_cuota_prestamo
-            cuota = CuotaPrestamo.query.get(cuota_id)
-            if cuota and cuota.prestamo.empresa_id == eid:
-                asiento = generar_asiento_cuota_prestamo(cuota)
-                cuota.pagada = True
-                cuota.fecha_pago = mov.fecha
-                cuota.asiento_id = asiento.id
-                cuota.movimiento_banco_id = mov.id
-            else:
-                asiento = motor.generar_asiento_banco(mov, cuenta_id)
-        else:
-            asiento = motor.generar_asiento_banco(mov, cuenta_id)
+        asiento = motor.generar_asiento_banco(mov, cuenta_id)
         if confirmar:
             try:
                 confirmar_asiento(asiento)

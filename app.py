@@ -3,7 +3,17 @@ import threading
 from flask import Flask
 from config import Config
 from database import init_db
-from routes import main, empresas, asientos, cuentas, importar, pendientes, reportes, validacion, conciliacion, contrapartes, remuneraciones, prestamos, f29, activos, dashboard, buscar, tributario
+
+# Cargar .env si existe (sin dependencias externas)
+_env_file = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(_env_file):
+    with open(_env_file) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+from routes import main, empresas, asientos, cuentas, importar, pendientes, reportes, validacion, conciliacion, contrapartes, remuneraciones, prestamos, dashboard, buscar, tributario
 
 
 def _auto_fetch_uf(app):
@@ -69,8 +79,7 @@ def create_app(config_override=None):
     app.register_blueprint(contrapartes.bp)
     app.register_blueprint(remuneraciones.bp)
     app.register_blueprint(prestamos.bp)
-    app.register_blueprint(f29.bp)
-    app.register_blueprint(activos.bp)
+
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(buscar.bp)
     app.register_blueprint(tributario.bp)

@@ -205,13 +205,6 @@
                   <option value="">— sin vincular a documento —</option>
                 </select>
               </div>
-              <!-- Selector cuota préstamo (aparece al elegir cuenta de préstamo) -->
-              <div id="prestConc-{{ m.id }}" class="d-none mt-1">
-                <input type="hidden" name="cuota_id" id="cuotaInput-{{ m.id }}" value="">
-                <select id="tsPrest-{{ m.id }}" class="ts-prest-sel" style="min-width:340px">
-                  <option value="">— sin vincular a préstamo —</option>
-                </select>
-              </div>
             </form>
             <!-- Basurero al lado -->
             <form method="post"
@@ -316,13 +309,6 @@ const cuentasNat       = {{ cuentas_nat_json | safe }};  // {id: 'DEUDORA'|'ACRE
 const docsPorTipo      = {{ docs_por_tipo_json | safe }};
 const cuentaCodigoTipo = {{ cuenta_codigo_tipo_json | safe }};
 const EID = {{ empresa.id }};
-// Loan account codes → tipo de préstamo esperado
-const CUENTAS_PRESTAMO = {
-  '2.1.10': 'PAGAR', '2.1.11': 'PAGAR', '2.1.12': 'PAGAR',
-  '1.1.11': 'COBRAR', '1.1.12': 'COBRAR', '1.1.13': 'COBRAR',
-};
-let _prestamosCache = null;
-const tsPrestInstances = {};
 
 // TomSelect instances para doc selectors (lazy init)
 const tsDocInstances = {};
@@ -330,16 +316,6 @@ const tsDocInstances = {};
 function fmtDoc(d) {
   const badge = d.tipo === 'VENTAS' ? '▲' : (d.tipo === 'HONORARIOS' ? 'H' : '▼');
   return `${badge} ${d.folio} | ${d.rs} | $${d.total.toLocaleString('es-CL')} | ${d.fecha}`;
-}
-
-async function loadPrestamos() {
-  if (_prestamosCache) return _prestamosCache;
-  try {
-    const resp = await fetch(`/empresa/${EID}/api/cuotas-pendientes`);
-    const data = await resp.json();
-    _prestamosCache = data.prestamos || [];
-  } catch(e) { _prestamosCache = []; }
-  return _prestamosCache;
 }
 
 function onCuentaChange(mid, value) {
@@ -369,47 +345,6 @@ function onCuentaChange(mid, value) {
         divDoc.classList.remove('d-none');
       } else { divDoc.classList.add('d-none'); }
     } else { divDoc.classList.add('d-none'); }
-  }
-
-  // --- Prestamo/cuota selector ---
-  const divPrest = document.getElementById('prestConc-' + mid);
-  const cuotaInput = document.getElementById('cuotaInput-' + mid);
-  if (divPrest) {
-    const tipoPrest = CUENTAS_PRESTAMO[codigo] || null;
-    if (tipoPrest) {
-      loadPrestamos().then(prestamos => {
-        const filtrados = prestamos.filter(p => p.tipo === tipoPrest);
-        if (filtrados.length === 0) { divPrest.classList.add('d-none'); return; }
-        const selEl = document.getElementById('tsPrest-' + mid);
-        if (!tsPrestInstances[mid]) {
-          tsPrestInstances[mid] = new TomSelect(selEl, {
-            create: false, maxOptions: 300,
-            placeholder: '— buscar préstamo —', searchField: ['text'],
-            dropdownParent: 'body',
-            onChange: function(v) { if (cuotaInput) cuotaInput.value = v; },
-          });
-        }
-        const ts = tsPrestInstances[mid];
-        ts.clear(true); ts.clearOptions();
-        ts.addOption({ value: '', text: '— sin vincular a préstamo —' });
-        filtrados.forEach(p => {
-          p.cuotas.forEach(c => {
-            const monto = c.moneda === 'UF'
-              ? `${c.total} UF` : `$${Math.round(c.total).toLocaleString('es-CL')}`;
-            ts.addOption({
-              value: String(c.id),
-              text: `${p.nombre} · Cuota ${c.numero} · ${c.fecha_venc} · ${monto}`,
-            });
-          });
-        });
-        ts.setValue('', true); ts.refreshOptions(false);
-        if (cuotaInput) cuotaInput.value = '';
-        divPrest.classList.remove('d-none');
-      });
-    } else {
-      divPrest.classList.add('d-none');
-      if (cuotaInput) cuotaInput.value = '';
-    }
   }
 }
 

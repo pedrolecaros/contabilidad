@@ -6,23 +6,18 @@
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('prestamos.lista', eid=empresa.id) }}">Préstamos</a></li>
-    <li class="breadcrumb-item active">Nuevo Préstamo</li>
+    <li class="breadcrumb-item"><a href="{{ url_for('prestamos.lista', eid=empresa.id) }}">CxC / CxP</a></li>
+    <li class="breadcrumb-item active">{{ titulo }}</li>
   </ol>
 </nav>
 {% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-bank me-2"></i>{{ titulo }}</h5>
+  <h5 class="mb-0"><i class="bi bi-journal-bookmark me-2"></i>{{ titulo }}</h5>
   <a href="{{ url_for('prestamos.lista', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-arrow-left me-1"></i>Volver
   </a>
-</div>
-
-<div class="alert alert-info small mb-4">
-  <i class="bi bi-info-circle me-1"></i>
-  Si defines cuotas y periodicidad, se generará la tabla de desarrollo automáticamente (fórmula PMT).
-  Para pagos libres, selecciona <strong>Libre</strong> y registra los pagos manualmente.
 </div>
 
 <div class="card">
@@ -35,6 +30,7 @@
         <div class="col-md-8">
           <label class="form-label fw-semibold">Nombre / Descripción <span class="text-danger">*</span></label>
           <input type="text" name="nombre" class="form-control"
+                 placeholder="Ej: Préstamo socio Juan, Venta parcela 12…"
                  value="{{ prestamo.nombre if prestamo else '' }}" required>
         </div>
 
@@ -42,30 +38,19 @@
         <div class="col-md-4">
           <label class="form-label fw-semibold">Tipo <span class="text-danger">*</span></label>
           <select name="tipo" class="form-select">
-            <option value="PAGAR" {% if prestamo and prestamo.tipo == 'PAGAR' %}selected{% endif %}>
-              Pagar (deuda)
-            </option>
-            <option value="COBRAR" {% if prestamo and prestamo.tipo == 'COBRAR' %}selected{% endif %}>
-              Cobrar (activo)
-            </option>
+            <option value="PAGAR" {% if not prestamo or prestamo.tipo == 'PAGAR' %}selected{% endif %}>Por Pagar</option>
+            <option value="COBRAR" {% if prestamo and prestamo.tipo == 'COBRAR' %}selected{% endif %}>Por Cobrar</option>
           </select>
         </div>
 
         <!-- Subtipo -->
         <div class="col-md-4">
-          <label class="form-label fw-semibold">Contraparte</label>
-          <select name="subtipo" class="form-select">
-            <option value="BANCARIO" {% if not prestamo or (prestamo.subtipo or 'BANCARIO') == 'BANCARIO' %}selected{% endif %}>
-              Bancario
-            </option>
-            <option value="TERCEROS" {% if prestamo and prestamo.subtipo == 'TERCEROS' %}selected{% endif %}>
-              Terceros
-            </option>
-            <option value="RELACIONADA" {% if prestamo and prestamo.subtipo == 'RELACIONADA' %}selected{% endif %}>
-              Empresa relacionada
-            </option>
+          <label class="form-label fw-semibold">Categoría</label>
+          <select name="subtipo" class="form-select" id="sel-subtipo" onchange="actualizarHintCuenta()">
+            <option value="BANCARIO" {% if not prestamo or (prestamo.subtipo or 'BANCARIO') in ('BANCARIO', 'SOCIO') %}selected{% endif %}>Bancario</option>
+            <option value="TERCEROS" {% if prestamo and prestamo.subtipo in ('TERCEROS', 'PARCELA', 'RELACIONADA') %}selected{% endif %}>Terceros</option>
           </select>
-          <div class="form-text">Determina la cuenta contable (2.1.10/11/12)</div>
+          <div class="form-text" id="hint-cuenta-contable"></div>
         </div>
 
         <!-- Moneda -->
@@ -81,63 +66,26 @@
           </select>
         </div>
 
-        <!-- Monto original -->
+        <!-- Saldo inicial -->
         <div class="col-md-3">
-          <label class="form-label fw-semibold">Monto original <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold">Saldo Inicial <span class="text-danger">*</span></label>
           <input type="number" name="monto_original" class="form-control"
                  step="0.01" min="0"
                  value="{{ prestamo.monto_original if prestamo else '' }}" required>
-        </div>
-
-        <!-- Tasa de interés -->
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Tasa de interés anual (%)</label>
-          <input type="number" name="tasa_interes_anual" class="form-control"
-                 step="0.01" min="0" max="100"
-                 value="{{ (prestamo.tasa_interes_anual * 100)|round(4) if prestamo else '0' }}">
-          <div class="form-text">0 = sin interés</div>
+          <div class="form-text">Monto al momento de registrar la cuenta</div>
         </div>
 
         <!-- Fecha inicio -->
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Fecha de inicio <span class="text-danger">*</span></label>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Fecha <span class="text-danger">*</span></label>
           <input type="date" name="fecha_inicio" class="form-control"
                  value="{{ prestamo.fecha_inicio.isoformat() if prestamo and prestamo.fecha_inicio else '' }}"
                  required>
         </div>
 
-        <!-- Periodicidad -->
-        <div class="col-md-4">
-          <label class="form-label fw-semibold">Periodicidad</label>
-          <select name="periodicidad" id="periodicidad" class="form-select" onchange="toggleNcuotas()">
-            <option value="MENSUAL" {% if not prestamo or prestamo.periodicidad == 'MENSUAL' %}selected{% endif %}>
-              Mensual
-            </option>
-            <option value="TRIMESTRAL" {% if prestamo and prestamo.periodicidad == 'TRIMESTRAL' %}selected{% endif %}>
-              Trimestral
-            </option>
-            <option value="ANUAL" {% if prestamo and prestamo.periodicidad == 'ANUAL' %}selected{% endif %}>
-              Anual
-            </option>
-            <option value="LIBRE" {% if prestamo and prestamo.periodicidad == 'LIBRE' %}selected{% endif %}>
-              Libre (pago manual)
-            </option>
-          </select>
-        </div>
-
-        <!-- N° cuotas (hidden for LIBRE) -->
-        <div class="col-md-4" id="div_n_cuotas">
-          <label class="form-label fw-semibold">Número de cuotas</label>
-          <input type="number" name="n_cuotas" id="n_cuotas" class="form-control"
-                 min="1" step="1"
-                 value="{{ prestamo.n_cuotas if prestamo and prestamo.n_cuotas else '' }}">
-          <div class="form-text">Dejar vacío para calcular manualmente</div>
-        </div>
-
         <!-- Activo (edit mode only) -->
         {% if prestamo %}
-        <div class="col-md-4">
-          <label class="form-label fw-semibold">Estado</label>
+        <div class="col-md-12">
           <div class="form-check mt-1">
             <input class="form-check-input" type="checkbox" name="activo" id="activo"
                    {% if prestamo.activo %}checked{% endif %}>
@@ -146,20 +94,20 @@
         </div>
         {% endif %}
 
-        <!-- Datos adicionales (collapse) -->
+        <!-- Datos adicionales -->
         <div class="col-12 mt-2">
           <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#extra-prestamo">
-            <i class="bi bi-plus-circle me-1"></i>Datos adicionales (acreedor, notas…)
+            <i class="bi bi-plus-circle me-1"></i>Datos adicionales (contraparte, notas…)
           </a>
         </div>
         <div class="collapse {% if prestamo and (prestamo.acreedor_deudor or prestamo.notas) %}show{% endif %}" id="extra-prestamo">
           <div class="row g-3 mt-1">
 
-            <!-- Acreedor/Deudor -->
+            <!-- Contraparte -->
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Acreedor / Deudor — Nombre</label>
+              <label class="form-label fw-semibold">Nombre contraparte</label>
               <input type="text" name="acreedor_deudor" id="acreedor_deudor" class="form-control"
-                     placeholder="Banco, persona, institución…"
+                     placeholder="Banco, persona, empresa…"
                      value="{{ prestamo.acreedor_deudor if prestamo and prestamo.acreedor_deudor else '' }}"
                      list="contrapartes-list">
               <datalist id="contrapartes-list">
@@ -169,34 +117,17 @@
               </datalist>
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold">RUT Acreedor / Deudor</label>
+              <label class="form-label fw-semibold">RUT contraparte</label>
               <input type="text" name="acreedor_rut" id="acreedor_rut" class="form-control"
                      placeholder="12.345.678-9"
                      value="{{ prestamo.acreedor_rut if prestamo and prestamo.acreedor_rut else '' }}">
-            </div>
-
-            <!-- Empresa relacionada -->
-            <div class="col-md-3">
-              <label class="form-label fw-semibold">Empresa relacionada</label>
-              <select name="empresa_relacionada_id" id="empresa_relacionada_id" class="form-select">
-                <option value="">— Ninguna —</option>
-                {% for emp in empresas_rel %}
-                {% if emp.id != empresa.id %}
-                <option value="{{ emp.id }}" data-rut="{{ emp.rut }}"
-                  {% if prestamo and prestamo.empresa_relacionada_id == emp.id %}selected{% endif %}>
-                  {{ emp.nombre_fantasia or emp.razon_social }}
-                </option>
-                {% endif %}
-                {% endfor %}
-              </select>
-              <div class="form-text">Se detecta automáticamente por RUT</div>
             </div>
 
             <!-- Notas -->
             <div class="col-12">
               <label class="form-label fw-semibold">Notas</label>
               <textarea name="notas" class="form-control" rows="3"
-                        placeholder="Observaciones, condiciones especiales…">{{ prestamo.notas if prestamo and prestamo.notas else '' }}</textarea>
+                        placeholder="Condiciones, observaciones…">{{ prestamo.notas if prestamo and prestamo.notas else '' }}</textarea>
             </div>
 
           </div>
@@ -209,7 +140,7 @@
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-check2 me-1"></i>
-          {% if prestamo %}Guardar cambios{% else %}Crear préstamo{% endif %}
+          {% if prestamo %}Guardar cambios{% else %}Crear cuenta{% endif %}
         </button>
         <a href="{{ url_for('prestamos.lista', eid=empresa.id) }}" class="btn btn-outline-secondary">
           Cancelar
@@ -217,7 +148,7 @@
         {% if prestamo %}
         <div class="ms-auto">
           <form method="post" action="{{ url_for('prestamos.eliminar', eid=empresa.id, pid=prestamo.id) }}"
-                onsubmit="return confirm('¿Eliminar este préstamo y todas sus cuotas?')">
+                onsubmit="return confirm('¿Eliminar esta cuenta?')">
             <button type="submit" class="btn btn-outline-danger btn-sm">
               <i class="bi bi-trash me-1"></i>Eliminar
             </button>
@@ -233,55 +164,35 @@
 
 {% block scripts %}
 <script>
-function toggleNcuotas() {
-  var per = document.getElementById('periodicidad').value;
-  var div = document.getElementById('div_n_cuotas');
-  var inp = document.getElementById('n_cuotas');
-  if (per === 'LIBRE') {
-    div.style.display = 'none';
-    inp.value = '';
-  } else {
-    div.style.display = '';
-  }
+var CUENTAS_MAP = {
+  PAGAR:  { BANCARIO: '2.1.10', TERCEROS: '2.1.11' },
+  COBRAR: { BANCARIO: '1.1.10', TERCEROS: '1.1.11' },
+};
+function actualizarHintCuenta() {
+  var tipo    = document.querySelector('select[name="tipo"]')?.value;
+  var subtipo = document.getElementById('sel-subtipo')?.value;
+  var hint    = document.getElementById('hint-cuenta-contable');
+  if (!hint) return;
+  var cod = (CUENTAS_MAP[tipo] || {})[subtipo];
+  hint.textContent = cod ? 'Cuenta contable: ' + cod : '';
 }
-// Run on load
-toggleNcuotas();
+document.querySelector('select[name="tipo"]')?.addEventListener('change', actualizarHintCuenta);
+document.addEventListener('DOMContentLoaded', actualizarHintCuenta);
 
-// Auto-fill RUT from datalist selection and auto-detect empresa relacionada
 (function() {
   var contrapartesData = {
     {% for cp in contrapartes %}
     {{ cp.razon_social | tojson }}: {{ cp.rut | tojson }},
     {% endfor %}
   };
-  var empresasRut = {
-    {% for emp in empresas_rel %}{% if emp.id != empresa.id %}
-    {{ emp.rut | tojson }}: "{{ emp.id }}",
-    {% endif %}{% endfor %}
-  };
 
   var nameInput = document.getElementById('acreedor_deudor');
   var rutInput = document.getElementById('acreedor_rut');
-  var empSel = document.getElementById('empresa_relacionada_id');
-
-  function syncRutAndEmpresa(name) {
-    var rut = contrapartesData[name];
-    if (rut) {
-      rutInput.value = rut;
-      var empId = empresasRut[rut] || '';
-      if (empSel) empSel.value = empId;
-    }
-  }
 
   if (nameInput) {
-    nameInput.addEventListener('change', function() { syncRutAndEmpresa(this.value); });
-  }
-
-  // When RUT typed manually, try to detect empresa relacionada
-  if (rutInput) {
-    rutInput.addEventListener('blur', function() {
-      var empId = empresasRut[this.value] || '';
-      if (empSel && empId) empSel.value = empId;
+    nameInput.addEventListener('change', function() {
+      var rut = contrapartesData[this.value];
+      if (rut && rutInput) rutInput.value = rut;
     });
   }
 })();

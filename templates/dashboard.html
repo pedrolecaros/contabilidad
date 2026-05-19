@@ -59,14 +59,23 @@
   </div>
 
   <div class="col-6 col-md-3">
-    <div class="card h-100 border-0 shadow-sm {% if cuotas_vencidas > 0 %}border-start border-danger border-4{% endif %}">
+    <div class="card h-100 border-0 shadow-sm">
       <div class="card-body">
-        <div class="text-muted small mb-1">Cuotas préstamo vencidas</div>
-        <div class="fs-3 fw-bold {% if cuotas_vencidas > 0 %}text-danger{% else %}text-success{% endif %}">
-          {{ cuotas_vencidas }}
-        </div>
+        <div class="text-muted small mb-1">Por Pagar</div>
+        <div class="fs-5 fw-bold text-danger">$ {{ total_por_pagar|clp }}</div>
         <a href="{{ url_for('prestamos.lista', eid=empresa.id) }}" class="stretched-link small text-muted">
-          Ver préstamos →
+          Ver CxC/CxP →
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Por Cobrar</div>
+        <div class="fs-5 fw-bold text-success">$ {{ total_por_cobrar|clp }}</div>
+        <a href="{{ url_for('prestamos.lista', eid=empresa.id) }}" class="stretched-link small text-muted">
+          Ver CxC/CxP →
         </a>
       </div>
     </div>

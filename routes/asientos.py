@@ -1,7 +1,7 @@
 import json
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, current_app
 from datetime import date
-from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion, CuotaPrestamo
+from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion
 from engine.asientos import confirmar_asiento, anular_asiento
 from engine.auditoria import registrar_auditoria
 
@@ -13,21 +13,26 @@ def _cuentas_json(cuentas):
 
 
 def _prestamo_dict(p):
-    capital_pendiente = sum(c.capital for c in p.cuotas if not c.pagada)
-    if not p.cuotas:
-        capital_pendiente = p.monto_original
+    saldo = float(p.monto_original or 0)
+    for a in p.asientos_vinculados.filter_by(estado='CONFIRMADO').all():
+        monto = max(a.total_debe or 0, a.total_haber or 0)
+        sentido = a.prestamo_sentido or '-'
+        if sentido == '+':
+            saldo += monto
+        else:
+            saldo -= monto
     return {
         'id': p.id,
         'nombre': p.nombre,
         'tipo': p.tipo,
         'moneda': p.moneda,
         'acreedor_deudor': p.acreedor_deudor or '',
-        'capital_pendiente': capital_pendiente,
+        'saldo_actual': saldo,
     }
 
 
 _PRESTAMO_CODIGOS = {'2.1.10': 'PAGAR', '2.1.11': 'PAGAR', '2.1.12': 'PAGAR',
-                     '1.1.11': 'COBRAR', '1.1.12': 'COBRAR', '1.1.13': 'COBRAR'}
+                     '1.1.10': 'COBRAR', '1.1.11': 'COBRAR', '1.1.12': 'COBRAR'}
 
 
 def _save_prestamo_link(asiento, prestamo_id_str):
@@ -45,6 +50,15 @@ def _save_prestamo_link(asiento, prestamo_id_str):
     asiento.prestamo_id = None
 
 
+def _parse_monto(v):
+    """Parse Cleave.js formatted number: '1.000.000' or '1.000,50' → float."""
+    s = (v or '0').replace('.', '').replace(',', '.')
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def _guardar_lineas(asiento_id, form):
     LineaAsiento.query.filter_by(asiento_id=asiento_id).delete()
     cuenta_ids = form.getlist('cuenta_id[]')
@@ -57,8 +71,8 @@ def _guardar_lineas(asiento_id, form):
         db.session.add(LineaAsiento(
             asiento_id=asiento_id,
             cuenta_id=int(cid),
-            debe=float(d or 0),
-            haber=float(h or 0),
+            debe=_parse_monto(d),
+            haber=_parse_monto(h),
             descripcion=ld.strip(),
             orden=orden,
         ))
@@ -227,6 +241,8 @@ def nuevo(eid):
         db.session.flush()
         _guardar_lineas(asiento.id, request.form)
         _save_prestamo_link(asiento, request.form.get('prestamo_vinculado', ''))
+        if asiento.prestamo_id:
+            asiento.prestamo_sentido = request.form.get('prestamo_sentido', '-')
         if accion == 'borrador':
             registrar_auditoria(asiento, 'CREAR', f'Asiento N°{numero} guardado como borrador')
             db.session.commit()
@@ -283,6 +299,8 @@ def editar(eid, aid):
         asiento.estado = 'BORRADOR'
         _guardar_lineas(asiento.id, request.form)
         _save_prestamo_link(asiento, request.form.get('prestamo_vinculado', ''))
+        if asiento.prestamo_id:
+            asiento.prestamo_sentido = request.form.get('prestamo_sentido', '-')
         if accion == 'borrador':
             registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado y guardado como borrador')
             db.session.commit()
@@ -296,19 +314,6 @@ def editar(eid, aid):
             registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado (no cuadra)')
             db.session.commit()
             flash(f'Asiento N°{asiento.numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f})', 'warning')
-        # Sync PagoCuota.monto if this asiento is linked to a payment record
-        from models import PagoCuota as _PagoCuota
-        pago_vinculado = _PagoCuota.query.filter_by(asiento_id=asiento.id).first()
-        if pago_vinculado:
-            nuevo_monto = round(max(asiento.total_debe or 0, asiento.total_haber or 0))
-            pago_vinculado.monto = nuevo_monto
-            # Re-evaluate if the cuota is now fully paid
-            cuota_v = pago_vinculado.cuota
-            if cuota_v:
-                total_pagado = sum(p.monto for p in cuota_v.pagos)
-                cuota_ref = float(cuota_v.cuota_total_pesos or cuota_v.cuota_total or 0)
-                cuota_v.pagada = cuota_ref > 0 and total_pagado >= cuota_ref * 0.99
-            db.session.commit()
 
         back = request.form.get('next_url', '').strip()
         if back:
@@ -339,7 +344,7 @@ def editar(eid, aid):
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/eliminar', methods=['POST'])
 def eliminar(eid, aid):
-    from models import AsientoAudit, VacacionEmpleado, DepreciacionRegistro, Conciliacion
+    from models import AsientoAudit, Conciliacion
     asiento = Asiento.query.get_or_404(aid)
     if asiento.estado == 'CONFIRMADO':
         flash('No se puede eliminar un asiento confirmado. Primero anúlalo.', 'danger')
@@ -359,23 +364,6 @@ def eliminar(eid, aid):
         d.procesado = False
         d.asiento_id = None
         d.conciliacion_id = None
-
-    for cuota in CuotaPrestamo.query.filter_by(asiento_id=aid).all():
-        if cuota.movimiento_banco_id:
-            mov = MovimientoBanco.query.get(cuota.movimiento_banco_id)
-            if mov:
-                mov.procesado = False
-                mov.asiento_id = None
-                mov.conciliacion_id = None
-        cuota.asiento_id = None
-        cuota.movimiento_banco_id = None
-        cuota.pagada = False
-        cuota.fecha_pago = None
-        cuota.uf_valor_pago = None
-        cuota.cuota_total_pesos = None
-
-    VacacionEmpleado.query.filter_by(asiento_id=aid).update({'asiento_id': None})
-    DepreciacionRegistro.query.filter_by(asiento_id=aid).update({'asiento_id': None})
 
     # Borrar registros con FK NOT NULL
     AsientoAudit.query.filter_by(asiento_id=aid).delete()
