@@ -134,7 +134,16 @@
             <!-- Month cells -->
             {% for mes in meses|reverse %}
             {% set c = celda_data[eid][mes] %}
-            <td class="p-1 align-top" style="font-size:.72rem; vertical-align:top;">
+            {% if c['estado'] == 'ok' %}
+              {% set _bg = 'background:rgba(25,135,84,.08);' %}
+            {% elif c['estado'] == 'parcial' %}
+              {% set _bg = 'background:rgba(255,193,7,.08);' %}
+            {% elif c['estado'] == 'borrador' %}
+              {% set _bg = 'background:rgba(13,202,240,.08);' %}
+            {% else %}
+              {% set _bg = '' %}
+            {% endif %}
+            <td class="p-1 align-top" style="font-size:.72rem; vertical-align:top; {{ _bg }}">
 
               {% if c['estado'] == 'vacio' %}
                 <span style="color:#ddd;">—</span>
@@ -146,22 +155,13 @@
                   {% for tipo, short in [('COMPRAS','C'),('VENTAS','V'),('HONORARIOS','H'),('BANCO','B')] %}
                   {% set lib = c['libros'][tipo] %}
                   {% if lib['loaded'] and lib['pending'] > 0 %}
-                    {# Loaded with pending docs #}
-                    {% if tipo == 'BANCO' %}
-                    <a href="{{ url_for('conciliacion.index', eid=eid, desde=mes, hasta=mes) }}"
+                    {# Loaded with pending items — always link to pendientes #}
+                    <a href="{{ url_for('pendientes.index', eid=eid, desde=mes, hasta=mes) }}"
                        class="badge text-decoration-none text-dark"
                        style="background:#fd7e14; font-size:.65rem;"
-                       title="{{ tipo }}: {{ lib['n_docs'] }} docs · {{ lib['pending'] }} por conciliar">
+                       title="{{ tipo }}: {{ lib['pending'] }} por procesar">
                       {{ short }}<sup>{{ lib['pending'] }}</sup>
                     </a>
-                    {% else %}
-                    <a href="{{ url_for('pendientes.index', eid=eid) }}"
-                       class="badge text-decoration-none text-dark"
-                       style="background:#fd7e14; font-size:.65rem;"
-                       title="{{ tipo }}: {{ lib['n_docs'] }} docs · {{ lib['pending'] }} por procesar">
-                      {{ short }}<sup>{{ lib['pending'] }}</sup>
-                    </a>
-                    {% endif %}
                   {% elif lib['loaded'] and lib['n_docs'] > 0 and lib['pending'] == 0 %}
                     {# Loaded with docs, all processed #}
                     <span class="badge bg-success" style="font-size:.65rem;"
@@ -217,8 +217,6 @@
                 </div>
                 {% endif %}
 
-                {# 5. F29 placeholder #}
-                <div style="font-size:.65rem; color:#bbb;" class="mt-1">F29?</div>
 
               {% endif %}
 

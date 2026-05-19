@@ -184,9 +184,6 @@
           <li><a class="nav-link {% if request.endpoint=='reportes.efe' %}active{% endif %}"
                  href="{{ url_for('reportes.efe', eid=empresa.id) }}">
             <i class="bi bi-cash-stack me-2"></i>Flujo de Efectivo</a></li>
-          <li><a class="nav-link {% if request.endpoint=='reportes.ap_ar' %}active{% endif %}"
-                 href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}">
-            <i class="bi bi-people-fill me-2"></i>AP / AR</a></li>
           <li><a class="nav-link {% if request.endpoint=='reportes.aging' %}active{% endif %}"
                  href="{{ url_for('reportes.aging', eid=empresa.id) }}">
             <i class="bi bi-hourglass-split me-2"></i>Antigüedad Saldos</a></li>
@@ -203,6 +200,9 @@
         <li><a class="nav-link {% if 'cuentas' in request.endpoint %}active{% endif %}"
                href="{{ url_for('cuentas.lista', eid=empresa.id) }}">
           <i class="bi bi-list-nested me-2"></i>Plan de Cuentas</a></li>
+        <li><a class="nav-link {% if request.endpoint=='asientos.apertura' %}active{% endif %}"
+               href="{{ url_for('asientos.apertura', eid=empresa.id) }}">
+          <i class="bi bi-journal-arrow-down me-2"></i>Saldos Iniciales</a></li>
         <li><a class="nav-link {% if request.endpoint in ('empresas.editar',) %}active{% endif %}"
                href="{{ url_for('empresas.editar', eid=empresa.id) }}">
           <i class="bi bi-building-gear me-2"></i>Empresa</a></li>

@@ -126,6 +126,25 @@
 
 </div>
 
+<!-- Alerta saldo acreedor en cuentas bancarias -->
+{% if cuentas_saldo_acreedor %}
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-3 py-2">
+  <i class="bi bi-exclamation-triangle-fill fs-5 mt-1 flex-shrink-0"></i>
+  <div>
+    <div class="fw-semibold mb-1">Saldo acreedor en cuenta{% if cuentas_saldo_acreedor|length > 1 %}s{% endif %} de banco/caja</div>
+    {% for c in cuentas_saldo_acreedor %}
+    <div class="small">
+      <span class="fw-semibold">{{ c.codigo }} {{ c.nombre }}</span>
+      — saldo contable:
+      <span class="fw-bold">$ {{ c.saldo|abs|clp }}</span> acreedor
+      <span class="text-muted">(puede indicar error contable o sobregiro)</span>
+    </div>
+    {% endfor %}
+    <a href="{{ url_for('asientos.lista', eid=empresa.id) }}" class="small">Revisar asientos →</a>
+  </div>
+</div>
+{% endif %}
+
 <!-- Actividad reciente -->
 {% if recientes %}
 <div class="card shadow-sm">

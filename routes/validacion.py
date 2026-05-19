@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request
 from datetime import date
-from models import Empresa, Asiento, LineaAsiento, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion
+from models import db, Empresa, Asiento, LineaAsiento, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion
 from sqlalchemy import func
 
 bp = Blueprint('validacion', __name__)
@@ -41,18 +41,21 @@ def index(eid):
                        .count())
     movs_pendientes = (MovimientoBanco.query
                        .filter_by(empresa_id=eid, procesado=False)
+                       .filter(MovimientoBanco.conciliacion_id == None)
                        .filter(MovimientoBanco.fecha >= desde, MovimientoBanco.fecha <= hasta)
                        .count())
 
-    # ── Conciliación bancaria ────────────────────────────────────────────────
-    # Saldo de cuenta banco al cierre del mes
+    # ── Movimientos bancarios del período ────────────────────────────────────
     c_banco = Cuenta.query.filter_by(empresa_id=eid, codigo='1.1.02').first()
     saldo_banco_sistema = c_banco.saldo(hasta=hasta) if c_banco else 0.0
 
-    saldo_cartola = request.args.get('saldo_cartola', None, type=float)
-    diferencia_banco = None
-    if saldo_cartola is not None:
-        diferencia_banco = saldo_banco_sistema - saldo_cartola
+    movs_periodo = (MovimientoBanco.query
+                    .filter_by(empresa_id=eid)
+                    .filter(MovimientoBanco.fecha >= desde, MovimientoBanco.fecha <= hasta)
+                    .all())
+    movs_total_periodo   = len(movs_periodo)
+    movs_procesados      = sum(1 for m in movs_periodo if m.procesado)
+    movs_sin_procesar    = movs_total_periodo - movs_procesados
 
     # ── Totales del período ─────────────────────────────────────────────────
     ingresos = sum(
@@ -89,8 +92,9 @@ def index(eid):
         docs_pendientes=docs_pendientes,
         movs_pendientes=movs_pendientes,
         saldo_banco_sistema=saldo_banco_sistema,
-        saldo_cartola=saldo_cartola,
-        diferencia_banco=diferencia_banco,
+        movs_total_periodo=movs_total_periodo,
+        movs_procesados=movs_procesados,
+        movs_sin_procesar=movs_sin_procesar,
         ingresos=ingresos,
         gastos=gastos,
         resultado=ingresos - gastos,

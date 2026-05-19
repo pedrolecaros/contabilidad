@@ -1,7 +1,7 @@
 import json
 import calendar
 from datetime import date as date_
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from models import db, Empresa, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion
 from engine import asientos as motor
 from engine.asientos import confirmar_asiento
@@ -91,21 +91,36 @@ def index(eid):
         'HONORARIOS': [_fmt(d) for d in docs_nc if d.tipo_libro == 'HONORARIOS'],
     }
     cuentas_map = {str(c.id): c.codigo for c in cuentas}
+    cuentas_nat = {str(c.id): c.naturaleza for c in cuentas}  # DEUDORA | ACREEDORA
 
     return render_template('pendientes/index.html', empresa=empresa,
                            docs=docs, movs=movs, cuentas=cuentas,
                            desde_mes=desde_mes, hasta_mes=hasta_mes,
                            docs_por_tipo_json=json.dumps(docs_por_tipo),
                            cuentas_map_json=json.dumps(cuentas_map),
+                           cuentas_nat_json=json.dumps(cuentas_nat),
                            cuenta_codigo_tipo_json=json.dumps(CUENTA_CODIGO_TIPO))
+
+
+def _is_ajax():
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+
+def _err(msg, eid):
+    if _is_ajax():
+        return jsonify({'ok': False, 'error': msg}), 400
+    flash(msg, 'danger')
+    return redirect(url_for('pendientes.index', eid=eid))
 
 
 @bp.route('/empresa/<int:eid>/pendientes/contabilizar-doc/<int:did>', methods=['POST'])
 def contabilizar_doc(eid, did):
+    # Atomic check-and-lock: only proceed if currently unprocessed
+    rows = DocumentoSII.query.filter_by(id=did, procesado=False).update({'procesado': True})
+    db.session.flush()
+    if rows == 0:
+        return _err('Este documento ya fue procesado.', eid)
     doc = DocumentoSII.query.get_or_404(did)
-    if doc.procesado:
-        flash('Este documento ya fue procesado y tiene asiento contable.', 'warning')
-        return redirect(url_for('pendientes.index', eid=eid))
     confirmar = request.form.get('confirmar') == '1'
     try:
         if doc.tipo_libro == 'COMPRAS':
@@ -115,8 +130,7 @@ def contabilizar_doc(eid, did):
         elif doc.tipo_libro == 'HONORARIOS':
             asiento = motor.generar_asiento_honorario(doc)
         else:
-            flash('Tipo de libro desconocido', 'danger')
-            return redirect(url_for('pendientes.index', eid=eid))
+            return _err('Tipo de libro desconocido.', eid)
 
         if confirmar:
             try:
@@ -125,39 +139,66 @@ def contabilizar_doc(eid, did):
                 flash(f'Asiento N°{asiento.numero} creado pero no cuadra: {e}', 'warning')
                 confirmar = False
 
-        doc.procesado = True
         doc.asiento_id = asiento.id
         db.session.commit()
         msg = f'Asiento N°{asiento.numero} generado y confirmado' if confirmar else f'Asiento N°{asiento.numero} generado en borrador'
         flash(msg, 'success')
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            lineas = [{'cuenta': f"{l.cuenta.codigo} {l.cuenta.nombre}",
+                       'debe': int(l.debe or 0), 'haber': int(l.haber or 0),
+                       'descripcion': l.descripcion or ''}
+                      for l in asiento.lineas]
+            return jsonify({'ok': True, 'numero': asiento.numero, 'msg': msg,
+                            'url': url_for('asientos.detalle', eid=eid, aid=asiento.id),
+                            'edit_url': url_for('asientos.editar', eid=eid, aid=asiento.id),
+                            'respaldo_post_url': url_for('asientos.subir_respaldo', eid=eid, aid=asiento.id),
+                            'lineas': lineas})
         return redirect(url_for('asientos.detalle', eid=eid, aid=asiento.id))
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {e}', 'danger')
-        return redirect(url_for('pendientes.index', eid=eid))
+        # Undo the atomic lock so the document can be retried
+        DocumentoSII.query.filter_by(id=did).update({'procesado': False})
+        db.session.commit()
+        return _err(str(e), eid)
 
 
 @bp.route('/empresa/<int:eid>/pendientes/contabilizar-banco/<int:mid>', methods=['POST'])
 def contabilizar_banco(eid, mid):
+    # Atomic check-and-lock: only proceed if currently unprocessed
+    rows = MovimientoBanco.query.filter_by(id=mid, procesado=False).update({'procesado': True})
+    db.session.flush()
+    if rows == 0:
+        return _err('Este movimiento ya fue procesado.', eid)
     mov = MovimientoBanco.query.get_or_404(mid)
-    if mov.procesado:
-        flash('Este movimiento bancario ya fue procesado y tiene asiento contable.', 'warning')
-        return redirect(url_for('pendientes.index', eid=eid))
     cuenta_id = request.form.get('cuenta_id', type=int)
     confirmar = request.form.get('confirmar') == '1'
     doc_conciliar_id = request.form.get('doc_conciliar_id', type=int)
+    cuota_id = request.form.get('cuota_id', type=int)
     if not cuenta_id:
-        flash('Seleccione una cuenta contraparte', 'danger')
-        return redirect(url_for('pendientes.index', eid=eid))
+        MovimientoBanco.query.filter_by(id=mid).update({'procesado': False})
+        db.session.commit()
+        return _err('Seleccione una cuenta contraparte.', eid)
     try:
-        asiento = motor.generar_asiento_banco(mov, cuenta_id)
+        if cuota_id:
+            from models import CuotaPrestamo
+            from engine.asientos import generar_asiento_cuota_prestamo
+            cuota = CuotaPrestamo.query.get(cuota_id)
+            if cuota and cuota.prestamo.empresa_id == eid:
+                asiento = generar_asiento_cuota_prestamo(cuota)
+                cuota.pagada = True
+                cuota.fecha_pago = mov.fecha
+                cuota.asiento_id = asiento.id
+                cuota.movimiento_banco_id = mov.id
+            else:
+                asiento = motor.generar_asiento_banco(mov, cuenta_id)
+        else:
+            asiento = motor.generar_asiento_banco(mov, cuenta_id)
         if confirmar:
             try:
                 confirmar_asiento(asiento)
             except ValueError as e:
                 flash(f'Asiento N°{asiento.numero} creado pero no cuadra: {e}', 'warning')
                 confirmar = False
-        mov.procesado = True
         mov.asiento_id = asiento.id
 
         # Vincular documento SII si se seleccionó
@@ -165,6 +206,28 @@ def contabilizar_banco(eid, mid):
         if doc_conciliar_id:
             doc_vinculado = DocumentoSII.query.get(doc_conciliar_id)
             if doc_vinculado and doc_vinculado.empresa_id == eid:
+                # Generar asiento SII del doc si aún no lo tiene
+                if not doc_vinculado.procesado:
+                    try:
+                        if doc_vinculado.tipo_libro == 'COMPRAS':
+                            asiento_doc = motor.generar_asiento_compra(doc_vinculado)
+                        elif doc_vinculado.tipo_libro == 'VENTAS':
+                            asiento_doc = motor.generar_asiento_venta(doc_vinculado)
+                        elif doc_vinculado.tipo_libro == 'HONORARIOS':
+                            asiento_doc = motor.generar_asiento_honorario(doc_vinculado)
+                        else:
+                            asiento_doc = None
+                        if asiento_doc:
+                            if confirmar:
+                                try:
+                                    confirmar_asiento(asiento_doc)
+                                except ValueError:
+                                    pass
+                            doc_vinculado.procesado = True
+                            doc_vinculado.asiento_id = asiento_doc.id
+                    except Exception:
+                        pass  # si falla el asiento SII no bloqueamos el banco
+
                 conc = Conciliacion(
                     empresa_id=eid,
                     fecha=mov.fecha or date_.today(),
@@ -182,11 +245,23 @@ def contabilizar_banco(eid, mid):
         if doc_vinculado:
             msg += f' · conciliado con {doc_vinculado.tipo_libro} folio {doc_vinculado.folio}'
         flash(msg, 'success')
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            lineas = [{'cuenta': f"{l.cuenta.codigo} {l.cuenta.nombre}",
+                       'debe': int(l.debe or 0), 'haber': int(l.haber or 0),
+                       'descripcion': l.descripcion or ''}
+                      for l in asiento.lineas]
+            return jsonify({'ok': True, 'numero': asiento.numero, 'msg': msg,
+                            'url': url_for('asientos.detalle', eid=eid, aid=asiento.id),
+                            'edit_url': url_for('asientos.editar', eid=eid, aid=asiento.id),
+                            'respaldo_post_url': url_for('asientos.subir_respaldo', eid=eid, aid=asiento.id),
+                            'lineas': lineas})
         return redirect(url_for('asientos.detalle', eid=eid, aid=asiento.id))
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {e}', 'danger')
-        return redirect(url_for('pendientes.index', eid=eid))
+        # Undo the atomic lock so the movement can be retried
+        MovimientoBanco.query.filter_by(id=mid).update({'procesado': False})
+        db.session.commit()
+        return _err(str(e), eid)
 
 
 @bp.route('/empresa/<int:eid>/pendientes/eliminar-doc/<int:did>', methods=['POST'])

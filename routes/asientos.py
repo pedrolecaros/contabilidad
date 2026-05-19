@@ -12,6 +12,39 @@ def _cuentas_json(cuentas):
     return json.dumps([{'id': c.id, 'codigo': c.codigo, 'nombre': c.nombre} for c in cuentas])
 
 
+def _prestamo_dict(p):
+    capital_pendiente = sum(c.capital for c in p.cuotas if not c.pagada)
+    if not p.cuotas:
+        capital_pendiente = p.monto_original
+    return {
+        'id': p.id,
+        'nombre': p.nombre,
+        'tipo': p.tipo,
+        'moneda': p.moneda,
+        'acreedor_deudor': p.acreedor_deudor or '',
+        'capital_pendiente': capital_pendiente,
+    }
+
+
+_PRESTAMO_CODIGOS = {'2.1.10': 'PAGAR', '2.1.11': 'PAGAR', '2.1.12': 'PAGAR',
+                     '1.1.11': 'COBRAR', '1.1.12': 'COBRAR', '1.1.13': 'COBRAR'}
+
+
+def _save_prestamo_link(asiento, prestamo_id_str):
+    """Link asiento to a prestamo (without marking any cuota as paid)."""
+    from models import Prestamo as _Prestamo
+    if prestamo_id_str:
+        try:
+            pid = int(prestamo_id_str)
+            p = _Prestamo.query.get(pid)
+            if p and p.empresa_id == asiento.empresa_id:
+                asiento.prestamo_id = pid
+                return
+        except (ValueError, AttributeError):
+            pass
+    asiento.prestamo_id = None
+
+
 def _guardar_lineas(asiento_id, form):
     LineaAsiento.query.filter_by(asiento_id=asiento_id).delete()
     cuenta_ids = form.getlist('cuenta_id[]')
@@ -43,6 +76,19 @@ TIPOS_CONC_LABEL = {
     'INTERNO':'Manual', 'OTRO':     'Manual',
 }
 
+ORIGEN_LABEL = {
+    'MANUAL':        'Manual',
+    'APERTURA':      'Apertura',
+    'BANCO':         'Banco',
+    'LIBRO_COMPRAS': 'Compras',
+    'LIBRO_VENTAS':  'Ventas',
+    'HONORARIOS':    'Honorarios',
+    'PRESTAMO':      'Préstamo',
+    'REMUNERACION':  'Remuneración',
+    'DEPRECIACION':  'Depreciación',
+    'VACACIONES':    'Vacaciones',
+}
+
 
 @bp.route('/empresa/<int:eid>/asientos')
 def lista(eid):
@@ -58,8 +104,11 @@ def lista(eid):
     q = Asiento.query.filter_by(empresa_id=eid)
     if origen:
         q = q.filter_by(origen=origen)
-    if estado:
+    if estado and estado != 'TODOS':
         q = q.filter_by(estado=estado)
+    elif estado != 'TODOS':
+        # Default: hide anulados unless user explicitly chose TODOS
+        q = q.filter(Asiento.estado != 'ANULADO')
     if descripcion:
         q = q.filter(Asiento.descripcion.ilike(f'%{descripcion}%'))
     if desde_str:
@@ -177,6 +226,7 @@ def nuevo(eid):
         db.session.add(asiento)
         db.session.flush()
         _guardar_lineas(asiento.id, request.form)
+        _save_prestamo_link(asiento, request.form.get('prestamo_vinculado', ''))
         if accion == 'borrador':
             registrar_auditoria(asiento, 'CREAR', f'Asiento N°{numero} guardado como borrador')
             db.session.commit()
@@ -194,9 +244,12 @@ def nuevo(eid):
 
     ultimo_asiento = Asiento.query.filter_by(empresa_id=eid, estado='CONFIRMADO').order_by(Asiento.fecha.desc()).first()
     fecha_default = ultimo_asiento.fecha.isoformat() if ultimo_asiento else date.today().isoformat()
+    from models import Prestamo as _Prestamo
+    prestamos_eid = _Prestamo.query.filter_by(empresa_id=eid, activo=True).order_by(_Prestamo.nombre).all()
+    prestamos_json = json.dumps([_prestamo_dict(p) for p in prestamos_eid])
     return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
                            cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]',
-                           fecha_default=fecha_default)
+                           fecha_default=fecha_default, prestamos_json=prestamos_json)
 
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/editar', methods=['GET', 'POST'])
@@ -229,6 +282,7 @@ def editar(eid, aid):
         # else: keep existing respaldo_url unchanged
         asiento.estado = 'BORRADOR'
         _guardar_lineas(asiento.id, request.form)
+        _save_prestamo_link(asiento, request.form.get('prestamo_vinculado', ''))
         if accion == 'borrador':
             registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado y guardado como borrador')
             db.session.commit()
@@ -242,6 +296,23 @@ def editar(eid, aid):
             registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado (no cuadra)')
             db.session.commit()
             flash(f'Asiento N°{asiento.numero} guardado en borrador — no cuadra (Debe {asiento.total_debe:,.0f} ≠ Haber {asiento.total_haber:,.0f})', 'warning')
+        # Sync PagoCuota.monto if this asiento is linked to a payment record
+        from models import PagoCuota as _PagoCuota
+        pago_vinculado = _PagoCuota.query.filter_by(asiento_id=asiento.id).first()
+        if pago_vinculado:
+            nuevo_monto = round(max(asiento.total_debe or 0, asiento.total_haber or 0))
+            pago_vinculado.monto = nuevo_monto
+            # Re-evaluate if the cuota is now fully paid
+            cuota_v = pago_vinculado.cuota
+            if cuota_v:
+                total_pagado = sum(p.monto for p in cuota_v.pagos)
+                cuota_ref = float(cuota_v.cuota_total_pesos or cuota_v.cuota_total or 0)
+                cuota_v.pagada = cuota_ref > 0 and total_pagado >= cuota_ref * 0.99
+            db.session.commit()
+
+        back = request.form.get('next_url', '').strip()
+        if back:
+            return redirect(url_for('asientos.detalle', eid=eid, aid=aid, back=back))
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
     lineas_json = json.dumps([{
@@ -251,9 +322,19 @@ def editar(eid, aid):
         'descripcion': l.descripcion or '',
     } for l in asiento.lineas])
 
+    # Load prestamos for the selector
+    from models import Prestamo as _Prestamo
+    prestamos_eid = _Prestamo.query.filter_by(empresa_id=eid, activo=True).order_by(_Prestamo.nombre).all()
+    prestamos_json = json.dumps([_prestamo_dict(p) for p in prestamos_eid])
+
+    back_url = (request.args.get('next', '').strip()
+                or request.referrer
+                or url_for('asientos.lista', eid=eid))
     return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
                            cuentas_json=_cuentas_json(cuentas),
-                           asiento=asiento, lineas_json=lineas_json)
+                           asiento=asiento, lineas_json=lineas_json,
+                           prestamos_json=prestamos_json,
+                           back_url=back_url)
 
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/eliminar', methods=['POST'])
@@ -340,14 +421,101 @@ def detalle(eid, aid):
     conc_mes = asiento.fecha.strftime('%Y-%m') if asiento.fecha else None
 
     audits = asiento.audits.order_by(None).order_by(db.text('creado_en ASC')).all()
+    back_url = request.args.get('back', '').strip()
     return render_template('asientos/detalle.html', empresa=empresa, asiento=asiento,
                            prev_id=prev_a.id if prev_a else None,
                            next_id=next_a.id if next_a else None,
                            conc=conc, conc_mes=conc_mes,
                            audits=audits,
+                           back_url=back_url,
                            origenes_conc=ORIGENES_CONC,
                            origenes_sii=ORIGENES_SII,
                            tipos_conc_label=TIPOS_CONC_LABEL)
+
+
+@bp.route('/empresa/<int:eid>/asientos/apertura', methods=['GET', 'POST'])
+def apertura(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    cuentas = (Cuenta.query
+               .filter_by(empresa_id=eid, es_titulo=False, activa=True)
+               .order_by(Cuenta.codigo)
+               .all())
+
+    ORDEN_TIPO = {'ACTIVO': 0, 'PASIVO': 1, 'PATRIMONIO': 2, 'INGRESO': 3, 'GASTO': 4}
+    cuentas_sorted = sorted(cuentas, key=lambda c: (ORDEN_TIPO.get(c.tipo, 9), c.codigo))
+
+    if request.method == 'POST':
+        fecha_str  = request.form.get('fecha', '').strip()
+        descripcion = request.form.get('descripcion', 'Asiento de apertura').strip()
+        accion     = request.form.get('accion', 'confirmar')
+
+        try:
+            fecha = date.fromisoformat(fecha_str)
+        except ValueError:
+            flash('Fecha inválida', 'danger')
+            return redirect(url_for('asientos.apertura', eid=eid))
+
+        lineas = []
+        for c in cuentas:
+            debe_str  = request.form.get(f'debe_{c.id}',  '').strip().replace('.', '').replace(',', '.')
+            haber_str = request.form.get(f'haber_{c.id}', '').strip().replace('.', '').replace(',', '.')
+            desc      = request.form.get(f'desc_{c.id}',  '').strip()
+            debe  = float(debe_str)  if debe_str  else 0.0
+            haber = float(haber_str) if haber_str else 0.0
+            if debe > 0 or haber > 0:
+                lineas.append({'cuenta_id': c.id, 'debe': debe, 'haber': haber, 'descripcion': desc})
+
+        if not lineas:
+            flash('Ingresa al menos un saldo para crear el asiento.', 'warning')
+            return redirect(url_for('asientos.apertura', eid=eid))
+
+        total_debe  = sum(l['debe']  for l in lineas)
+        total_haber = sum(l['haber'] for l in lineas)
+
+        if accion == 'confirmar' and abs(total_debe - total_haber) > 0.5:
+            flash(f'El asiento no cuadra — Debe {total_debe:,.0f} ≠ Haber {total_haber:,.0f}. '
+                  f'Diferencia: {abs(total_debe - total_haber):,.0f}. Guardado como borrador.', 'warning')
+            accion = 'borrador'
+
+        numero = (db.session.query(db.func.max(Asiento.numero))
+                  .filter_by(empresa_id=eid).scalar() or 0) + 1
+
+        asiento = Asiento(
+            empresa_id  = eid,
+            numero      = numero,
+            fecha       = fecha,
+            descripcion = descripcion,
+            origen      = 'APERTURA',
+            estado      = 'CONFIRMADO' if accion == 'confirmar' else 'BORRADOR',
+        )
+        db.session.add(asiento)
+        db.session.flush()
+
+        for l in lineas:
+            db.session.add(LineaAsiento(
+                asiento_id  = asiento.id,
+                cuenta_id   = l['cuenta_id'],
+                debe        = l['debe'],
+                haber       = l['haber'],
+                descripcion = '',
+            ))
+
+        from engine.auditoria import registrar_auditoria
+        registrar_auditoria(asiento, 'CREAR', f'Asiento de apertura N°{numero}')
+        db.session.commit()
+        flash(f'Asiento de apertura N°{numero} creado.', 'success')
+        return redirect(url_for('asientos.detalle', eid=eid, aid=asiento.id))
+
+    # GET — check if one already exists
+    existente = (Asiento.query
+                 .filter_by(empresa_id=eid, origen='APERTURA')
+                 .order_by(Asiento.fecha.desc())
+                 .first())
+
+    return render_template('asientos/apertura.html',
+                           empresa=empresa,
+                           cuentas=cuentas_sorted,
+                           existente=existente)
 
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/confirmar', methods=['POST'])
@@ -382,6 +550,40 @@ def recuperar(eid, aid):
     asiento.estado = 'BORRADOR'
     db.session.commit()
     flash(f'Asiento N°{asiento.numero} recuperado como borrador', 'success')
+    return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
+
+
+@bp.route('/empresa/<int:eid>/asientos/<int:aid>/respaldo', methods=['POST'])
+def subir_respaldo(eid, aid):
+    asiento = Asiento.query.get_or_404(aid)
+    respaldo_file = request.files.get('respaldo_file')
+    respaldo_url_form = request.form.get('respaldo_url', '').strip()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    if respaldo_file and respaldo_file.filename:
+        from storage import save_attachment
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+        try:
+            asiento.respaldo_url = save_attachment(respaldo_file, respaldo_file.filename, upload_folder)
+        except ValueError as e:
+            if is_ajax:
+                return jsonify({'ok': False, 'error': str(e)}), 400
+            flash(str(e), 'warning')
+            return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
+    elif respaldo_url_form:
+        asiento.respaldo_url = respaldo_url_form
+    else:
+        if is_ajax:
+            return jsonify({'ok': False, 'error': 'Ingrese un archivo o URL de respaldo.'}), 400
+        flash('Ingrese un archivo o URL de respaldo.', 'warning')
+        return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
+
+    db.session.commit()
+    if is_ajax:
+        from storage import attachment_url as _att_url
+        return jsonify({'ok': True, 'respaldo_url': asiento.respaldo_url,
+                        'respaldo_href': _att_url(asiento.respaldo_url)})
+    flash('Respaldo actualizado', 'success')
     return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
 

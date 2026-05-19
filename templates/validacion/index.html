@@ -25,19 +25,6 @@
   </div>
 </form>
 
-<!-- Saldo cartola (formulario separado para no cambiar el período) -->
-<form class="row g-2 mb-4" method="get">
-  <input type="hidden" name="periodo" value="{{ ano }}-{{ '%02d' % mes }}">
-  <div class="col-auto">
-    <input type="number" name="saldo_cartola" class="form-control form-control-sm"
-           placeholder="Saldo cartola banco ($)"
-           value="{{ saldo_cartola if saldo_cartola is not none else '' }}"
-           style="width:200px">
-  </div>
-  <div class="col-auto">
-    <button type="submit" class="btn btn-sm btn-outline-secondary">Conciliar</button>
-  </div>
-</form>
 
 <div class="row g-3">
 
@@ -136,41 +123,41 @@
     </div>
   </div>
 
-  <!-- Conciliación bancaria -->
+  <!-- Movimientos bancarios -->
   <div class="col-md-6">
     <div class="card shadow-sm">
       <div class="card-header
-        {% if diferencia_banco is not none %}
-          {% if diferencia_banco|abs < 1 %}bg-success text-white{% else %}bg-danger text-white{% endif %}
-        {% else %}bg-secondary text-white{% endif %}">
-        <i class="bi bi-bank me-1"></i>Conciliación Bancaria (Cta. Corriente)
+        {% if movs_total_periodo == 0 %}bg-secondary text-white
+        {% elif movs_sin_procesar == 0 %}bg-success text-white
+        {% else %}bg-warning text-dark{% endif %}">
+        <i class="bi bi-bank me-1"></i>Movimientos Bancarios
       </div>
       <ul class="list-group list-group-flush">
         <li class="list-group-item d-flex justify-content-between py-2 small">
-          <span>Saldo sistema al {{ hasta|fecha_cl }}</span>
-          <span class="fw-semibold">{{ saldo_banco_sistema|clp }}</span>
+          <span>Movimientos en el período</span>
+          <span class="fw-semibold">{{ movs_total_periodo }}</span>
         </li>
-        {% if saldo_cartola is not none %}
         <li class="list-group-item d-flex justify-content-between py-2 small">
-          <span>Saldo cartola ingresado</span>
-          <span class="fw-semibold">{{ saldo_cartola|clp }}</span>
-        </li>
-        <li class="list-group-item d-flex justify-content-between py-2 small fw-bold
-                   {% if diferencia_banco|abs < 1 %}text-success{% else %}text-danger{% endif %}">
-          <span>Diferencia</span>
-          <span>{{ diferencia_banco|abs|clp }}
-            {% if diferencia_banco|abs < 1 %}
+          <span>Contabilizados</span>
+          <span class="fw-semibold {% if movs_sin_procesar == 0 and movs_total_periodo > 0 %}text-success{% endif %}">
+            {{ movs_procesados }}
+            {% if movs_sin_procesar == 0 and movs_total_periodo > 0 %}
               <i class="bi bi-check-circle ms-1"></i>
-            {% else %}
-              <i class="bi bi-exclamation-triangle ms-1"></i>
             {% endif %}
           </span>
         </li>
-        {% else %}
-        <li class="list-group-item py-2 small text-muted">
-          Ingresa el saldo de la cartola en el formulario de arriba para conciliar.
+        {% if movs_sin_procesar > 0 %}
+        <li class="list-group-item d-flex justify-content-between py-2 small fw-bold text-danger">
+          <span>Sin contabilizar</span>
+          <span>{{ movs_sin_procesar }} <i class="bi bi-exclamation-triangle ms-1"></i></span>
         </li>
         {% endif %}
+        <li class="list-group-item d-flex justify-content-between py-2 small">
+          <span>Saldo contable {{ 'Banco'|upper }} al {{ hasta|fecha_cl }}</span>
+          <span class="fw-semibold {% if saldo_banco_sistema >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {{ saldo_banco_sistema|clp }}
+          </span>
+        </li>
         <li class="list-group-item py-2">
           <a href="{{ url_for('conciliacion.index', eid=empresa.id) }}" class="btn btn-outline-info btn-sm">Ir a Conciliación →</a>
         </li>
@@ -213,7 +200,7 @@
                 <a href="{{ url_for('conciliacion.index', eid=empresa.id,
                            desde=c.fecha.strftime('%Y-%m'), hasta=c.fecha.strftime('%Y-%m')) }}"
                    class="btn btn-xs btn-sm btn-outline-warning py-0 px-2">
-                  <i class="bi bi-link-45deg me-1"></i>Ir a conciliación
+                  <i class="bi bi-paperclip me-1"></i>Agregar respaldo
                 </a>
               </td>
             </tr>
@@ -224,7 +211,7 @@
               <td>{{ (a.descripcion or '—')[:60] }}</td>
               <td><span class="badge bg-secondary" style="font-size:.7rem">Asiento manual</span></td>
               <td>
-                <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+                <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id, next=request.url) }}"
                    class="btn btn-xs btn-sm btn-outline-warning py-0 px-2">
                   <i class="bi bi-pencil me-1"></i>Editar y agregar link
                 </a>

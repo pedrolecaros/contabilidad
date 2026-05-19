@@ -75,7 +75,10 @@ class Asiento(db.Model):
     estado = db.Column(db.String(15), default='BORRADOR')
     # BORRADOR, CONFIRMADO, ANULADO
     creado_en = db.Column(db.DateTime, default=datetime.now)
+    prestamo_id = db.Column(db.Integer, db.ForeignKey('prestamos.id'), nullable=True)
 
+    prestamo = db.relationship('Prestamo', foreign_keys=[prestamo_id],
+                               backref=db.backref('asientos_vinculados', lazy='dynamic'))
     lineas = db.relationship('LineaAsiento', backref='asiento', lazy='select',
                              cascade='all, delete-orphan',
                              order_by='LineaAsiento.orden')
@@ -304,6 +307,7 @@ class Prestamo(db.Model):
     empresa_relacionada_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=True)
     nombre = db.Column(db.String(200), nullable=False)
     tipo = db.Column(db.String(10), nullable=False)       # PAGAR | COBRAR
+    subtipo = db.Column(db.String(15), default='BANCARIO')  # BANCARIO | TERCEROS | RELACIONADA
     moneda = db.Column(db.String(5), default='PESOS')     # PESOS | UF
     monto_original = db.Column(db.Float, nullable=False)
     tasa_interes_anual = db.Column(db.Float, default=0.0)
@@ -328,7 +332,7 @@ class CuotaPrestamo(db.Model):
     __tablename__ = 'cuotas_prestamo'
     id = db.Column(db.Integer, primary_key=True)
     prestamo_id = db.Column(db.Integer, db.ForeignKey('prestamos.id'), nullable=False)
-    numero_cuota = db.Column(db.Integer, nullable=False)
+    numero_cuota = db.Column(db.Integer, nullable=True)
     fecha_vencimiento = db.Column(db.Date, nullable=False)
     capital = db.Column(db.Float, default=0.0)
     interes = db.Column(db.Float, default=0.0)
@@ -341,6 +345,39 @@ class CuotaPrestamo(db.Model):
     asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
     uf_valor_pago = db.Column(db.Float, nullable=True)
     cuota_total_pesos = db.Column(db.Float, nullable=True)
+    tipo = db.Column(db.String(20), default='REGULAR')  # REGULAR | EXTRAORDINARIO
+
+    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
+    pagos = db.relationship('PagoCuota', backref='cuota',
+                            cascade='all, delete-orphan', lazy='select',
+                            foreign_keys='PagoCuota.cuota_id')
+
+    @property
+    def monto_pagado_total(self):
+        total = sum(p.monto for p in self.pagos)
+        if not total and self.pagada and self.cuota_total:
+            return float(self.cuota_total)
+        return total
+
+    @property
+    def monto_pendiente(self):
+        return max(0.0, (self.cuota_total or 0) - self.monto_pagado_total)
+
+    @property
+    def pagada_parcialmente(self):
+        return self.monto_pagado_total > 0 and not self.pagada
+
+
+class PagoCuota(db.Model):
+    __tablename__ = 'pagos_cuota'
+    id = db.Column(db.Integer, primary_key=True)
+    cuota_id = db.Column(db.Integer, db.ForeignKey('cuotas_prestamo.id'), nullable=False)
+    monto = db.Column(db.Float, nullable=False)
+    fecha = db.Column(db.Date, nullable=False)
+    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
+    sin_efecto_contable = db.Column(db.Boolean, default=False)
+    notas = db.Column(db.String(300))
+    creado_en = db.Column(db.DateTime, default=datetime.now)
 
     asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
 

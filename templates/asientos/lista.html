@@ -45,10 +45,11 @@
     </div>
     <div class="col-auto">
       <select name="estado" class="form-select form-select-sm">
-        <option value="">Todos los estados</option>
-        <option value="BORRADOR"   {% if estado=='BORRADOR' %}selected{% endif %}>Borrador</option>
-        <option value="CONFIRMADO" {% if estado=='CONFIRMADO' %}selected{% endif %}>Confirmado</option>
-        <option value="ANULADO"    {% if estado=='ANULADO' %}selected{% endif %}>Anulado</option>
+        <option value=""  {% if estado=='' and 'estado' not in request.args %}selected{% endif %}>Confirmados y borradores</option>
+        <option value="CONFIRMADO" {% if estado=='CONFIRMADO' %}selected{% endif %}>Solo confirmados</option>
+        <option value="BORRADOR"   {% if estado=='BORRADOR' %}selected{% endif %}>Solo borrador</option>
+        <option value="ANULADO"    {% if estado=='ANULADO' %}selected{% endif %}>Solo anulados</option>
+        <option value="TODOS"      {% if estado=='TODOS' %}selected{% endif %}>Todos (incl. anulados)</option>
       </select>
     </div>
     <div class="col-auto">
@@ -196,16 +197,33 @@
                   <i class="bi bi-link me-1"></i>Sin conciliar
                 </a>
               {% else %}
-                <a href="{{ url_for('conciliacion.index', eid=empresa.id, mes=a.fecha.strftime('%Y-%m')) }}"
-                   class="badge text-decoration-none text-white"
-                   style="background:#fd7e14"
-                   title="Sin respaldo de pago">
+                {# BANCO origin: Sin respaldo button #}
+                {% if not a.respaldo_url %}
+                <button type="button"
+                   class="badge border-0 text-white btn-sin-respaldo"
+                   style="background:#fd7e14; cursor:pointer"
+                   data-aid="{{ a.id }}"
+                   data-url="{{ url_for('asientos.subir_respaldo', eid=empresa.id, aid=a.id) }}"
+                   title="Sin respaldo — clic para subir">
                   <i class="bi bi-exclamation-circle me-1"></i>Sin respaldo
-                </a>
+                </button>
+                {% else %}
+                  <span class="badge bg-secondary">OK</span>
+                {% endif %}
               {% endif %}
             {% else %}
               <span class="text-muted small">—</span>
             {% endif %}
+          {% elif a.estado == 'CONFIRMADO' and not a.respaldo_url %}
+            {# MANUAL or other origin: show Sin respaldo button if no file attached #}
+            <button type="button"
+               class="badge border-0 text-white btn-sin-respaldo"
+               style="background:#fd7e14; cursor:pointer"
+               data-aid="{{ a.id }}"
+               data-url="{{ url_for('asientos.subir_respaldo', eid=empresa.id, aid=a.id) }}"
+               title="Sin respaldo — clic para subir">
+              <i class="bi bi-paperclip me-1"></i>Sin respaldo
+            </button>
           {% else %}
             <span class="text-muted small">—</span>
           {% endif %}
@@ -222,7 +240,7 @@
                     onclick="return setOneAndConfirm(event, {{ a.id }}, {{ a.numero }})">
               <i class="bi bi-check2"></i>
             </button>
-            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id, next=request.url) }}"
                class="btn btn-xs btn-sm btn-outline-primary py-0 px-1"
                title="Editar este asiento">
               <i class="bi bi-pencil"></i>
@@ -236,7 +254,7 @@
               </button>
             </form>
           {% elif a.estado == 'CONFIRMADO' %}
-            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id, next=request.url) }}"
                class="btn btn-xs btn-sm btn-outline-primary py-0 px-1"
                title="Editar asiento (lo revierte a borrador)">
               <i class="bi bi-pencil"></i>
@@ -278,6 +296,28 @@
 
 {% block scripts %}
 <script>
+// Preserve scroll position across form submits (confirm, batch, etc.)
+(function() {
+  const KEY = 'asientos_scroll_' + {{ empresa.id }};
+  const saved = sessionStorage.getItem(KEY);
+  if (saved !== null) {
+    window.scrollTo(0, parseInt(saved, 10));
+    sessionStorage.removeItem(KEY);
+  }
+  document.addEventListener('submit', function(e) {
+    const form = e.target;
+    // Save scroll for all POST forms except filters (which are GET)
+    if (form.method && form.method.toLowerCase() !== 'get') {
+      sessionStorage.setItem(KEY, window.scrollY);
+    }
+  });
+  // Also save on button clicks that trigger formLote submit
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('button[form="formLote"]');
+    if (btn) sessionStorage.setItem(KEY, window.scrollY);
+  });
+})();
+
 // Actualizar contador y botón confirmar lote
 function actualizarBarra() {
   const checks = document.querySelectorAll('.chk-asiento:checked');
@@ -397,5 +437,90 @@ function setOneAndConfirm(event, id, numero) {
   });
 })();
 
+// Modal respaldo desde lista
+document.querySelectorAll('.btn-sin-respaldo').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const url = this.dataset.url;
+    document.getElementById('formRespaldoLista').action = url;
+    document.getElementById('respaldoListaMsg').style.display = 'none';
+    document.getElementById('respaldoListaFile').value = '';
+    document.getElementById('respaldoListaUrl').value = '';
+    new bootstrap.Modal(document.getElementById('modalRespaldoLista')).show();
+  });
+});
+
+document.getElementById('formRespaldoLista').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const msgEl = document.getElementById('respaldoListaMsg');
+  const fd = new FormData(this);
+  try {
+    const resp = await fetch(this.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: fd,
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      msgEl.className = 'small mt-2 text-success';
+      msgEl.textContent = '✓ Respaldo guardado';
+      msgEl.style.display = 'block';
+      setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('modalRespaldoLista')).hide(), 1200);
+      // Replace the Sin respaldo button with a Respaldo badge
+      const activeBtn = document.querySelector('.btn-sin-respaldo[data-url="' + this.action + '"]');
+      if (activeBtn) {
+        const a = document.createElement('a');
+        a.href = data.respaldo_href || '#';
+        a.target = '_blank';
+        a.className = 'badge bg-secondary text-decoration-none text-white';
+        a.innerHTML = '<i class="bi bi-paperclip me-1"></i>Respaldo';
+        activeBtn.replaceWith(a);
+      }
+    } else {
+      msgEl.className = 'small mt-2 text-danger';
+      msgEl.textContent = data.error || 'Error al subir';
+      msgEl.style.display = 'block';
+    }
+  } catch(err) {
+    msgEl.className = 'small mt-2 text-danger';
+    msgEl.textContent = 'Error de conexión';
+    msgEl.style.display = 'block';
+  }
+});
+
 </script>
+
+<!-- Modal respaldo (lista) -->
+<div class="modal fade" id="modalRespaldoLista" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-paperclip me-2"></i>Agregar respaldo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="formRespaldoLista" action="#" method="post" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Subir archivo</label>
+            <input type="file" id="respaldoListaFile" name="respaldo_file"
+                   class="form-control form-control-sm"
+                   accept=".jpg,.jpeg,.png,.gif,.pdf,.webp">
+          </div>
+          <div class="text-center text-muted small mb-3">— o —</div>
+          <div>
+            <label class="form-label small fw-semibold">URL de respaldo</label>
+            <input type="url" id="respaldoListaUrl" name="respaldo_url"
+                   class="form-control form-control-sm" placeholder="https://...">
+          </div>
+          <div id="respaldoListaMsg" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-upload me-1"></i>Guardar respaldo
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}

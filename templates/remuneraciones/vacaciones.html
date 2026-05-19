@@ -152,7 +152,7 @@
           <td class="small text-muted">{{ v.notas or '' }}</td>
           <td class="text-center small">
             {% if v.asiento_id and v.asiento %}
-            <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=v.asiento_id) }}"
+            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=v.asiento_id, back=request.url) }}"
                target="_blank">N°{{ v.asiento.numero }}</a>
             {% else %}—{% endif %}
           </td>

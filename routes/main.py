@@ -80,16 +80,30 @@ def consolidado():
         .group_by(DocumentoSII.empresa_id, 'mes', DocumentoSII.tipo_libro).all())
     docs_pend = {(r.empresa_id, r.mes, r.tipo_libro): r.n for r in rows_doc}
 
-    # Movimientos bancarios pendientes by (eid, mes)
+    # Movimientos bancarios pendientes (unprocessed AND not conciliated) by (eid, mes)
+    # Must match the same filter pendientes.index uses so the count agrees with what you see there
     rows_mov = (db.session.query(
             MovimientoBanco.empresa_id,
             func.strftime('%Y-%m', MovimientoBanco.fecha).label('mes'),
             func.count(MovimientoBanco.id).label('n'),
         )
-        .filter(MovimientoBanco.empresa_id.in_(ids), MovimientoBanco.procesado == False,
+        .filter(MovimientoBanco.empresa_id.in_(ids),
+                MovimientoBanco.procesado == False,
+                MovimientoBanco.conciliacion_id == None,
                 MovimientoBanco.fecha >= fecha_desde)
         .group_by(MovimientoBanco.empresa_id, 'mes').all())
     movs_pend = {(r.empresa_id, r.mes): r.n for r in rows_mov}
+
+    # All bank movements (any state) by (eid, mes): total count + loaded detection
+    rows_movs_all = (db.session.query(
+            MovimientoBanco.empresa_id,
+            func.strftime('%Y-%m', MovimientoBanco.fecha).label('mes'),
+            func.count(MovimientoBanco.id).label('n'),
+        )
+        .filter(MovimientoBanco.empresa_id.in_(ids), MovimientoBanco.fecha >= fecha_desde)
+        .group_by(MovimientoBanco.empresa_id, 'mes').all())
+    movs_any   = {(r.empresa_id, r.mes) for r in rows_movs_all}
+    movs_total = {(r.empresa_id, r.mes): r.n for r in rows_movs_all}
 
     # Liquidaciones by (eid, periodo)
     rows_liq = (db.session.query(
@@ -122,11 +136,14 @@ def consolidado():
         for mes in meses:
             libros = {}
             for tipo in TIPOS:
-                loaded  = (e.id, mes, tipo) in archivos_loaded
-                n_docs  = archivos_data.get((e.id, mes, tipo), 0)
                 if tipo == 'BANCO':
+                    # Consider loaded if ArchivoImportado has it OR any MovimientoBanco exists
+                    loaded  = (e.id, mes, tipo) in archivos_loaded or (e.id, mes) in movs_any
+                    n_docs  = archivos_data.get((e.id, mes, tipo), 0) or movs_total.get((e.id, mes), 0)
                     pending = movs_pend.get((e.id, mes), 0)
                 else:
+                    loaded  = (e.id, mes, tipo) in archivos_loaded
+                    n_docs  = archivos_data.get((e.id, mes, tipo), 0)
                     pending = docs_pend.get((e.id, mes, tipo), 0)
                 libros[tipo] = {'loaded': loaded, 'n_docs': n_docs, 'pending': pending}
 

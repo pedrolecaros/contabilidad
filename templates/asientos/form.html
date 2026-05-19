@@ -92,6 +92,28 @@
             <div class="ms-auto" id="alertaCuadre"></div>
           </div>
 
+          {% if prestamos_json is defined %}
+          <div id="panelPrestamo" class="d-none mt-3 p-2 border rounded bg-light">
+            <label class="form-label fw-semibold small mb-1">
+              <i class="bi bi-link-45deg me-1 text-primary"></i>Vincular a préstamo
+            </label>
+            <input type="hidden" name="prestamo_vinculado" id="prestVinculadoVal"
+                   value="{% if asiento and asiento.prestamo_id %}{{ asiento.prestamo_id }}{% endif %}">
+            <div class="d-flex gap-2 align-items-center">
+              <span id="prestVinculadoLabel" class="text-muted small">— sin vincular —</span>
+              <button type="button" class="btn btn-outline-primary btn-sm"
+                      data-bs-toggle="modal" data-bs-target="#modalPrestamos">
+                <i class="bi bi-search me-1"></i>Seleccionar préstamo
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnDesvincularPrest"
+                      onclick="desvincularPrestamo()" style="display:none">
+                <i class="bi bi-x me-1"></i>Desvincular
+              </button>
+            </div>
+            <div class="form-text">El asiento quedará asociado al préstamo; desde ahí podrás conciliar con la cuota correspondiente.</div>
+          </div>
+          {% endif %}
+
           <div class="d-flex gap-2 mt-4 align-items-center">
             <button type="submit" name="accion" value="confirmar" class="btn btn-primary">
               <i class="bi bi-check-circle me-1"></i>Confirmar
@@ -99,9 +121,9 @@
             <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
               <i class="bi bi-file-earmark me-1"></i>Borrador
             </button>
-            <a href="{{ url_for('asientos.lista', eid=empresa.id) }}"
-               class="btn btn-link text-secondary ms-2">
-              Cancelar
+            <input type="hidden" name="next_url" value="{{ back_url }}">
+            <a href="{{ back_url }}" class="btn btn-link text-secondary ms-2">
+              <i class="bi bi-arrow-left me-1"></i>Volver
             </a>
           </div>
         </form>
@@ -109,16 +131,79 @@
     </div>
   </div>
 </div>
+<!-- Modal seleccionar préstamo -->
+{% if prestamos_json is defined %}
+<div class="modal fade" id="modalPrestamos" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-bank me-2"></i>Seleccionar préstamo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="px-3 pt-3 pb-2">
+          <input type="text" id="filtroPrestamo" class="form-control form-control-sm"
+                 placeholder="Buscar por nombre o acreedor/deudor…"
+                 oninput="filtrarPrestamos(this.value)">
+        </div>
+        <table class="table table-hover table-sm mb-0">
+          <thead class="table-secondary">
+            <tr>
+              <th>Nombre</th>
+              <th>Tipo</th>
+              <th>Acreedor / Deudor</th>
+              <th class="text-end">Capital pendiente</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tablaPrestamos"></tbody>
+        </table>
+        <div class="px-3 py-2 border-top">
+          <a href="{{ url_for('prestamos.nuevo', eid=empresa.id) }}" target="_blank"
+             class="btn btn-outline-success btn-sm">
+            <i class="bi bi-plus-circle me-1"></i>Crear nuevo préstamo
+          </a>
+          <small class="text-muted ms-2">Se abrirá en una nueva pestaña</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 const cuentas = {{ cuentas_json|safe }};
 const lineasIniciales = {{ lineas_json|safe }};
+const PRESTAMOS_FORM = {{ prestamos_json|safe if prestamos_json is defined else '[]' }};
 let tomSelects = [];
+
+// Cuenta id → codigo map for detecting prestamo accounts
+const cuentaCodigoMapForm = {};
+cuentas.forEach(c => { cuentaCodigoMapForm[c.id] = c.codigo; });
+
+const CUENTAS_PRESTAMO_FORM = {
+  '2.1.10': 'PAGAR', '2.1.11': 'PAGAR', '2.1.12': 'PAGAR',
+  '1.1.11': 'COBRAR', '1.1.12': 'COBRAR', '1.1.13': 'COBRAR',
+};
 
 function descGlobal() {
   return document.querySelector('input[name="descripcion"]').value.trim();
+}
+
+// Show/hide the global prestamo selector based on whether any line uses a prestamo account
+function actualizarSelectorPrestamo() {
+  const hasPrestamo = Array.from(document.querySelectorAll('select[name="cuenta_id[]"]'))
+    .some(s => {
+      const v = s.value;
+      return v && CUENTAS_PRESTAMO_FORM[cuentaCodigoMapForm[v]];
+    });
+  const panel = document.getElementById('panelPrestamo');
+  if (panel) panel.classList.toggle('d-none', !hasPrestamo);
 }
 
 function agregarLinea(datos) {
@@ -153,7 +238,7 @@ function agregarLinea(datos) {
     <td class="text-center">
       <button type="button" class="btn btn-sm btn-link text-danger p-0"
               title="Eliminar esta línea"
-              onclick="this.closest('tr').remove(); actualizarTotales()">
+              onclick="this.closest('tr').remove(); actualizarTotales(); actualizarSelectorPrestamo()">
         <i class="bi bi-trash"></i>
       </button>
     </td>`;
@@ -172,6 +257,7 @@ function agregarLinea(datos) {
     create: false,
     placeholder: '-- buscar cuenta --',
     maxOptions: 200,
+    onChange: function() { actualizarSelectorPrestamo(); },
   });
 
   // Aplicar Cleave a los nuevos campos de monto
@@ -219,16 +305,90 @@ function actualizarTotales() {
     : `<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Diferencia: ${fmt(diff)}</span>`;
 }
 
+// Prestamo modal picker
+function fmtClp(n) {
+  return Math.round(n).toLocaleString('es-CL', {style:'currency', currency:'CLP', minimumFractionDigits:0});
+}
+
+function renderFilaPrestamo(p) {
+  const tipoLabel = p.tipo === 'PAGAR' ? 'Por pagar' : 'Por cobrar';
+  const monto = p.moneda === 'UF'
+    ? `UF ${p.capital_pendiente.toLocaleString('es-CL', {minimumFractionDigits:2, maximumFractionDigits:2})}`
+    : fmtClp(p.capital_pendiente);
+  return `<tr class="prestamo-row" data-search="${(p.nombre+' '+(p.acreedor_deudor||'')).toLowerCase()}"
+               style="cursor:pointer" onclick="seleccionarPrestamo(${p.id}, '${p.nombre.replace(/'/g,"\\'")}')">
+    <td class="fw-semibold">${p.nombre}</td>
+    <td><span class="badge ${p.tipo==='PAGAR'?'bg-danger':'bg-success'}">${tipoLabel}</span></td>
+    <td class="text-muted small">${p.acreedor_deudor || '—'}</td>
+    <td class="text-end">${monto}</td>
+    <td class="text-end"><button type="button" class="btn btn-primary btn-sm py-0"
+        onclick="event.stopPropagation();seleccionarPrestamo(${p.id}, '${p.nombre.replace(/'/g,"\\'")}')">
+      Seleccionar</button></td>
+  </tr>`;
+}
+
+function poblarTablaPrestamos() {
+  const tbody = document.getElementById('tablaPrestamos');
+  if (!tbody) return;
+  tbody.innerHTML = PRESTAMOS_FORM.length
+    ? PRESTAMOS_FORM.map(renderFilaPrestamo).join('')
+    : '<tr><td colspan="5" class="text-center text-muted py-3">No hay préstamos activos</td></tr>';
+}
+
+function filtrarPrestamos(q) {
+  const term = q.toLowerCase().trim();
+  document.querySelectorAll('#tablaPrestamos .prestamo-row').forEach(tr => {
+    tr.style.display = (!term || tr.dataset.search.includes(term)) ? '' : 'none';
+  });
+}
+
+function seleccionarPrestamo(id, nombre) {
+  document.getElementById('prestVinculadoVal').value = id;
+  document.getElementById('prestVinculadoLabel').textContent = nombre;
+  document.getElementById('prestVinculadoLabel').classList.remove('text-muted');
+  document.getElementById('btnDesvincularPrest').style.display = '';
+  bootstrap.Modal.getInstance(document.getElementById('modalPrestamos'))?.hide();
+}
+
+function desvincularPrestamo() {
+  document.getElementById('prestVinculadoVal').value = '';
+  document.getElementById('prestVinculadoLabel').textContent = '— sin vincular —';
+  document.getElementById('prestVinculadoLabel').classList.add('text-muted');
+  document.getElementById('btnDesvincularPrest').style.display = 'none';
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', function() {
+  poblarTablaPrestamos();
+  document.getElementById('modalPrestamos')?.addEventListener('show.bs.modal', function() {
+    document.getElementById('filtroPrestamo').value = '';
+    filtrarPrestamos('');
+  });
+  // Pre-select if editing an asiento that already has a prestamo linked
+  {% if asiento and asiento.prestamo_id %}
+  const _preselect = PRESTAMOS_FORM.find(p => p.id === {{ asiento.prestamo_id }});
+  if (_preselect) seleccionarPrestamo(_preselect.id, _preselect.nombre);
+  {% endif %}
+});
+
 // Inicializar: cargar líneas existentes o 2 vacías
 if (lineasIniciales.length > 0) {
   lineasIniciales.forEach(l => agregarLinea(l));
 } else {
   agregarLinea(); agregarLinea();
 }
+actualizarSelectorPrestamo();
 
 // Fecha por defecto si es asiento nuevo
 if (!document.getElementById('campoFecha').value) {
   document.getElementById('campoFecha').value = new Date().toISOString().split('T')[0];
 }
+
+// Prevent double-submit
+document.getElementById('formAsiento').addEventListener('submit', function() {
+  if (this._submitting) return false;
+  this._submitting = true;
+  this.querySelectorAll('button[type="submit"]').forEach(b => { b.disabled = true; });
+});
 </script>
 {% endblock %}

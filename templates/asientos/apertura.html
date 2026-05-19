@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+{% block title %}Saldos Iniciales – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Saldos Iniciales</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-journal-arrow-down me-2"></i>Saldos Iniciales (Apertura)</h5>
+  <a href="{{ url_for('asientos.lista', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+{% if existente %}
+<div class="alert alert-warning d-flex align-items-start gap-2 py-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+  <div>
+    Ya existe un asiento de apertura:
+    <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=existente.id) }}" class="fw-semibold">
+      N°{{ existente.numero }} – {{ existente.fecha|fecha_cl }}
+    </a>
+    ({{ existente.estado }}).
+    Crear uno nuevo no elimina el anterior — editá el existente si necesitás corregirlo.
+  </div>
+</div>
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body pb-2">
+    <p class="small text-muted mb-2">
+      Ingresá los saldos al cierre del período anterior. Solo completá las cuentas con saldo —
+      las vacías se ignoran. El asiento debe cuadrar (Debe = Haber) para poder confirmarse.
+    </p>
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Fecha de apertura</label>
+        <input type="date" id="inputFecha" class="form-control form-control-sm" style="width:160px"
+               value="{{ (empresa.fecha_inicio or '2026-01-01') }}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">Descripción</label>
+        <input type="text" id="inputDesc" class="form-control form-control-sm" style="width:280px"
+               value="Saldos iniciales {{ (empresa.fecha_inicio or '2026-01-01')[:4] }}">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Totals bar -->
+<div class="d-flex gap-4 mb-2 px-1 small fw-semibold" id="totalesBar">
+  <span>Debe: <span id="totalDebe" class="text-primary">0</span></span>
+  <span>Haber: <span id="totalHaber" class="text-primary">0</span></span>
+  <span id="diffBadge"></span>
+</div>
+
+<form id="formApertura" method="post">
+  <input type="hidden" name="fecha"       id="hidFecha">
+  <input type="hidden" name="descripcion" id="hidDesc">
+  <input type="hidden" name="accion"      id="hidAccion" value="confirmar">
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-2" style="font-size:.85rem">
+      <thead class="table-dark">
+        <tr>
+          <th style="width:100px">Código</th>
+          <th style="width:160px">Cuenta</th>
+          <th style="width:80px" class="text-muted small">Tipo</th>
+          <th>Descripción <span class="fw-normal text-muted" style="font-size:.7rem">(ej: cuenta de origen)</span></th>
+          <th class="text-end" style="width:150px">Debe ($)</th>
+          <th class="text-end" style="width:150px">Haber ($)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set ns = namespace(current_tipo='') %}
+        {% for c in cuentas %}
+          {% if c.tipo != ns.current_tipo %}
+            {% set ns.current_tipo = c.tipo %}
+            <tr class="table-secondary">
+              <td colspan="5" class="fw-semibold small py-1">
+                {{ {'ACTIVO':'Activo','PASIVO':'Pasivo','PATRIMONIO':'Patrimonio','INGRESO':'Ingresos','GASTO':'Gastos'}[c.tipo] or c.tipo }}
+              </td>
+            </tr>
+          {% endif %}
+          <tr>
+            <td class="font-monospace text-muted small">{{ c.codigo }}</td>
+            <td class="small">{{ c.nombre }}</td>
+            <td class="small text-muted">{{ c.naturaleza }}</td>
+            <td class="p-1">
+              <input type="text" name="desc_{{ c.id }}"
+                     class="form-control form-control-sm inp-desc"
+                     placeholder="—"
+                     autocomplete="off">
+            </td>
+            <td class="text-end p-1">
+              <input type="number" name="debe_{{ c.id }}" id="debe_{{ c.id }}"
+                     class="form-control form-control-sm text-end inp-monto"
+                     style="width:130px; margin-left:auto"
+                     min="0" step="1" placeholder="—"
+                     data-pair="haber_{{ c.id }}"
+                     autocomplete="off">
+            </td>
+            <td class="text-end p-1">
+              <input type="number" name="haber_{{ c.id }}" id="haber_{{ c.id }}"
+                     class="form-control form-control-sm text-end inp-monto"
+                     style="width:130px; margin-left:auto"
+                     min="0" step="1" placeholder="—"
+                     data-pair="debe_{{ c.id }}"
+                     autocomplete="off">
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-secondary fw-semibold">
+        <tr>
+          <td colspan="4" class="text-end small">Totales</td>
+          <td class="text-end" id="footDebe">0</td>
+          <td class="text-end" id="footHaber">0</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="d-flex gap-2 mt-3">
+    <button type="button" class="btn btn-success" onclick="submitForm('confirmar')">
+      <i class="bi bi-check2-circle me-1"></i>Confirmar apertura
+    </button>
+    <button type="button" class="btn btn-outline-secondary" onclick="submitForm('borrador')">
+      <i class="bi bi-save me-1"></i>Guardar borrador
+    </button>
+    <a href="{{ url_for('asientos.lista', eid=empresa.id) }}" class="btn btn-link text-secondary ms-2">Cancelar</a>
+  </div>
+</form>
+
+<script>
+const clp = n => Math.round(n).toLocaleString('es-CL');
+
+function recalc() {
+  let debe = 0, haber = 0;
+  document.querySelectorAll('.inp-monto').forEach(inp => {
+    const v = parseFloat(inp.value) || 0;
+    if (inp.name.startsWith('debe_'))  debe  += v;
+    if (inp.name.startsWith('haber_')) haber += v;
+  });
+  document.getElementById('totalDebe').textContent  = clp(debe);
+  document.getElementById('totalHaber').textContent = clp(haber);
+  document.getElementById('footDebe').textContent   = clp(debe);
+  document.getElementById('footHaber').textContent  = clp(haber);
+  const diff = debe - haber;
+  const badge = document.getElementById('diffBadge');
+  if (Math.abs(diff) < 1) {
+    badge.innerHTML = '<span class="badge bg-success"><i class="bi bi-check2 me-1"></i>Cuadra</span>';
+  } else {
+    badge.innerHTML = `<span class="badge bg-danger">Diferencia: ${clp(Math.abs(diff))}</span>`;
+  }
+}
+
+document.querySelectorAll('.inp-monto').forEach(inp => {
+  inp.addEventListener('input', recalc);
+  // Tab between debe/haber pairs: pressing Enter in debe jumps to haber
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const pairId = inp.dataset.pair;
+      const pair = document.getElementById(pairId);
+      if (pair && !pair.value) pair.focus();
+      else {
+        // move to next row's debe
+        const all = Array.from(document.querySelectorAll('.inp-monto[name^="debe_"]'));
+        const idx = all.indexOf(inp.name.startsWith('debe_') ? inp : null);
+        const next = all[all.indexOf(inp) + 1] || all[0];
+        if (next) next.focus();
+      }
+    }
+  });
+});
+
+function submitForm(accion) {
+  document.getElementById('hidFecha').value  = document.getElementById('inputFecha').value;
+  document.getElementById('hidDesc').value   = document.getElementById('inputDesc').value;
+  document.getElementById('hidAccion').value = accion;
+  document.getElementById('formApertura').submit();
+}
+
+recalc();
+</script>
+{% endblock %}

@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from models import db, Empresa, Asiento, DocumentoSII, MovimientoBanco, CuotaPrestamo, Liquidacion
+from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, CuotaPrestamo, Liquidacion
 
 bp = Blueprint('dashboard', __name__)
 
@@ -51,6 +51,29 @@ def index(eid):
         func.coalesce(func.sum(MovimientoBanco.cargo), 0)
     ).filter_by(empresa_id=eid).scalar() or 0)
 
+    # Cuentas de activo líquido con saldo acreedor (anómalo para cuentas DEUDORA)
+    # Códigos típicos: 1.1.01 Caja, 1.1.02 Banco
+    _CODIGOS_BANCO = {'1.1.01', '1.1.02'}
+    cuentas_banco = (Cuenta.query
+                     .filter_by(empresa_id=eid, es_titulo=False, activa=True)
+                     .filter(Cuenta.codigo.in_(_CODIGOS_BANCO))
+                     .all())
+    _saldos_libro = dict(
+        db.session.query(LineaAsiento.cuenta_id,
+                         func.sum(LineaAsiento.debe) - func.sum(LineaAsiento.haber))
+        .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+        .filter(Asiento.empresa_id == eid, Asiento.estado == 'CONFIRMADO',
+                LineaAsiento.cuenta_id.in_([c.id for c in cuentas_banco]))
+        .group_by(LineaAsiento.cuenta_id)
+        .all()
+    ) if cuentas_banco else {}
+    cuentas_saldo_acreedor = [
+        {'nombre': c.nombre, 'codigo': c.codigo,
+         'saldo': round(_saldos_libro.get(c.id, 0))}
+        for c in cuentas_banco
+        if _saldos_libro.get(c.id, 0) < -0.5  # DEBE - HABER < 0 → saldo acreedor
+    ]
+
     # Actividad reciente: últimos 5 asientos
     recientes = (Asiento.query
                  .filter_by(empresa_id=eid)
@@ -67,5 +90,6 @@ def index(eid):
                            ultimo_periodo_rem=ultimo_periodo_rem,
                            asientos_mes=asientos_mes,
                            saldo_banco=saldo_banco,
+                           cuentas_saldo_acreedor=cuentas_saldo_acreedor,
                            recientes=recientes,
                            hoy=hoy)

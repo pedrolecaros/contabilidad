@@ -63,7 +63,7 @@
       {# Fila cabecera del asiento #}
       <tr class="table-secondary">
         <td class="fw-semibold text-center">
-          <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id) }}"
+          <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=a.id, next=request.url) }}"
              target="_blank"
              class="link-primary fw-semibold"
              title="Editar asiento N°{{ a.numero }}">{{ a.numero }}</a>

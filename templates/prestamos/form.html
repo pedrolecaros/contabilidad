@@ -51,6 +51,23 @@
           </select>
         </div>
 
+        <!-- Subtipo -->
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Contraparte</label>
+          <select name="subtipo" class="form-select">
+            <option value="BANCARIO" {% if not prestamo or (prestamo.subtipo or 'BANCARIO') == 'BANCARIO' %}selected{% endif %}>
+              Bancario
+            </option>
+            <option value="TERCEROS" {% if prestamo and prestamo.subtipo == 'TERCEROS' %}selected{% endif %}>
+              Terceros
+            </option>
+            <option value="RELACIONADA" {% if prestamo and prestamo.subtipo == 'RELACIONADA' %}selected{% endif %}>
+              Empresa relacionada
+            </option>
+          </select>
+          <div class="form-text">Determina la cuenta contable (2.1.10/11/12)</div>
+        </div>
+
         <!-- Moneda -->
         <div class="col-md-3">
           <label class="form-label fw-semibold">Moneda</label>

@@ -45,7 +45,7 @@ def index(eid):
                 .filter_by(empresa_id=eid)
                 .filter(DocumentoSII.conciliacion_id == None)
                 .filter(DocumentoSII.fecha >= d_ini, DocumentoSII.fecha <= d_fin)
-                .order_by(DocumentoSII.tipo_libro, DocumentoSII.fecha)
+                .order_by(DocumentoSII.tipo_libro, DocumentoSII.fecha.desc())
                 .all())
 
     movs_sin = (MovimientoBanco.query
@@ -130,22 +130,17 @@ def crear(eid):
     movs = [MovimientoBanco.query.get(i) for i in mov_ids]
     movs = [m for m in movs if m and m.empresa_id == eid]
 
-    # Guard: reject already-processed items to prevent duplicate entries
-    docs_ya = [d for d in docs if d.procesado]
-    movs_ya = [m for m in movs if m.procesado]
-    if docs_ya:
-        for d in docs_ya:
-            flash(f'Doc {d.tipo_libro} folio {d.folio} ya tiene asiento — omitido', 'warning')
-        docs = [d for d in docs if not d.procesado]
-    if movs_ya:
-        for m in movs_ya:
-            flash(f'Movimiento {m.fecha} "{(m.descripcion or "")[:30]}" ya está procesado — omitido. '
-                  f'Si corresponde a un préstamo, desmarque primero la cuota.', 'warning')
-        movs = [m for m in movs if not m.procesado]
+    # Informar si algún item ya tiene asiento (no crearemos uno nuevo, pero sí lo enlazamos)
+    for d in docs:
+        if d.procesado:
+            flash(f'Doc {d.tipo_libro} folio {d.folio} ya tiene asiento — se enlazará sin crear uno nuevo', 'info')
+    for m in movs:
+        if m.procesado:
+            flash(f'Movimiento {m.fecha} "{(m.descripcion or "")[:30]}" ya tiene asiento — se enlazará sin crear uno nuevo', 'info')
 
     fechas = [d.fecha for d in docs if d.fecha] + [m.fecha for m in movs if m.fecha]
     if not fechas:
-        flash('No se encontraron registros válidos (todos ya estaban procesados)', 'warning')
+        flash('No se encontraron registros válidos', 'warning')
         return redirect(url_for('conciliacion.index', eid=eid, desde=desde_mes, hasta=hasta_mes))
 
     # Descripción automática según tipo
@@ -286,32 +281,39 @@ def deshacer(eid, cid):
     if not desde_mes:
         desde_mes = hasta_mes
 
-    # Recopilar asientos a eliminar antes de borrar las referencias
-    asiento_ids = set()
+    # Docs SII: preservar sus asientos (fueron creados independientemente).
+    # Solo se limpia conciliacion_id. El doc vuelve a Conciliación con su asiento intacto.
+    for d in DocumentoSII.query.filter_by(conciliacion_id=cid).all():
+        d.conciliacion_id = None
+        if not d.asiento_id:
+            d.procesado = False  # sin asiento → vuelve a Pendientes
+
+    # Movimientos banco: se eliminan los asientos BANCO creados para esta conciliación.
+    # El MovimientoBanco en sí NUNCA se elimina — vuelve a Pendientes con estado limpio.
+    banco_asiento_ids = set()
     for m in MovimientoBanco.query.filter_by(conciliacion_id=cid).all():
         if m.asiento_id:
-            asiento_ids.add(m.asiento_id)
-    for d in DocumentoSII.query.filter_by(conciliacion_id=cid).all():
-        if d.asiento_id:
-            asiento_ids.add(d.asiento_id)
+            a = Asiento.query.get(m.asiento_id)
+            if a and a.origen == 'BANCO':
+                banco_asiento_ids.add(m.asiento_id)
+        m.conciliacion_id = None
+        m.procesado = False
+        m.asiento_id = None
 
-    DocumentoSII.query.filter_by(conciliacion_id=cid).update({'conciliacion_id': None, 'procesado': False, 'asiento_id': None})
-    MovimientoBanco.query.filter_by(conciliacion_id=cid).update({'conciliacion_id': None, 'procesado': False, 'asiento_id': None})
     db.session.delete(conc)
 
-    for aid in asiento_ids:
+    for aid in banco_asiento_ids:
         a = Asiento.query.get(aid)
         if a:
-            # Reset any CuotaPrestamo linked to this asiento before deleting
             CuotaPrestamo.query.filter_by(asiento_id=aid).update({
                 'asiento_id': None, 'movimiento_banco_id': None,
                 'pagada': False, 'fecha_pago': None,
                 'uf_valor_pago': None, 'cuota_total_pesos': None,
             })
-            # Remove audit records linked to this asiento (avoid orphans)
             AsientoAudit.query.filter_by(asiento_id=aid).delete()
+            LineaAsiento.query.filter_by(asiento_id=aid).delete()
             db.session.delete(a)
 
     db.session.commit()
-    flash('Conciliación deshecha y comprobante(s) eliminado(s)', 'warning')
+    flash('Conciliación deshecha. Los asientos SII quedan intactos; el movimiento bancario vuelve a Pendientes.', 'warning')
     return redirect(url_for('conciliacion.index', eid=eid, desde=desde_mes, hasta=hasta_mes))

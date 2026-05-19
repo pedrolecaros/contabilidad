@@ -66,7 +66,7 @@ def index(eid):
     except ValueError:
         desde, hasta = date(hoy.year, 1, 1), hoy
 
-    # ── AP/AR summary from DocumentoSII ──
+    # ── AP/AR summary: only outstanding (not yet conciliated) documents ──
     def _resumen_sii(tipo_libro):
         return (db.session.query(
             DocumentoSII.rut_contraparte,
@@ -79,8 +79,7 @@ def index(eid):
         .filter(
             DocumentoSII.empresa_id == eid,
             DocumentoSII.tipo_libro == tipo_libro,
-            DocumentoSII.fecha >= desde,
-            DocumentoSII.fecha <= hasta,
+            DocumentoSII.conciliacion_id == None,
         )
         .group_by(DocumentoSII.rut_contraparte)
         .order_by(func.sum(DocumentoSII.total).desc())

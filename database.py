@@ -86,6 +86,17 @@ def _migrar(app):
         # Integrity: one bank movement can only link to one asiento, and one cuota
         'CREATE UNIQUE INDEX IF NOT EXISTS uix_movimientos_banco_asiento ON movimientos_banco(asiento_id) WHERE asiento_id IS NOT NULL',
         'CREATE UNIQUE INDEX IF NOT EXISTS uix_cuotas_prestamo_movbanco ON cuotas_prestamo(movimiento_banco_id) WHERE movimiento_banco_id IS NOT NULL',
+        "ALTER TABLE cuotas_prestamo ADD COLUMN tipo VARCHAR(20) DEFAULT 'REGULAR'",
+        """CREATE TABLE IF NOT EXISTS pagos_cuota (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cuota_id INTEGER NOT NULL REFERENCES cuotas_prestamo(id),
+    monto REAL NOT NULL,
+    fecha DATE NOT NULL,
+    asiento_id INTEGER REFERENCES asientos(id),
+    sin_efecto_contable INTEGER DEFAULT 0,
+    notas VARCHAR(300),
+    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+)""",
         """CREATE TABLE IF NOT EXISTS activos_fijos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),

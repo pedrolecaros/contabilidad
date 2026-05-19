@@ -1,8 +1,8 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from models import db, Empresa, Prestamo, CuotaPrestamo, ValorUF, Asiento, LineaAsiento, Contraparte, MovimientoBanco, Cuenta
-from engine.asientos import generar_asiento_cuota_prestamo, generar_asiento_cuota_custom
+from models import db, Empresa, Prestamo, CuotaPrestamo, PagoCuota, ValorUF, Asiento, LineaAsiento, Contraparte, MovimientoBanco, Cuenta
+from engine.asientos import generar_asiento_cuota_prestamo, generar_asiento_cuota_custom, generar_asiento_abono_capital
 
 bp = Blueprint('prestamos', __name__)
 
@@ -260,6 +260,7 @@ def nuevo(eid):
             nombre=nombre,
             tipo=tipo,
             moneda=moneda,
+            subtipo=request.form.get('subtipo', 'BANCARIO'),
             monto_original=monto_original,
             tasa_interes_anual=tasa / 100.0,
             fecha_inicio=fecha_inicio,
@@ -317,25 +318,115 @@ def detalle(eid, pid):
                 uf_vals[hoy] = row.valor
         uf_hoy = uf_vals.get(hoy)
 
-    # Totals
-    total_capital = sum(c.capital for c in prestamo.cuotas)
-    total_interes = sum(c.interes for c in prestamo.cuotas)
-    total_cuotas = sum(c.cuota_total for c in prestamo.cuotas)
-    capital_pendiente = sum(c.capital for c in prestamo.cuotas if not c.pagada)
+    # Separate regular vs extraordinary cuotas
+    cuotas_regulares      = [c for c in prestamo.cuotas if (c.tipo or 'REGULAR') == 'REGULAR']
+    cuotas_extraordinarias= [c for c in prestamo.cuotas if (c.tipo or 'REGULAR') == 'EXTRAORDINARIO']
 
-    # CLP equivalents for UF loans (use uf_hoy for pending, uf_pago for paid)
-    total_cuotas_clp = None
-    capital_pendiente_clp = None
+    # Totals — split paid vs pending (regular cuotas only for amortization stats)
+    cuotas_pagadas   = [c for c in cuotas_regulares if c.pagada]
+    cuotas_pendientes = [c for c in cuotas_regulares if not c.pagada]
+
+    total_capital     = sum(c.capital     for c in prestamo.cuotas)
+    total_interes     = sum(c.interes     for c in prestamo.cuotas)
+    total_cuotas      = sum(c.cuota_total for c in prestamo.cuotas)
+
+    capital_pagado    = sum(c.capital     for c in cuotas_pagadas)
+    interes_pagado    = sum(c.interes     for c in cuotas_pagadas)
+    total_pagado      = sum(c.cuota_total for c in cuotas_pagadas)
+
+    capital_pendiente = sum(c.capital     for c in cuotas_pendientes)
+    interes_pendiente = sum(c.interes     for c in cuotas_pendientes)
+
+    # CLP equivalents for UF loans
+    total_cuotas_clp       = None
+    capital_pendiente_clp  = None
+    capital_pagado_clp     = None
+    interes_pagado_clp     = None
+    total_pagado_clp       = None
     if prestamo.moneda == 'UF' and uf_hoy:
-        total_cuotas_clp = sum(
-            (c.cuota_total_pesos or round(c.cuota_total * (uf_vals.get(c.fecha_pago) or uf_hoy)))
-            for c in prestamo.cuotas
-        )
+        def _uf_clp(cuota, campo):
+            uf = cuota.uf_valor_pago or uf_hoy
+            return round(getattr(cuota, campo, 0) * uf)
+        total_cuotas_clp      = sum(_uf_clp(c, 'cuota_total') for c in prestamo.cuotas)
         capital_pendiente_clp = round(capital_pendiente * uf_hoy)
+        interes_pendiente_clp = round(interes_pendiente * uf_hoy)
+        capital_pagado_clp    = sum(_uf_clp(c, 'capital') for c in cuotas_pagadas)
+        interes_pagado_clp    = sum(_uf_clp(c, 'interes') for c in cuotas_pagadas)
+        total_pagado_clp      = sum(_uf_clp(c, 'cuota_total') for c in cuotas_pagadas)
+    else:
+        interes_pendiente_clp = None
 
     import json
     cuentas_activas = Cuenta.query.filter_by(empresa_id=eid, activa=True, es_titulo=False).order_by(Cuenta.codigo).all()
     cuentas_json = json.dumps([{'id': c.id, 'codigo': c.codigo, 'nombre': c.nombre} for c in cuentas_activas])
+
+    # Asientos linked to this prestamo (via Asiento.prestamo_id) not yet assigned to a cuota
+    from models import Asiento as _Asiento, LineaAsiento as _Linea, PagoCuota as _PagoCuota
+    cuota_asiento_ids = {c.asiento_id for c in prestamo.cuotas if c.asiento_id}
+    # Also include asientos linked via PagoCuota
+    for c in prestamo.cuotas:
+        for p in c.pagos:
+            if p.asiento_id:
+                cuota_asiento_ids.add(p.asiento_id)
+    asientos_vinculados = (_Asiento.query
+                           .filter_by(prestamo_id=prestamo.id)
+                           .filter(_Asiento.estado != 'ANULADO')
+                           .order_by(_Asiento.fecha.desc())
+                           .all())
+
+    _CODIGOS_PAGAR  = {'2.1.10', '2.1.11', '2.1.12'}
+    _CODIGOS_COBRAR = {'1.1.11', '1.1.12', '1.1.13'}
+    _codigos_loan = _CODIGOS_PAGAR if prestamo.tipo == 'PAGAR' else _CODIGOS_COBRAR
+
+    def _tipo_movimiento(asiento):
+        """'PAGO' si reduce la deuda, 'AUMENTO' si la incrementa."""
+        debe = haber = 0
+        for l in asiento.lineas:
+            if l.cuenta and l.cuenta.codigo in _codigos_loan:
+                debe  += l.debe  or 0
+                haber += l.haber or 0
+        if prestamo.tipo == 'PAGAR':
+            return 'PAGO' if debe >= haber else 'AUMENTO'
+        else:
+            return 'PAGO' if haber >= debe else 'AUMENTO'
+
+    asientos_sin_cuota  = []
+    asientos_aumento    = []
+    for a in asientos_vinculados:
+        if a.id in cuota_asiento_ids:
+            continue
+        if _tipo_movimiento(a) == 'AUMENTO':
+            asientos_aumento.append(a)
+        else:
+            asientos_sin_cuota.append(a)
+
+    # Build chronological payment history (real payments)
+    pagos_historia = []
+    for c in prestamo.cuotas:
+        for p in c.pagos:
+            pagos_historia.append({
+                'fecha': p.fecha,
+                'monto': p.monto,
+                'cuota_num': c.numero_cuota,
+                'cuota_tipo': c.tipo or 'REGULAR',
+                'sin_efecto': p.sin_efecto_contable,
+                'asiento_id': p.asiento_id,
+                'asiento_num': p.asiento.numero if p.asiento else None,
+                'notas': p.notas or '',
+            })
+        # Backward compat: cuotas paid before PagoCuota existed
+        if c.pagada and not c.pagos and c.asiento_id:
+            pagos_historia.append({
+                'fecha': c.fecha_pago or c.fecha_vencimiento,
+                'monto': float(c.cuota_total_pesos or c.cuota_total or 0),
+                'cuota_num': c.numero_cuota,
+                'cuota_tipo': c.tipo or 'REGULAR',
+                'sin_efecto': False,
+                'asiento_id': c.asiento_id,
+                'asiento_num': c.asiento.numero if c.asiento else None,
+                'notas': c.notas or '',
+            })
+    pagos_historia.sort(key=lambda x: (x['fecha'] or date.min))
 
     return render_template('prestamos/detalle.html',
                            empresa=empresa,
@@ -343,13 +434,26 @@ def detalle(eid, pid):
                            hoy=hoy,
                            uf_vals=uf_vals,
                            uf_hoy=uf_hoy,
+                           cuotas_regulares=cuotas_regulares,
+                           cuotas_extraordinarias=cuotas_extraordinarias,
                            total_capital=total_capital,
                            total_interes=total_interes,
                            total_cuotas=total_cuotas,
                            capital_pendiente=capital_pendiente,
+                           interes_pendiente=interes_pendiente,
+                           capital_pagado=capital_pagado,
+                           interes_pagado=interes_pagado,
+                           total_pagado=total_pagado,
                            total_cuotas_clp=total_cuotas_clp,
                            capital_pendiente_clp=capital_pendiente_clp,
-                           cuentas_json=cuentas_json)
+                           interes_pendiente_clp=interes_pendiente_clp,
+                           capital_pagado_clp=capital_pagado_clp,
+                           interes_pagado_clp=interes_pagado_clp,
+                           total_pagado_clp=total_pagado_clp,
+                           cuentas_json=cuentas_json,
+                           asientos_sin_cuota=asientos_sin_cuota,
+                           asientos_aumento=asientos_aumento,
+                           pagos_historia=pagos_historia)
 
 
 # ── Editar ────────────────────────────────────────────────────────────────────
@@ -368,6 +472,7 @@ def editar(eid, pid):
         prestamo.nombre = request.form.get('nombre', '').strip()
         prestamo.tipo = request.form.get('tipo', 'PAGAR')
         prestamo.moneda = request.form.get('moneda', 'PESOS')
+        prestamo.subtipo = request.form.get('subtipo', 'BANCARIO')
         prestamo.periodicidad = request.form.get('periodicidad', 'MENSUAL')
         prestamo.activo = bool(request.form.get('activo'))
         prestamo.acreedor_deudor = request.form.get('acreedor_deudor', '').strip() or None
@@ -558,8 +663,16 @@ def toggle_cuota(eid, pid, cid):
         flash('No autorizado', 'danger')
         return redirect(url_for('prestamos.lista', eid=eid))
 
-    if cuota.pagada:
-        # Desmarcar — eliminar asiento generado automáticamente
+    if cuota.pagada or cuota.pagada_parcialmente:
+        # Desmarcar — eliminar todos los PagoCuota y asientos auto-generados
+        for pago in list(cuota.pagos):
+            if pago.asiento_id and not pago.sin_efecto_contable:
+                asiento_pago = Asiento.query.get(pago.asiento_id)
+                if asiento_pago and asiento_pago.origen == 'PRESTAMO':
+                    LineaAsiento.query.filter_by(asiento_id=asiento_pago.id).delete()
+                    db.session.delete(asiento_pago)
+        PagoCuota.query.filter_by(cuota_id=cuota.id).delete()
+        # Backward compat: also clear legacy asiento_id
         if cuota.movimiento_banco_id:
             mov = MovimientoBanco.query.get(cuota.movimiento_banco_id)
             if mov:
@@ -569,7 +682,7 @@ def toggle_cuota(eid, pid, cid):
         if cuota.asiento_id:
             asiento = Asiento.query.get(cuota.asiento_id)
             cuota.asiento_id = None
-            if asiento:
+            if asiento and asiento.origen == 'PRESTAMO':
                 LineaAsiento.query.filter_by(asiento_id=asiento.id).delete()
                 db.session.delete(asiento)
         cuota.pagada = False
@@ -577,44 +690,85 @@ def toggle_cuota(eid, pid, cid):
         cuota.uf_valor_pago = None
         cuota.cuota_total_pesos = None
     else:
-        cuota.pagada = True
         fecha_pago_str = request.form.get('fecha_pago', '')
         try:
-            cuota.fecha_pago = date.fromisoformat(fecha_pago_str)
+            fecha_pago = date.fromisoformat(fecha_pago_str)
         except (ValueError, TypeError):
-            cuota.fecha_pago = date.today()
+            fecha_pago = date.today()
+        cuota.fecha_pago = fecha_pago
 
-        # Lookup UF value if UF loan
+        # Parse monto_real (supports partial payments)
+        monto_real_str = request.form.get('monto_real', '').strip()
+        try:
+            monto_real = float(monto_real_str) if monto_real_str else None
+        except ValueError:
+            monto_real = None
+
+        sin_efecto = request.form.get('sin_efecto_contable') == '1'
+
+        # Lookup UF value if UF loan — nearest prior date if exact not found
         if prestamo.moneda == 'UF':
-            uf_row = ValorUF.query.filter_by(fecha=cuota.fecha_pago).first()
+            uf_row = (ValorUF.query
+                      .filter(ValorUF.fecha <= fecha_pago)
+                      .order_by(ValorUF.fecha.desc()).first())
             if uf_row:
                 cuota.uf_valor_pago = uf_row.valor
                 cuota.cuota_total_pesos = round((cuota.cuota_total or 0) * uf_row.valor)
+                if monto_real is None:
+                    monto_real = cuota.cuota_total_pesos
+            else:
+                flash('No se encontró valor UF para la fecha de pago — asiento en pesos puede ser incorrecto.', 'warning')
+        elif monto_real is None:
+            monto_real = cuota.cuota_total
 
-        # Generate accounting entry (custom lineas if user edited them)
+        # Determine if this is a full payment
+        cuota_total_ref = cuota.cuota_total_pesos or cuota.cuota_total or 0
+        es_pago_completo = monto_real is None or round(monto_real) >= round(cuota_total_ref)
+
+        # Generate accounting entry unless sin_efecto_contable
         import json as _json
         asiento = None
-        lineas_json_str = request.form.get('lineas_json', '').strip()
-        if lineas_json_str:
-            try:
-                lineas_data = _json.loads(lineas_json_str)
-                asiento = generar_asiento_cuota_custom(cuota, lineas_data)
-                cuota.asiento_id = asiento.id
-            except Exception as exc:
-                flash(f'Error en asiento editado: {exc}', 'danger')
+        if not sin_efecto:
+            lineas_json_str = request.form.get('lineas_json', '').strip()
+            if lineas_json_str:
                 try:
-                    asiento = generar_asiento_cuota_prestamo(cuota)
+                    lineas_data = _json.loads(lineas_json_str)
+                    asiento = generar_asiento_cuota_custom(cuota, lineas_data)
                     cuota.asiento_id = asiento.id
+                except Exception as exc:
+                    flash(f'Error en asiento editado: {exc}', 'danger')
+                    try:
+                        asiento = generar_asiento_cuota_prestamo(cuota, monto_real)
+                        cuota.asiento_id = asiento.id if es_pago_completo else cuota.asiento_id
+                    except ValueError:
+                        pass
+            else:
+                try:
+                    asiento = generar_asiento_cuota_prestamo(cuota, monto_real)
+                    cuota.asiento_id = asiento.id if es_pago_completo else cuota.asiento_id
                 except ValueError:
                     pass
-        else:
-            try:
-                asiento = generar_asiento_cuota_prestamo(cuota)
-                cuota.asiento_id = asiento.id
-            except ValueError:
-                pass  # missing accounts — skip silently
 
-        # Link bank movement if provided — only if it hasn't been processed elsewhere
+        # Create PagoCuota record
+        pago = PagoCuota(
+            cuota_id=cuota.id,
+            monto=round(monto_real or cuota_total_ref),
+            fecha=fecha_pago,
+            asiento_id=asiento.id if asiento else None,
+            sin_efecto_contable=sin_efecto,
+            notas='Sin efecto contable — período anterior' if sin_efecto else None,
+        )
+        db.session.add(pago)
+        db.session.flush()
+
+        if es_pago_completo:
+            cuota.pagada = True
+        else:
+            cuota.pagada = False
+            flash(f'Pago parcial registrado: ${round(monto_real):,.0f} de ${cuota_total_ref:,.0f}. '
+                  f'Quedan ${cuota_total_ref - round(monto_real):,.0f} pendientes.', 'info')
+
+        # Link bank movement if provided
         mov_id_str = request.form.get('movimiento_banco_id', '').strip()
         if mov_id_str:
             try:
@@ -673,10 +827,14 @@ def agregar_pago(eid, pid):
     uf_valor = None
     cuota_total_pesos = None
     if prestamo.moneda == 'UF':
-        uf_row = ValorUF.query.filter_by(fecha=fecha_pago).first()
+        uf_row = (ValorUF.query
+                  .filter(ValorUF.fecha <= fecha_pago)
+                  .order_by(ValorUF.fecha.desc()).first())
         if uf_row:
             uf_valor = uf_row.valor
             cuota_total_pesos = round((capital + interes) * uf_row.valor)
+        else:
+            flash('No se encontró valor UF para la fecha de pago — asiento en pesos puede ser incorrecto.', 'warning')
 
     cuota = CuotaPrestamo(
         prestamo_id=pid,
@@ -759,3 +917,131 @@ def api_cuotas_pendientes(eid):
         })
 
     return jsonify(prestamos=resultado)
+
+
+@bp.route('/empresa/<int:eid>/prestamos/<int:pid>/asignar-cuota-asiento', methods=['POST'])
+def asignar_cuota_asiento(eid, pid):
+    """Assign an asiento (linked via prestamo_id) to a specific cuota and mark it paid."""
+    from models import Asiento as _Asiento
+    prestamo = Prestamo.query.get_or_404(pid)
+    if prestamo.empresa_id != eid:
+        return jsonify({'ok': False, 'error': 'No autorizado'}), 403
+    cuota_id  = request.form.get('cuota_id', type=int)
+    asiento_id = request.form.get('asiento_id', type=int)
+    if not cuota_id or not asiento_id:
+        return jsonify({'ok': False, 'error': 'Datos incompletos'}), 400
+    cuota = CuotaPrestamo.query.get(cuota_id)
+    asiento = _Asiento.query.get(asiento_id)
+    if not cuota or cuota.prestamo_id != pid:
+        return jsonify({'ok': False, 'error': 'Cuota no encontrada'}), 404
+    if not asiento or asiento.empresa_id != eid:
+        return jsonify({'ok': False, 'error': 'Asiento no encontrado'}), 404
+    if cuota.pagada:
+        return jsonify({'ok': False, 'error': 'Esta cuota ya está pagada'}), 400
+
+    monto_asiento = max(asiento.total_debe or 0, asiento.total_haber or 0)
+    monto_cuota_ref = float(cuota.cuota_total_pesos or cuota.cuota_total or 0)
+
+    # Add PagoCuota record for this asiento
+    pago = PagoCuota(
+        cuota_id=cuota.id,
+        monto=round(monto_asiento),
+        fecha=asiento.fecha,
+        asiento_id=asiento.id,
+        sin_efecto_contable=False,
+    )
+    db.session.add(pago)
+
+    # Compute total paid including all prior pagos
+    monto_total_pagado = sum(p.monto for p in cuota.pagos) + round(monto_asiento)
+    es_completo = monto_total_pagado >= monto_cuota_ref * 0.99  # 1% tolerance
+
+    cuota.fecha_pago = asiento.fecha
+    if es_completo:
+        cuota.pagada = True
+        cuota.asiento_id = asiento.id
+    # If partial, leave pagada=False and don't set asiento_id
+
+    db.session.commit()
+
+    warning = None
+    if monto_cuota_ref > 0 and abs(monto_asiento - monto_cuota_ref) / monto_cuota_ref > 0.01:
+        if monto_asiento < monto_cuota_ref:
+            warning = (f'Pago parcial: el asiento es por ${monto_asiento:,.0f} '
+                       f'pero la cuota es ${monto_cuota_ref:,.0f} '
+                       f'(faltan ${monto_cuota_ref - monto_asiento:,.0f}).')
+        else:
+            warning = (f'El asiento es por ${monto_asiento:,.0f} '
+                       f'pero la cuota esperaba ${monto_cuota_ref:,.0f} '
+                       f'(diferencia ${abs(monto_asiento - monto_cuota_ref):,.0f}). '
+                       f'Verificá si el monto es correcto.')
+
+    return jsonify({'ok': True, 'warning': warning, 'completo': es_completo})
+
+
+# ── Abono extraordinario a capital ───────────────────────────────────────────
+
+@bp.route('/empresa/<int:eid>/prestamos/<int:pid>/abono-capital', methods=['POST'])
+def abono_capital(eid, pid):
+    prestamo = Prestamo.query.get_or_404(pid)
+    if prestamo.empresa_id != eid:
+        flash('No autorizado', 'danger')
+        return redirect(url_for('prestamos.lista', eid=eid))
+
+    try:
+        monto = float(request.form.get('monto', 0) or 0)
+        fecha = date.fromisoformat(request.form.get('fecha', date.today().isoformat()))
+    except (ValueError, TypeError):
+        flash('Datos inválidos', 'danger')
+        return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
+
+    if monto <= 0:
+        flash('El monto debe ser mayor a 0', 'warning')
+        return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
+
+    notas = request.form.get('notas', '').strip()
+    sin_efecto = request.form.get('sin_efecto_contable') == '1'
+
+    # Determine next cuota number for display
+    max_num = db.session.query(db.func.max(CuotaPrestamo.numero_cuota)).filter_by(prestamo_id=pid).scalar() or 0
+
+    cuota = CuotaPrestamo(
+        prestamo_id=pid,
+        numero_cuota=None,
+        fecha_vencimiento=fecha,
+        capital=monto,
+        interes=0.0,
+        cuota_total=monto,
+        saldo_insoluto=0.0,
+        pagada=True,
+        fecha_pago=fecha,
+        tipo='EXTRAORDINARIO',
+        notas=notas or 'Abono extraordinario a capital',
+    )
+    db.session.add(cuota)
+    db.session.flush()
+
+    asiento = None
+    if not sin_efecto:
+        try:
+            asiento = generar_asiento_abono_capital(prestamo, monto, fecha)
+            cuota.asiento_id = asiento.id
+        except ValueError as e:
+            flash(f'No se pudo generar asiento: {e}', 'warning')
+
+    pago = PagoCuota(
+        cuota_id=cuota.id,
+        monto=round(monto),
+        fecha=fecha,
+        asiento_id=asiento.id if asiento else None,
+        sin_efecto_contable=sin_efecto,
+        notas=notas,
+    )
+    db.session.add(pago)
+    db.session.commit()
+
+    if sin_efecto:
+        flash(f'Abono a capital de ${monto:,.0f} registrado sin efecto contable.', 'success')
+    else:
+        flash(f'Abono a capital de ${monto:,.0f} registrado' + (f' — Asiento N°{asiento.numero}' if asiento else ''), 'success')
+    return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))

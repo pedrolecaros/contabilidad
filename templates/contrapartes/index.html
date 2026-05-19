@@ -112,9 +112,9 @@
 </div>
 {% endmacro %}
 
-{{ tabla_apar(proveedores, 'COMPRAS',    'Proveedores (Cuentas por Pagar)', 'arrow-up-circle',   'danger',  saldo_cta_prov, nom_prov, 'IVA CF') }}
-{{ tabla_apar(honorarios,  'HONORARIOS', 'Honorarios (Retención pendiente)', 'person-badge',      'warning', saldo_cta_hon,  nom_hon,  'Retención') }}
-{{ tabla_apar(clientes,    'VENTAS',     'Clientes (Cuentas por Cobrar)',    'arrow-down-circle', 'success', saldo_cta_cli,  nom_cli,  'IVA DF') }}
+{{ tabla_apar(proveedores, 'COMPRAS',    'Proveedores – Saldo por Pagar', 'arrow-up-circle',   'danger',  saldo_cta_prov, nom_prov, 'IVA CF') }}
+{{ tabla_apar(honorarios,  'HONORARIOS', 'Honorarios – Retención pendiente', 'person-badge',      'warning', saldo_cta_hon,  nom_hon,  'Retención') }}
+{{ tabla_apar(clientes,    'VENTAS',     'Clientes – Saldo por Cobrar',    'arrow-down-circle', 'success', saldo_cta_cli,  nom_cli,  'IVA DF') }}
 
 
 {% else %}

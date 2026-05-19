@@ -262,7 +262,14 @@
                     style="font-size:.65rem">{{ d.tipo_libro }}</span>
                 </td>
                 <td class="small font-monospace">{{ d.folio }}</td>
-                <td class="small">{{ d.fecha|fecha_cl }}</td>
+                <td class="small text-nowrap">
+                  {{ d.fecha|fecha_cl }}
+                  {% if d.tipo_libro == 'HONORARIOS' %}
+                  <span class="badge bg-secondary ms-1" style="font-size:.6rem">
+                    {{ ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][d.fecha.month] }} {{ d.fecha.year }}
+                  </span>
+                  {% endif %}
+                </td>
                 <td class="small" style="max-width:140px">
                   <span title="{{ d.razon_social_contraparte }}">{{ (d.razon_social_contraparte or '')[:20] }}{% if d.razon_social_contraparte and d.razon_social_contraparte|length > 20 %}…{% endif %}</span>
                 </td>
@@ -362,7 +369,18 @@
 
     <!-- Estado cuadre -->
     <td class="text-center">
-      {% if dif|abs < 1 %}
+      {% if not cdocs and not cmovs %}
+        <span class="badge bg-secondary">Vacío</span>
+      {% elif not cdocs %}
+        {# Sin doc SII vinculado — solo lado banco #}
+        {% if c.tipo == 'SII' %}
+          <span class="badge bg-warning text-dark" title="Documento SII no vinculado a esta conciliación">Sin doc</span>
+        {% else %}
+          <span class="badge bg-success">Cuadra</span>
+        {% endif %}
+      {% elif not cmovs %}
+        <span class="badge bg-warning text-dark">Sin banco</span>
+      {% elif dif|abs < 1 %}
         <span class="badge bg-success">Cuadra</span>
       {% else %}
         <span class="badge bg-danger" title="Diferencia {{ dif|clp }}">Dif {{ dif|abs|clp }}</span>
