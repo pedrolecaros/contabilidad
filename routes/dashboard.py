@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Liquidacion
+from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Liquidacion, Prestamo
 
 bp = Blueprint('dashboard', __name__)
 
@@ -20,8 +20,19 @@ def index(eid):
     # Asientos en borrador
     asientos_borrador = Asiento.query.filter_by(empresa_id=eid, estado='BORRADOR').count()
 
-    # Cuotas vencidas: not applicable in simplified ledger model
-    cuotas_vencidas = 0
+    # Saldos CxC / CxP
+    from sqlalchemy import func as _func
+    prestamos_empresa = Prestamo.query.filter_by(empresa_id=eid, activo=True).all()
+
+    def _saldo_prestamo(p):
+        saldo = float(p.monto_original or 0)
+        for a in p.asientos_vinculados.filter_by(estado='CONFIRMADO').all():
+            monto = max(a.total_debe or 0, a.total_haber or 0)
+            saldo += monto if (a.prestamo_sentido or '-') == '+' else -monto
+        return saldo
+
+    total_por_pagar  = sum(_saldo_prestamo(p) for p in prestamos_empresa if p.tipo == 'PAGAR')
+    total_por_cobrar = sum(_saldo_prestamo(p) for p in prestamos_empresa if p.tipo == 'COBRAR')
 
     # Último período con liquidaciones emitidas
     ultima_liq = (db.session.query(Liquidacion.periodo)
@@ -80,7 +91,8 @@ def index(eid):
                            docs_pendientes=docs_pendientes,
                            movs_sin_conc=movs_sin_conc,
                            asientos_borrador=asientos_borrador,
-                           cuotas_vencidas=cuotas_vencidas,
+                           total_por_pagar=total_por_pagar,
+                           total_por_cobrar=total_por_cobrar,
                            ultimo_periodo_rem=ultimo_periodo_rem,
                            asientos_mes=asientos_mes,
                            saldo_banco=saldo_banco,

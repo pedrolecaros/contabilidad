@@ -9,7 +9,21 @@ Aplicación web de contabilidad chilena multi-empresa. Partida doble, importaci�
 - Python 3.10 o superior
 - Las dependencias listadas en `requirements.txt`
 
+---
+
+## Instalación
+
+### Linux / Mac
+
 ```bash
+pip3 install -r requirements.txt
+```
+
+### Windows
+
+1. Instalar Python desde https://www.python.org/downloads/ (marcar "Add Python to PATH")
+2. Abrir cmd o PowerShell en la carpeta del proyecto:
+```
 pip install -r requirements.txt
 ```
 
@@ -17,27 +31,27 @@ pip install -r requirements.txt
 
 ## Iniciar el servidor
 
-### Red local (acceso desde otros equipos en la misma red)
+### Linux / Mac
 
+```bash
+./start.sh
+```
+
+O directamente:
 ```bash
 python3 -m flask run --host 0.0.0.0 --port 5000
 ```
 
-Acceder desde cualquier equipo de la red en: `http://<IP-del-servidor>:5000`
+### Windows
 
-Para encontrar la IP del servidor:
-
-```bash
-hostname -I
+Doble clic en **`start.bat`**, o desde cmd:
+```
+python -m flask run --host 0.0.0.0 --port 5000
 ```
 
-### Solo local
+Abrir en el navegador: `http://localhost:5000`
 
-```bash
-python3 -m flask run
-```
-
-Acceder en: `http://127.0.0.1:5000`
+Para acceso desde otros equipos de la red: `http://<IP-del-PC>:5000`
 
 ---
 
@@ -104,25 +118,41 @@ Ver y editar las cuentas contables de la empresa. Se puede activar/desactivar cu
 
 ---
 
-## Base de datos
+## Base de datos y configuración
 
-La base de datos es un archivo SQLite: `contabilidad.db` en la raíz del proyecto.
+La base de datos es un archivo SQLite. Por defecto se crea como `contabilidad.db` en la carpeta del proyecto.
 
-### Respaldo manual
-Desde la pantalla principal → **Configuración** → **Gestionar / Restaurar BD** se puede:
-- Ver el estado de la base de datos
-- Restaurar desde un archivo `.db` anterior
+### Cambiar la ruta de la base de datos (Google Drive u otra)
 
-Para hacer backup manual, copiar el archivo `contabilidad.db` a un lugar seguro.
+Crea un archivo `.env` en la carpeta del proyecto (copia `.env.example` como punto de partida):
 
-### Backup automático a Google Drive
-Si tienes Google Drive montado localmente, puedes mover o vincular `contabilidad.db` a esa carpeta y configurar la ruta en `config.py`:
-
-```python
-SQLALCHEMY_DATABASE_URI = f"sqlite:////ruta/a/tu/gdrive/contabilidad.db"
+**Windows con Google Drive:**
+```
+DB_PATH=C:\Users\Pedro\Google Drive\contabilidad\contabilidad.db
 ```
 
-> **Advertencia**: SQLite sobre carpetas sincronizadas en tiempo real (Drive, Dropbox) puede corromperse si hay sincronización durante una escritura. Se recomienda hacer backups periódicos en vez de ejecutar la DB directamente desde Drive.
+**Linux con Google Drive montado:**
+```
+DB_PATH=/home/pedro/GoogleDrive/contabilidad/contabilidad.db
+```
+
+> **Nota**: SQLite en una carpeta sincronizada funciona bien mientras solo un equipo use la app a la vez. No abrir la app en dos PCs simultáneamente o la DB puede corromperse.
+
+### Flujo recomendado con Google Drive
+
+1. Instalar **Google Drive para escritorio** en el PC
+2. Crear la carpeta `contabilidad` dentro de tu Drive
+3. Configurar `DB_PATH` en `.env` apuntando a esa carpeta
+4. La DB se sincroniza automáticamente en segundo plano
+5. En otro PC: clonar el repositorio, crear `.env` con la misma ruta de Drive, y listo
+
+### Respaldo y restauración
+
+Desde la pantalla principal → **Configuración** → **Gestionar / Restaurar BD**:
+- Ver estado de la base de datos
+- Restaurar desde un archivo `.db` anterior
+
+Backup manual: copiar `contabilidad.db` a un lugar seguro.
 
 ---
 

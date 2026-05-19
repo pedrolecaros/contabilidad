@@ -38,12 +38,8 @@
         <div class="col-md-4">
           <label class="form-label fw-semibold">Tipo <span class="text-danger">*</span></label>
           <select name="tipo" class="form-select">
-            <option value="PAGAR" {% if not prestamo or prestamo.tipo == 'PAGAR' %}selected{% endif %}>
-              Por Pagar — nosotros debemos
-            </option>
-            <option value="COBRAR" {% if prestamo and prestamo.tipo == 'COBRAR' %}selected{% endif %}>
-              Por Cobrar — nos deben a nosotros
-            </option>
+            <option value="PAGAR" {% if not prestamo or prestamo.tipo == 'PAGAR' %}selected{% endif %}>Por Pagar</option>
+            <option value="COBRAR" {% if prestamo and prestamo.tipo == 'COBRAR' %}selected{% endif %}>Por Cobrar</option>
           </select>
         </div>
 
@@ -51,15 +47,8 @@
         <div class="col-md-4">
           <label class="form-label fw-semibold">Categoría</label>
           <select name="subtipo" class="form-select" id="sel-subtipo" onchange="actualizarHintCuenta()">
-            <option value="BANCARIO" {% if not prestamo or (prestamo.subtipo or 'BANCARIO') in ('BANCARIO', 'SOCIO') %}selected{% endif %}>
-              Bancario
-            </option>
-            <option value="TERCEROS" {% if prestamo and prestamo.subtipo in ('TERCEROS', 'PARCELA') %}selected{% endif %}>
-              Terceros
-            </option>
-            <option value="RELACIONADA" {% if prestamo and prestamo.subtipo == 'RELACIONADA' %}selected{% endif %}>
-              Empresa relacionada
-            </option>
+            <option value="BANCARIO" {% if not prestamo or (prestamo.subtipo or 'BANCARIO') in ('BANCARIO', 'SOCIO') %}selected{% endif %}>Bancario</option>
+            <option value="TERCEROS" {% if prestamo and prestamo.subtipo in ('TERCEROS', 'PARCELA', 'RELACIONADA') %}selected{% endif %}>Terceros</option>
           </select>
           <div class="form-text" id="hint-cuenta-contable"></div>
         </div>
@@ -176,8 +165,8 @@
 {% block scripts %}
 <script>
 var CUENTAS_MAP = {
-  PAGAR:   { BANCARIO: '2.1.10', TERCEROS: '2.1.11', RELACIONADA: '2.1.12' },
-  COBRAR:  { BANCARIO: '1.1.10', TERCEROS: '1.1.11', RELACIONADA: '1.1.12' },
+  PAGAR:  { BANCARIO: '2.1.10', TERCEROS: '2.1.11' },
+  COBRAR: { BANCARIO: '1.1.10', TERCEROS: '1.1.11' },
 };
 function actualizarHintCuenta() {
   var tipo    = document.querySelector('select[name="tipo"]')?.value;
