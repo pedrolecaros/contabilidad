@@ -134,8 +134,8 @@
   {% if asiento.prestamo %}
   <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=asiento.prestamo.id) }}"
      class="badge bg-info text-dark text-decoration-none"
-     title="Vinculado al préstamo {{ asiento.prestamo.nombre }}">
-    <i class="bi bi-bank me-1"></i>{{ asiento.prestamo.nombre }}
+     title="Vinculado a CxC/CxP: {{ asiento.prestamo.nombre }}">
+    <i class="bi bi-journal-bookmark me-1"></i>{{ asiento.prestamo.nombre }}
   </a>
   {% endif %}
 </div>

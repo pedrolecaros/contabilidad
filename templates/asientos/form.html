@@ -95,7 +95,7 @@
           {% if prestamos_json is defined %}
           <div id="panelPrestamo" class="d-none mt-3 p-2 border rounded bg-light">
             <label class="form-label fw-semibold small mb-1">
-              <i class="bi bi-link-45deg me-1 text-primary"></i>Vincular a préstamo
+              <i class="bi bi-link-45deg me-1 text-primary"></i>Vincular a CxC / CxP
             </label>
             <input type="hidden" name="prestamo_vinculado" id="prestVinculadoVal"
                    value="{% if asiento and asiento.prestamo_id %}{{ asiento.prestamo_id }}{% endif %}">
@@ -103,14 +103,33 @@
               <span id="prestVinculadoLabel" class="text-muted small">— sin vincular —</span>
               <button type="button" class="btn btn-outline-primary btn-sm"
                       data-bs-toggle="modal" data-bs-target="#modalPrestamos">
-                <i class="bi bi-search me-1"></i>Seleccionar préstamo
+                <i class="bi bi-search me-1"></i>Seleccionar cuenta
               </button>
               <button type="button" class="btn btn-outline-secondary btn-sm" id="btnDesvincularPrest"
                       onclick="desvincularPrestamo()" style="display:none">
                 <i class="bi bi-x me-1"></i>Desvincular
               </button>
             </div>
-            <div class="form-text">El asiento quedará asociado al préstamo; desde ahí podrás conciliar con la cuota correspondiente.</div>
+            <div class="mt-2" id="panelPrestamSentido" style="display:none">
+              <label class="form-label small fw-semibold mb-1">Sentido del movimiento</label>
+              <div class="d-flex gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="prestamo_sentido"
+                         id="sentidoMenos" value="-" checked>
+                  <label class="form-check-label small" for="sentidoMenos">
+                    <span class="badge bg-danger me-1">Abono (−)</span> Reduce el saldo (pago / cobro)
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="prestamo_sentido"
+                         id="sentidoMas" value="+">
+                  <label class="form-check-label small" for="sentidoMas">
+                    <span class="badge bg-success me-1">Cargo (+)</span> Aumenta el saldo (nuevo crédito)
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="form-text">El asiento quedará asociado a la cuenta y modificará su saldo.</div>
           </div>
           {% endif %}
 
@@ -137,7 +156,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-bank me-2"></i>Seleccionar préstamo</h5>
+        <h5 class="modal-title"><i class="bi bi-journal-bookmark me-2"></i>Seleccionar cuenta CxC / CxP</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0">
@@ -151,8 +170,8 @@
             <tr>
               <th>Nombre</th>
               <th>Tipo</th>
-              <th>Acreedor / Deudor</th>
-              <th class="text-end">Capital pendiente</th>
+              <th>Contraparte</th>
+              <th class="text-end">Saldo actual</th>
               <th></th>
             </tr>
           </thead>
@@ -161,7 +180,7 @@
         <div class="px-3 py-2 border-top">
           <a href="{{ url_for('prestamos.nuevo', eid=empresa.id) }}" target="_blank"
              class="btn btn-outline-success btn-sm">
-            <i class="bi bi-plus-circle me-1"></i>Crear nuevo préstamo
+            <i class="bi bi-plus-circle me-1"></i>Crear nueva cuenta
           </a>
           <small class="text-muted ms-2">Se abrirá en una nueva pestaña</small>
         </div>
@@ -186,22 +205,18 @@ let tomSelects = [];
 const cuentaCodigoMapForm = {};
 cuentas.forEach(c => { cuentaCodigoMapForm[c.id] = c.codigo; });
 
-const CUENTAS_PRESTAMO_FORM = {
-  '2.1.10': 'PAGAR', '2.1.11': 'PAGAR', '2.1.12': 'PAGAR',
-  '1.1.11': 'COBRAR', '1.1.12': 'COBRAR', '1.1.13': 'COBRAR',
-};
-
 function descGlobal() {
   return document.querySelector('input[name="descripcion"]').value.trim();
 }
 
-// Show/hide the global prestamo selector based on whether any line uses a prestamo account
+const CUENTAS_PRESTAMO_FORM = {
+  '2.1.10': true, '2.1.11': true,
+  '1.1.10': true, '1.1.11': true,
+};
+
 function actualizarSelectorPrestamo() {
   const hasPrestamo = Array.from(document.querySelectorAll('select[name="cuenta_id[]"]'))
-    .some(s => {
-      const v = s.value;
-      return v && CUENTAS_PRESTAMO_FORM[cuentaCodigoMapForm[v]];
-    });
+    .some(s => s.value && CUENTAS_PRESTAMO_FORM[cuentaCodigoMapForm[s.value]]);
   const panel = document.getElementById('panelPrestamo');
   if (panel) panel.classList.toggle('d-none', !hasPrestamo);
 }
@@ -257,6 +272,7 @@ function agregarLinea(datos) {
     create: false,
     placeholder: '-- buscar cuenta --',
     maxOptions: 200,
+    dropdownParent: 'body',
     onChange: function() { actualizarSelectorPrestamo(); },
   });
 
@@ -313,9 +329,10 @@ function fmtClp(n) {
 function renderFilaPrestamo(p) {
   const tipoLabel = p.tipo === 'PAGAR' ? 'Por pagar' : 'Por cobrar';
   const monto = p.moneda === 'UF'
-    ? `UF ${p.capital_pendiente.toLocaleString('es-CL', {minimumFractionDigits:2, maximumFractionDigits:2})}`
-    : fmtClp(p.capital_pendiente);
-  return `<tr class="prestamo-row" data-search="${(p.nombre+' '+(p.acreedor_deudor||'')).toLowerCase()}"
+    ? `UF ${(p.saldo_actual||0).toLocaleString('es-CL', {minimumFractionDigits:2, maximumFractionDigits:2})}`
+    : fmtClp(p.saldo_actual||0);
+  const tipoSearch = p.tipo === 'PAGAR' ? 'por pagar pagar' : 'por cobrar cobrar';
+  return `<tr class="prestamo-row" data-search="${(p.nombre+' '+(p.acreedor_deudor||'')+' '+tipoSearch).toLowerCase()}"
                style="cursor:pointer" onclick="seleccionarPrestamo(${p.id}, '${p.nombre.replace(/'/g,"\\'")}')">
     <td class="fw-semibold">${p.nombre}</td>
     <td><span class="badge ${p.tipo==='PAGAR'?'bg-danger':'bg-success'}">${tipoLabel}</span></td>
@@ -332,7 +349,7 @@ function poblarTablaPrestamos() {
   if (!tbody) return;
   tbody.innerHTML = PRESTAMOS_FORM.length
     ? PRESTAMOS_FORM.map(renderFilaPrestamo).join('')
-    : '<tr><td colspan="5" class="text-center text-muted py-3">No hay préstamos activos</td></tr>';
+    : '<tr><td colspan="5" class="text-center text-muted py-3">No hay cuentas CxC/CxP activas</td></tr>';
 }
 
 function filtrarPrestamos(q) {
@@ -347,6 +364,8 @@ function seleccionarPrestamo(id, nombre) {
   document.getElementById('prestVinculadoLabel').textContent = nombre;
   document.getElementById('prestVinculadoLabel').classList.remove('text-muted');
   document.getElementById('btnDesvincularPrest').style.display = '';
+  const sentidoPanel = document.getElementById('panelPrestamSentido');
+  if (sentidoPanel) sentidoPanel.style.display = '';
   bootstrap.Modal.getInstance(document.getElementById('modalPrestamos'))?.hide();
 }
 
@@ -355,6 +374,8 @@ function desvincularPrestamo() {
   document.getElementById('prestVinculadoLabel').textContent = '— sin vincular —';
   document.getElementById('prestVinculadoLabel').classList.add('text-muted');
   document.getElementById('btnDesvincularPrest').style.display = 'none';
+  const sentidoPanel = document.getElementById('panelPrestamSentido');
+  if (sentidoPanel) sentidoPanel.style.display = 'none';
 }
 
 // Initialize on load
@@ -368,6 +389,12 @@ document.addEventListener('DOMContentLoaded', function() {
   {% if asiento and asiento.prestamo_id %}
   const _preselect = PRESTAMOS_FORM.find(p => p.id === {{ asiento.prestamo_id }});
   if (_preselect) seleccionarPrestamo(_preselect.id, _preselect.nombre);
+  // Pre-fill sentido radio
+  {% if asiento and asiento.prestamo_sentido %}
+  const _sentidoVal = {{ asiento.prestamo_sentido | tojson }};
+  const _sentidoRadio = document.querySelector(`input[name="prestamo_sentido"][value="${_sentidoVal}"]`);
+  if (_sentidoRadio) _sentidoRadio.checked = true;
+  {% endif %}
   {% endif %}
 });
 

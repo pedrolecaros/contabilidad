@@ -1,32 +1,31 @@
 {% extends 'base.html' %}
-{% block title %}Préstamos – {{ empresa.nombre_fantasia or empresa.razon_social }}{% endblock %}
+{% block title %}CxC / CxP – {{ empresa.nombre_fantasia or empresa.razon_social }}{% endblock %}
 
 {% block breadcrumb %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
-    <li class="breadcrumb-item active">Préstamos</li>
+    <li class="breadcrumb-item active">CxC / CxP</li>
   </ol>
 </nav>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-bank me-2"></i>Préstamos</h5>
+  <h5 class="mb-0"><i class="bi bi-journal-bookmark me-2"></i>Cuentas por Cobrar / Pagar</h5>
   <a href="{{ url_for('prestamos.nuevo', eid=empresa.id) }}" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-circle me-1"></i>Nuevo
+    <i class="bi bi-plus-circle me-1"></i>Nueva cuenta
   </a>
 </div>
 
-{# ── KPI Cards ──────────────────────────────────────────────────────────── #}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="card h-100 border-0 bg-danger bg-opacity-10">
       <div class="card-body py-3 px-3">
         <div class="text-muted small mb-1"><i class="bi bi-arrow-up-circle me-1"></i>Por Pagar</div>
         <div class="fw-bold fs-5 text-danger">$ {{ total_pagar|clp }}</div>
-        <div class="text-muted" style="font-size:.75rem">saldo capital pendiente</div>
+        <div class="text-muted" style="font-size:.75rem">saldo actual</div>
       </div>
     </div>
   </div>
@@ -35,404 +34,85 @@
       <div class="card-body py-3 px-3">
         <div class="text-muted small mb-1"><i class="bi bi-arrow-down-circle me-1"></i>Por Cobrar</div>
         <div class="fw-bold fs-5 text-success">$ {{ total_cobrar|clp }}</div>
-        <div class="text-muted" style="font-size:.75rem">saldo capital pendiente</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card h-100 border-0 {% if vencidas %}bg-warning bg-opacity-10{% endif %}">
-      <div class="card-body py-3 px-3">
-        <div class="text-muted small mb-1"><i class="bi bi-exclamation-triangle me-1"></i>Vencidas</div>
-        <div class="fw-bold fs-5 {% if vencidas %}text-warning{% else %}text-muted{% endif %}">
-          {{ vencidas|length }}
-        </div>
-        <div class="text-muted" style="font-size:.75rem">cuotas sin pagar</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card h-100 border-0">
-      <div class="card-body py-3 px-3">
-        <div class="text-muted small mb-1"><i class="bi bi-calendar-event me-1"></i>Próximas (30d)</div>
-        <div class="fw-bold fs-5">{{ proximas|length }}</div>
-        <div class="text-muted" style="font-size:.75rem">cuotas por vencer</div>
+        <div class="text-muted" style="font-size:.75rem">saldo actual</div>
       </div>
     </div>
   </div>
 </div>
 
-{# ── Main Content ────────────────────────────────────────────────────────── #}
-<div class="row g-3 align-items-start">
-
-  {# ── Left: Loans table ── #}
-  <div class="col-lg-8">
-    <div class="card">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="fw-semibold small"><i class="bi bi-list-ul me-1"></i>Préstamos ({{ prestamos|length }})</span>
-        <div class="d-flex gap-1">
-          <button class="btn btn-outline-secondary btn-sm py-0 active" id="btn-activos"
-                  onclick="filtrarPrestamos('activos')">Activos</button>
-          <button class="btn btn-outline-secondary btn-sm py-0" id="btn-todos"
-                  onclick="filtrarPrestamos('todos')">Todos</button>
-        </div>
-      </div>
-      {% if prestamos %}
-      <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0" id="tbl-prestamos">
-          <thead class="table-light">
-            <tr>
-              <th>Nombre</th>
-              <th class="text-center">Tipo</th>
-              <th class="text-end">Saldo</th>
-              <th>Próx. cuota</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for p in prestamos %}
-            <tr class="prow {% if not p.activo %}text-muted prow-inactivo{% endif %}"
-                {% if not p.activo %}style="display:none"{% endif %}>
-              <td>
-                <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
-                   class="text-decoration-none fw-semibold {% if not p.activo %}text-muted{% endif %}">
-                  {{ p.nombre }}
-                </a>
-                {% if p.acreedor_deudor %}
-                <div class="text-muted" style="font-size:.75rem">{{ p.acreedor_deudor }}</div>
-                {% endif %}
-                <div style="font-size:.72rem" class="text-muted">
-                  <span class="badge bg-secondary">{{ p.moneda }}</span>
-                  <span class="badge bg-light text-dark border">{{ p.subtipo or 'BANCARIO' }}</span>
-                </div>
-              </td>
-              <td class="text-center">
-                {% if p.tipo == 'PAGAR' %}
-                <span class="badge bg-danger">Pagar</span>
-                {% else %}
-                <span class="badge bg-success">Cobrar</span>
-                {% endif %}
-              </td>
-              <td class="text-end">
-                {% if saldos[p.id] > 0 %}
-                  <span class="{% if p.tipo == 'PAGAR' %}text-danger{% else %}text-success{% endif %} fw-semibold">
-                    $ {{ saldos[p.id]|clp }}
-                  </span>
-                  {% if p.moneda == 'UF' and uf_hoy %}
-                  <div class="text-muted" style="font-size:.72rem">≈ UF {{ "%.2f"|format(saldos[p.id] / uf_hoy) }}</div>
-                  {% endif %}
-                {% else %}
-                <span class="text-success"><i class="bi bi-check2-circle"></i> Pagado</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if proxima_cuota[p.id] is defined and proxima_cuota[p.id] %}
-                {% set pc = proxima_cuota[p.id] %}
-                <div class="{% if pc.fecha_vencimiento < hoy %}text-danger fw-semibold{% endif %}" style="font-size:.82rem">
-                  {{ pc.fecha_vencimiento|fecha_cl }}
-                </div>
-                <div class="text-muted" style="font-size:.72rem">
-                  Cuota {{ pc.numero_cuota }} ·
-                  {% if p.moneda == 'UF' %}UF {{ "%.2f"|format(pc.cuota_total) }}{% else %}$ {{ pc.cuota_total|clp }}{% endif %}
-                </div>
-                {% else %}
-                <span class="text-muted small">—</span>
-                {% endif %}
-              </td>
-              <td class="text-end">
-                <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
-                   class="btn btn-outline-secondary btn-sm py-0 px-2">Ver</a>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="card-body text-center text-muted py-5">
-        <i class="bi bi-bank fs-1 mb-2 d-block"></i>
-        No hay préstamos registrados.
-        <a href="{{ url_for('prestamos.nuevo', eid=empresa.id) }}" class="d-block mt-2">Crear el primero</a>
-      </div>
-      {% endif %}
+<div class="card">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="fw-semibold small"><i class="bi bi-list-ul me-1"></i>Cuentas ({{ prestamos|length }})</span>
+    <div class="d-flex gap-1">
+      <button class="btn btn-outline-secondary btn-sm py-0 active" id="btn-activos"
+              onclick="filtrarPrestamos('activos')">Activos</button>
+      <button class="btn btn-outline-secondary btn-sm py-0" id="btn-todos"
+              onclick="filtrarPrestamos('todos')">Todos</button>
     </div>
   </div>
-
-  {# ── Right: Alerts + Upcoming ── #}
-  <div class="col-lg-4">
-
-    {% if vencidas %}
-    <div class="card border-danger mb-3">
-      <div class="card-header py-2 bg-danger bg-opacity-10 fw-semibold small text-danger">
-        <i class="bi bi-exclamation-triangle me-1"></i>Cuotas vencidas
-      </div>
-      <div class="list-group list-group-flush">
-        {% for p, c in vencidas %}
-        <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
-           class="list-group-item list-group-item-action py-2 px-3">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <div class="fw-semibold small">{{ p.nombre }}</div>
-              <div class="text-muted" style="font-size:.75rem">
-                Cuota {{ c.numero_cuota }} · <span class="text-danger">{{ c.fecha_vencimiento|fecha_cl }}</span>
-              </div>
+  {% if prestamos %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0" id="tbl-prestamos">
+      <thead class="table-light">
+        <tr>
+          <th>Nombre</th>
+          <th class="text-center">Tipo</th>
+          <th>Contraparte</th>
+          <th class="text-end">Saldo Inicial</th>
+          <th class="text-end">Saldo Actual</th>
+          <th class="text-center">Moneda</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in prestamos %}
+        <tr class="prow {% if not p.activo %}text-muted prow-inactivo{% endif %}"
+            {% if not p.activo %}style="display:none"{% endif %}>
+          <td>
+            <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
+               class="text-decoration-none fw-semibold {% if not p.activo %}text-muted{% endif %}">
+              {{ p.nombre }}
+            </a>
+            <div style="font-size:.72rem" class="text-muted">
+              <span class="badge bg-light text-dark border">{{ p.subtipo or 'BANCARIO' }}</span>
+              {% if not p.activo %}<span class="badge bg-secondary">Inactivo</span>{% endif %}
             </div>
-            <div class="text-end text-danger fw-semibold small">
-              {% if p.moneda == 'UF' %}
-                UF {{ "%.2f"|format(c.cuota_total) }}
-                {% if uf_hoy %}<div style="font-size:.72rem">$ {{ (c.cuota_total * uf_hoy)|clp }}</div>{% endif %}
-              {% else %}
-                $ {{ c.cuota_total|clp }}
-              {% endif %}
-            </div>
-          </div>
-        </a>
+          </td>
+          <td class="text-center">
+            {% if p.tipo == 'PAGAR' %}
+            <span class="badge bg-danger">Por Pagar</span>
+            {% else %}
+            <span class="badge bg-success">Por Cobrar</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ p.acreedor_deudor or '—' }}</td>
+          <td class="text-end small">$ {{ p.monto_original|clp }}</td>
+          <td class="text-end fw-semibold">
+            {% set s = saldos[p.id] %}
+            <span class="{% if p.tipo == 'PAGAR' %}text-danger{% else %}text-success{% endif %}">
+              $ {{ s|clp }}
+            </span>
+          </td>
+          <td class="text-center">
+            <span class="badge bg-secondary">{{ p.moneda }}</span>
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
+               class="btn btn-outline-secondary btn-sm py-0 px-2">Ver</a>
+          </td>
+        </tr>
         {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    {% if proximas %}
-    <div class="card">
-      <div class="card-header py-2 fw-semibold small">
-        <i class="bi bi-calendar-event me-1"></i>Próximas cuotas (30 días)
-      </div>
-      <div class="list-group list-group-flush">
-        {% for p, c in proximas %}
-        <a href="{{ url_for('prestamos.detalle', eid=empresa.id, pid=p.id) }}"
-           class="list-group-item list-group-item-action py-2 px-3">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <div class="fw-semibold small">{{ p.nombre }}</div>
-              <div class="text-muted" style="font-size:.75rem">
-                Cuota {{ c.numero_cuota }} · {{ c.fecha_vencimiento|fecha_cl }}
-                <span class="badge {% if p.tipo == 'PAGAR' %}bg-danger{% else %}bg-success{% endif %} ms-1" style="font-size:.65rem">
-                  {{ 'Pagar' if p.tipo == 'PAGAR' else 'Cobrar' }}
-                </span>
-              </div>
-            </div>
-            <div class="text-end fw-semibold small">
-              {% if p.moneda == 'UF' %}
-                UF {{ "%.2f"|format(c.cuota_total) }}
-                {% if uf_hoy %}<div class="text-muted" style="font-size:.72rem">$ {{ (c.cuota_total * uf_hoy)|clp }}</div>{% endif %}
-              {% else %}
-                $ {{ c.cuota_total|clp }}
-              {% endif %}
-            </div>
-          </div>
-        </a>
-        {% endfor %}
-      </div>
-    </div>
-    {% elif not vencidas %}
-    <div class="card">
-      <div class="card-body text-center text-muted py-4 small">
-        <i class="bi bi-calendar-check fs-3 d-block mb-2 text-success"></i>
-        Sin cuotas en los próximos 30 días
-      </div>
-    </div>
-    {% endif %}
-
+      </tbody>
+    </table>
   </div>
-</div>{# end row #}
-
-{# ── Proyección (collapsible) ───────────────────────────────────────────── #}
-{% if proyeccion %}
-{% set anos_pagar  = {} %}
-{% set anos_cobrar = {} %}
-{% set anos_total  = {} %}
-{% for mes, dp, dc, dt in proyeccion %}
-  {% set anio = mes[:4] %}
-  {% for bucket, datos in [(anos_pagar, dp), (anos_cobrar, dc), (anos_total, dt)] %}
-    {% if anio not in bucket %}
-      {% set _ = bucket.update({anio: {'capital': 0, 'interes': 0, 'total': 0, 'meses': []}}) %}
-    {% endif %}
-    {% set _ = bucket[anio]['meses'].append((mes, datos)) %}
-    {% set _ = bucket[anio].update({
-      'capital': bucket[anio]['capital'] + datos.capital,
-      'interes': bucket[anio]['interes'] + datos.interes,
-      'total':   bucket[anio]['total']   + datos.total
-    }) %}
-  {% endfor %}
-{% endfor %}
-{% set anio_actual = hoy.strftime('%Y') %}
-
-<div class="card mt-4">
-  <div class="card-header py-2 d-flex justify-content-between align-items-center" style="cursor:pointer"
-       data-bs-toggle="collapse" data-bs-target="#colProy">
-    <span class="fw-semibold small"><i class="bi bi-bar-chart-line me-1"></i>Proyección de flujo (cuotas pendientes)</span>
-    <i class="bi bi-chevron-down"></i>
+  {% else %}
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-journal-bookmark fs-1 mb-2 d-block"></i>
+    No hay cuentas registradas.
+    <a href="{{ url_for('prestamos.nuevo', eid=empresa.id) }}" class="d-block mt-2">Crear la primera</a>
   </div>
-  <div class="collapse" id="colProy">
-
-    <div class="card-body pb-2 pt-3">
-      <div class="d-flex gap-2 mb-3">
-        <div class="btn-group btn-group-sm" role="group" id="vista-proy-btns">
-          <button type="button" class="btn btn-outline-secondary active" onclick="setVistaProy('total',this)">Consolidado</button>
-          <button type="button" class="btn btn-outline-danger"           onclick="setVistaProy('pagar',this)">Por Pagar</button>
-          <button type="button" class="btn btn-outline-success"          onclick="setVistaProy('cobrar',this)">Por Cobrar</button>
-        </div>
-      </div>
-
-      {# Tabla consolidado #}
-      <div class="tabla-proy" id="tabla-proy-total">
-      <div class="table-responsive">
-        <table class="table table-sm mb-0">
-          <thead class="table-dark"><tr>
-            <th style="width:32px"></th><th>Período</th>
-            <th class="text-end">Capital</th><th class="text-end">Interés</th><th class="text-end">Total</th>
-          </tr></thead>
-          <tbody>
-            {% for anio, ag in anos_total.items() %}{% set open=(anio==anio_actual) %}
-            <tr class="table-secondary" style="cursor:pointer" onclick="toggleProyAnio('t{{ anio }}')" id="yr-t{{ anio }}">
-              <td class="text-center"><i class="bi bi-chevron-{% if open %}down{% else %}right{% endif %}" id="icon-t{{ anio }}"></i></td>
-              <td class="fw-semibold">{{ anio }}</td>
-              <td class="text-end fw-semibold">$ {{ ag.capital|clp }}</td>
-              <td class="text-end fw-semibold">$ {{ ag.interes|clp }}</td>
-              <td class="text-end fw-bold">$ {{ ag.total|clp }}</td>
-            </tr>
-            {% for mes, datos in ag.meses %}
-            <tr class="anio-t{{ anio }}"{% if not open %} style="display:none"{% endif %}>
-              <td></td><td class="small ps-4 text-muted">{{ mes }}</td>
-              <td class="text-end small">$ {{ datos.capital|clp }}</td>
-              <td class="text-end small">$ {{ datos.interes|clp }}</td>
-              <td class="text-end small fw-semibold">$ {{ datos.total|clp }}</td>
-            </tr>
-            {% endfor %}{% endfor %}
-          </tbody>
-        </table>
-      </div></div>
-
-      {# Tabla por pagar #}
-      <div class="tabla-proy d-none" id="tabla-proy-pagar">
-      <div class="table-responsive">
-        <table class="table table-sm mb-0">
-          <thead class="table-danger"><tr>
-            <th style="width:32px"></th><th>Período</th>
-            <th class="text-end">Capital</th><th class="text-end">Interés</th><th class="text-end">Total</th>
-          </tr></thead>
-          <tbody>
-            {% for anio, ag in anos_pagar.items() %}{% set open=(anio==anio_actual) %}
-            <tr class="table-secondary" style="cursor:pointer" onclick="toggleProyAnio('p{{ anio }}')" id="yr-p{{ anio }}">
-              <td class="text-center"><i class="bi bi-chevron-{% if open %}down{% else %}right{% endif %}" id="icon-p{{ anio }}"></i></td>
-              <td class="fw-semibold">{{ anio }}</td>
-              <td class="text-end fw-semibold">$ {{ ag.capital|clp }}</td>
-              <td class="text-end fw-semibold">$ {{ ag.interes|clp }}</td>
-              <td class="text-end fw-bold text-danger">$ {{ ag.total|clp }}</td>
-            </tr>
-            {% for mes, datos in ag.meses %}
-            <tr class="anio-p{{ anio }}"{% if not open %} style="display:none"{% endif %}>
-              <td></td><td class="small ps-4 text-muted">{{ mes }}</td>
-              <td class="text-end small">$ {{ datos.capital|clp }}</td>
-              <td class="text-end small">$ {{ datos.interes|clp }}</td>
-              <td class="text-end small fw-semibold text-danger">$ {{ datos.total|clp }}</td>
-            </tr>
-            {% endfor %}{% endfor %}
-          </tbody>
-        </table>
-      </div></div>
-
-      {# Tabla por cobrar #}
-      <div class="tabla-proy d-none" id="tabla-proy-cobrar">
-      <div class="table-responsive">
-        <table class="table table-sm mb-0">
-          <thead class="table-success"><tr>
-            <th style="width:32px"></th><th>Período</th>
-            <th class="text-end">Capital</th><th class="text-end">Interés</th><th class="text-end">Total</th>
-          </tr></thead>
-          <tbody>
-            {% for anio, ag in anos_cobrar.items() %}{% set open=(anio==anio_actual) %}
-            <tr class="table-secondary" style="cursor:pointer" onclick="toggleProyAnio('c{{ anio }}')" id="yr-c{{ anio }}">
-              <td class="text-center"><i class="bi bi-chevron-{% if open %}down{% else %}right{% endif %}" id="icon-c{{ anio }}"></i></td>
-              <td class="fw-semibold">{{ anio }}</td>
-              <td class="text-end fw-semibold">$ {{ ag.capital|clp }}</td>
-              <td class="text-end fw-semibold">$ {{ ag.interes|clp }}</td>
-              <td class="text-end fw-bold text-success">$ {{ ag.total|clp }}</td>
-            </tr>
-            {% for mes, datos in ag.meses %}
-            <tr class="anio-c{{ anio }}"{% if not open %} style="display:none"{% endif %}>
-              <td></td><td class="small ps-4 text-muted">{{ mes }}</td>
-              <td class="text-end small">$ {{ datos.capital|clp }}</td>
-              <td class="text-end small">$ {{ datos.interes|clp }}</td>
-              <td class="text-end small fw-semibold text-success">$ {{ datos.total|clp }}</td>
-            </tr>
-            {% endfor %}{% endfor %}
-          </tbody>
-        </table>
-      </div></div>
-
-      <div class="mt-4">
-        <canvas id="grafico-vencimientos" style="max-height:280px"></canvas>
-      </div>
-    </div>
-  </div>
+  {% endif %}
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script>
-function toggleProyAnio(key) {
-  document.querySelectorAll('.anio-' + key).forEach(r => {
-    r.style.display = r.style.display === 'none' ? '' : 'none';
-  });
-  const icon = document.getElementById('icon-' + key);
-  if (icon) icon.className = icon.className.includes('right') ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
-}
-function setVistaProy(vista, btn) {
-  document.querySelectorAll('.tabla-proy').forEach(el => el.classList.add('d-none'));
-  document.getElementById('tabla-proy-' + vista).classList.remove('d-none');
-  document.querySelectorAll('#vista-proy-btns button').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  if (window._chartVenc) window._chartVenc.destroy();
-  buildChart(vista);
-}
-
-const PROY_DATA = {
-  total:  { labels:[{% for a in anos_total %}'{{ a }}'{% if not loop.last %},{% endif %}{% endfor %}],
-            capital:[{% for a,ag in anos_total.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}],
-            interes:[{% for a,ag in anos_total.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}] },
-  pagar:  { labels:[{% for a in anos_pagar %}'{{ a }}'{% if not loop.last %},{% endif %}{% endfor %}],
-            capital:[{% for a,ag in anos_pagar.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}],
-            interes:[{% for a,ag in anos_pagar.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}] },
-  cobrar: { labels:[{% for a in anos_cobrar %}'{{ a }}'{% if not loop.last %},{% endif %}{% endfor %}],
-            capital:[{% for a,ag in anos_cobrar.items() %}{{ ag.capital|round|int }}{% if not loop.last %},{% endif %}{% endfor %}],
-            interes:[{% for a,ag in anos_cobrar.items() %}{{ ag.interes|round|int }}{% if not loop.last %},{% endif %}{% endfor %}] },
-};
-const COLORES = {
-  total: { cap:'rgba(13,110,253,.75)',  int:'rgba(255,193,7,.75)'  },
-  pagar: { cap:'rgba(220,53,69,.75)',   int:'rgba(253,126,20,.75)' },
-  cobrar:{ cap:'rgba(25,135,84,.75)',   int:'rgba(32,201,151,.75)' },
-};
-function buildChart(vista) {
-  const d = PROY_DATA[vista], col = COLORES[vista];
-  window._chartVenc = new Chart(document.getElementById('grafico-vencimientos'), {
-    type: 'bar',
-    data: { labels: d.labels, datasets: [
-      { label:'Capital', data:d.capital, backgroundColor:col.cap, borderRadius:4 },
-      { label:'Interés', data:d.interes, backgroundColor:col.int, borderRadius:4 },
-    ]},
-    options: {
-      responsive:true,
-      interaction:{ mode:'index', intersect:false },
-      plugins:{
-        legend:{ position:'top' },
-        tooltip:{ callbacks:{
-          label: c => `${c.dataset.label}: $${c.parsed.y.toLocaleString('es-CL')}`,
-          footer: items => `Total: $${items.reduce((s,i)=>s+i.parsed.y,0).toLocaleString('es-CL')}`,
-        }},
-      },
-      scales:{
-        x:{ stacked:true },
-        y:{ stacked:true, ticks:{ callback: v => v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : '$'+v.toLocaleString('es-CL') }},
-      },
-    },
-  });
-}
-
-// Only build chart when section is expanded
-document.getElementById('colProy').addEventListener('shown.bs.collapse', function() {
-  if (!window._chartVenc) buildChart('total');
-});
-</script>
-{% endif %}
 
 <script>
 function filtrarPrestamos(modo) {

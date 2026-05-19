@@ -76,6 +76,7 @@ class Asiento(db.Model):
     # BORRADOR, CONFIRMADO, ANULADO
     creado_en = db.Column(db.DateTime, default=datetime.now)
     prestamo_id = db.Column(db.Integer, db.ForeignKey('prestamos.id'), nullable=True)
+    prestamo_sentido = db.Column(db.String(5), nullable=True)
 
     prestamo = db.relationship('Prestamo', foreign_keys=[prestamo_id],
                                backref=db.backref('asientos_vinculados', lazy='dynamic'))
@@ -310,10 +311,7 @@ class Prestamo(db.Model):
     subtipo = db.Column(db.String(15), default='BANCARIO')  # BANCARIO | TERCEROS | RELACIONADA
     moneda = db.Column(db.String(5), default='PESOS')     # PESOS | UF
     monto_original = db.Column(db.Float, nullable=False)
-    tasa_interes_anual = db.Column(db.Float, default=0.0)
     fecha_inicio = db.Column(db.Date, nullable=False)
-    n_cuotas = db.Column(db.Integer, nullable=True)       # None = LIBRE
-    periodicidad = db.Column(db.String(10), default='MENSUAL')  # MENSUAL|TRIMESTRAL|ANUAL|LIBRE
     acreedor_deudor = db.Column(db.String(200))
     acreedor_rut = db.Column(db.String(20))
     activo = db.Column(db.Boolean, default=True)
@@ -323,79 +321,6 @@ class Prestamo(db.Model):
     empresa = db.relationship('Empresa', foreign_keys=[empresa_id],
                               backref=db.backref('prestamos', lazy='dynamic'))
     empresa_relacionada = db.relationship('Empresa', foreign_keys=[empresa_relacionada_id])
-    cuotas = db.relationship('CuotaPrestamo', backref='prestamo',
-                             order_by='CuotaPrestamo.numero_cuota',
-                             cascade='all, delete-orphan', lazy='select')
-
-
-class CuotaPrestamo(db.Model):
-    __tablename__ = 'cuotas_prestamo'
-    id = db.Column(db.Integer, primary_key=True)
-    prestamo_id = db.Column(db.Integer, db.ForeignKey('prestamos.id'), nullable=False)
-    numero_cuota = db.Column(db.Integer, nullable=True)
-    fecha_vencimiento = db.Column(db.Date, nullable=False)
-    capital = db.Column(db.Float, default=0.0)
-    interes = db.Column(db.Float, default=0.0)
-    cuota_total = db.Column(db.Float, default=0.0)
-    saldo_insoluto = db.Column(db.Float, default=0.0)
-    pagada = db.Column(db.Boolean, default=False)
-    fecha_pago = db.Column(db.Date, nullable=True)
-    movimiento_banco_id = db.Column(db.Integer, db.ForeignKey('movimientos_banco.id'), nullable=True)
-    notas = db.Column(db.String(300))
-    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
-    uf_valor_pago = db.Column(db.Float, nullable=True)
-    cuota_total_pesos = db.Column(db.Float, nullable=True)
-    tipo = db.Column(db.String(20), default='REGULAR')  # REGULAR | EXTRAORDINARIO
-
-    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
-    pagos = db.relationship('PagoCuota', backref='cuota',
-                            cascade='all, delete-orphan', lazy='select',
-                            foreign_keys='PagoCuota.cuota_id')
-
-    @property
-    def monto_pagado_total(self):
-        total = sum(p.monto for p in self.pagos)
-        if not total and self.pagada and self.cuota_total:
-            return float(self.cuota_total)
-        return total
-
-    @property
-    def monto_pendiente(self):
-        return max(0.0, (self.cuota_total or 0) - self.monto_pagado_total)
-
-    @property
-    def pagada_parcialmente(self):
-        return self.monto_pagado_total > 0 and not self.pagada
-
-
-class PagoCuota(db.Model):
-    __tablename__ = 'pagos_cuota'
-    id = db.Column(db.Integer, primary_key=True)
-    cuota_id = db.Column(db.Integer, db.ForeignKey('cuotas_prestamo.id'), nullable=False)
-    monto = db.Column(db.Float, nullable=False)
-    fecha = db.Column(db.Date, nullable=False)
-    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
-    sin_efecto_contable = db.Column(db.Boolean, default=False)
-    notas = db.Column(db.String(300))
-    creado_en = db.Column(db.DateTime, default=datetime.now)
-
-    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
-
-
-class VacacionEmpleado(db.Model):
-    __tablename__ = 'vacaciones_empleado'
-    id = db.Column(db.Integer, primary_key=True)
-    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
-    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
-    fecha_inicio = db.Column(db.Date, nullable=False)
-    fecha_fin = db.Column(db.Date, nullable=False)
-    dias_habiles = db.Column(db.Integer, default=0)
-    notas = db.Column(db.String(300))
-    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
-    creado_en = db.Column(db.DateTime, default=datetime.now)
-
-    empleado = db.relationship('Empleado', backref=db.backref('vacaciones', lazy='dynamic'))
-    asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
 
 
 class ReglaClasificacion(db.Model):
@@ -431,36 +356,3 @@ class ArchivoImportado(db.Model):
     empresa = db.relationship('Empresa', backref=db.backref('archivos', lazy='dynamic'))
 
 
-class ActivoFijo(db.Model):
-    __tablename__ = 'activos_fijos'
-    id = db.Column(db.Integer, primary_key=True)
-    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
-    nombre = db.Column(db.String(200), nullable=False)
-    descripcion = db.Column(db.String(500))
-    categoria = db.Column(db.String(15), nullable=False)
-    # TERRENO | CONSTRUCCION | MAQUINARIA | VEHICULO | MUEBLE | EQUIPO_COMP
-    valor_compra = db.Column(db.Float, nullable=False)
-    valor_residual = db.Column(db.Float, default=0.0)
-    vida_util_meses = db.Column(db.Integer, nullable=False, default=60)
-    fecha_compra = db.Column(db.Date, nullable=False)
-    metodo = db.Column(db.String(10), default='LINEAL')  # LINEAL | ACELERADO
-    cuenta_activo_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
-    cuenta_dep_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
-    activo = db.Column(db.Boolean, default=True)
-    creado_en = db.Column(db.DateTime, default=datetime.now)
-
-    empresa = db.relationship('Empresa', backref=db.backref('activos_fijos', lazy='dynamic'))
-    cuenta_activo = db.relationship('Cuenta', foreign_keys=[cuenta_activo_id])
-    cuenta_dep = db.relationship('Cuenta', foreign_keys=[cuenta_dep_id])
-
-
-class DepreciacionRegistro(db.Model):
-    __tablename__ = 'depreciacion_registros'
-    id = db.Column(db.Integer, primary_key=True)
-    activo_fijo_id = db.Column(db.Integer, db.ForeignKey('activos_fijos.id'), nullable=False)
-    periodo = db.Column(db.String(7), nullable=False)  # YYYY-MM
-    monto = db.Column(db.Float, nullable=False)
-    asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=True)
-
-    activo_fijo = db.relationship('ActivoFijo', backref=db.backref('depreciaciones', lazy='dynamic'))
-    asiento = db.relationship('Asiento')

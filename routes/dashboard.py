@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, CuotaPrestamo, Liquidacion
+from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Liquidacion
 
 bp = Blueprint('dashboard', __name__)
 
@@ -20,14 +20,8 @@ def index(eid):
     # Asientos en borrador
     asientos_borrador = Asiento.query.filter_by(empresa_id=eid, estado='BORRADOR').count()
 
-    # Cuotas de préstamos vencidas (sin pagar)
-    cuotas_vencidas = (CuotaPrestamo.query
-                       .join(CuotaPrestamo.prestamo)
-                       .filter(
-                           CuotaPrestamo.pagada == False,
-                           CuotaPrestamo.fecha_vencimiento < hoy,
-                           db.text('prestamos.empresa_id = :eid').bindparams(eid=eid)
-                       ).count())
+    # Cuotas vencidas: not applicable in simplified ledger model
+    cuotas_vencidas = 0
 
     # Último período con liquidaciones emitidas
     ultima_liq = (db.session.query(Liquidacion.periodo)

@@ -1,1170 +1,210 @@
 {% extends 'base.html' %}
-{% block title %}{{ prestamo.nombre }} – Préstamo{% endblock %}
+{% block title %}{{ prestamo.nombre }} – {{ empresa.nombre_fantasia or empresa.razon_social }}{% endblock %}
 
 {% block breadcrumb %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('prestamos.lista', eid=empresa.id) }}">Préstamos</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('prestamos.lista', eid=empresa.id) }}">CxC / CxP</a></li>
     <li class="breadcrumb-item active">{{ prestamo.nombre }}</li>
   </ol>
 </nav>
 {% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0">
-    <i class="bi bi-bank me-2"></i>{{ prestamo.nombre }}
-    {% if prestamo.tipo == 'PAGAR' %}
-    <span class="badge bg-danger ms-1">Pagar</span>
-    {% else %}
-    <span class="badge bg-success ms-1">Cobrar</span>
-    {% endif %}
+    <i class="bi bi-journal-bookmark me-2"></i>{{ prestamo.nombre }}
     {% if not prestamo.activo %}
-    <span class="badge bg-secondary ms-1">Inactivo</span>
+    <span class="badge bg-secondary ms-2">Inactivo</span>
     {% endif %}
   </h5>
   <div class="d-flex gap-2">
-    <button type="button" class="btn btn-outline-success btn-sm"
-            data-bs-toggle="modal" data-bs-target="#modalAbonoCapital">
-      <i class="bi bi-plus-circle me-1"></i>Abono capital
-    </button>
     <a href="{{ url_for('prestamos.editar', eid=empresa.id, pid=prestamo.id) }}"
        class="btn btn-outline-primary btn-sm">
       <i class="bi bi-pencil me-1"></i>Editar
     </a>
-    <a href="{{ url_for('prestamos.lista', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
+    <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-arrow-left me-1"></i>Volver
     </a>
   </div>
 </div>
 
-<!-- ── Info del préstamo ──────────────────────────────────────────────────── -->
+{# ── Header info cards ──────────────────────────────────────────────────── #}
 <div class="row g-3 mb-4">
-  <div class="col-md-8">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="row g-2 small">
-          <div class="col-6 col-md-4">
-            <div class="text-muted">Moneda</div>
-            <div class="fw-semibold">
-              <span class="badge bg-secondary">{{ prestamo.moneda }}</span>
-            </div>
-          </div>
-          <div class="col-6 col-md-4">
-            <div class="text-muted">Monto original</div>
-            <div class="fw-semibold">
-              {% if prestamo.moneda == 'UF' %}
-              UF {{ prestamo.monto_original|clp }}
-              {% else %}
-              $ {{ prestamo.monto_original|clp }}
-              {% endif %}
-            </div>
-          </div>
-          <div class="col-6 col-md-4">
-            <div class="text-muted">Tasa anual</div>
-            <div class="fw-semibold">{{ (prestamo.tasa_interes_anual * 100)|round(4) }}%</div>
-          </div>
-          <div class="col-6 col-md-4">
-            <div class="text-muted">Fecha inicio</div>
-            <div class="fw-semibold">{{ prestamo.fecha_inicio|fecha_cl }}</div>
-          </div>
-          <div class="col-6 col-md-4">
-            <div class="text-muted">Periodicidad</div>
-            <div class="fw-semibold">{{ prestamo.periodicidad }}</div>
-          </div>
-          <div class="col-6 col-md-4">
-            <div class="text-muted">N° cuotas</div>
-            <div class="fw-semibold">{{ prestamo.n_cuotas or '—' }}</div>
-          </div>
-          {% if prestamo.acreedor_deudor or prestamo.acreedor_rut %}
-          <div class="col-md-6">
-            <div class="text-muted">Acreedor / Deudor</div>
-            <div class="fw-semibold">{{ prestamo.acreedor_deudor or '—' }}</div>
-            {% if prestamo.acreedor_rut %}
-            <div class="text-muted small">RUT {{ prestamo.acreedor_rut }}</div>
-            {% endif %}
-          </div>
-          {% endif %}
-          {% if prestamo.empresa_relacionada %}
-          <div class="col-md-6">
-            <div class="text-muted">Empresa relacionada</div>
-            <div class="fw-semibold">
-              <i class="bi bi-building me-1"></i>
-              {{ prestamo.empresa_relacionada.nombre_fantasia or prestamo.empresa_relacionada.razon_social }}
-            </div>
-          </div>
-          {% endif %}
-          {% if prestamo.notas %}
-          <div class="col-12">
-            <div class="text-muted">Notas</div>
-            <div>{{ prestamo.notas }}</div>
-          </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 bg-light">
+      <div class="card-body py-3 px-3">
+        <div class="text-muted small mb-1">Tipo</div>
+        <div class="fw-bold">
+          {% if prestamo.tipo == 'PAGAR' %}
+          <span class="badge bg-danger fs-6">Por Pagar</span>
+          {% else %}
+          <span class="badge bg-success fs-6">Por Cobrar</span>
           {% endif %}
         </div>
       </div>
     </div>
   </div>
-
-  <div class="col-md-4">
-    <div class="card h-100 {% if prestamo.tipo == 'PAGAR' %}border-danger{% else %}border-success{% endif %}">
-      <div class="card-body p-3">
-
-        {# ── Capital pendiente (headline) ── #}
-        <div class="text-muted small mb-1">Capital pendiente</div>
-        <div class="fw-bold fs-4 {% if prestamo.tipo == 'PAGAR' %}text-danger{% else %}text-success{% endif %} mb-1">
-          {% if prestamo.moneda == 'UF' %}UF {{ capital_pendiente|clp }}
-            {% if capital_pendiente_clp %}<div class="fw-normal fs-6 text-muted">≈ $ {{ capital_pendiente_clp|clp }}</div>{% endif %}
-          {% else %}$ {{ capital_pendiente|clp }}{% endif %}
-        </div>
-
-        <hr class="my-2">
-
-        {# ── Pagado ── #}
-        <div class="small fw-semibold text-success mb-1"><i class="bi bi-check2-circle me-1"></i>Pagado</div>
-        <div class="row g-0 small mb-2">
-          <div class="col-7 text-muted">Capital pagado</div>
-          <div class="col-5 text-end fw-semibold">
-            {% if prestamo.moneda == 'UF' %}
-              UF {{ capital_pagado|clp }}{% if capital_pagado_clp %}<br><span class="text-muted" style="font-size:.75rem">≈ $ {{ capital_pagado_clp|clp }}</span>{% endif %}
-            {% else %}$ {{ capital_pagado|clp }}{% endif %}
-          </div>
-          <div class="col-7 text-muted">Interés pagado</div>
-          <div class="col-5 text-end fw-semibold">
-            {% if prestamo.moneda == 'UF' %}
-              UF {{ interes_pagado|clp }}{% if interes_pagado_clp %}<br><span class="text-muted" style="font-size:.75rem">≈ $ {{ interes_pagado_clp|clp }}</span>{% endif %}
-            {% else %}$ {{ interes_pagado|clp }}{% endif %}
-          </div>
-          <div class="col-7 text-muted border-top pt-1 mt-1">Total pagado</div>
-          <div class="col-5 text-end fw-semibold border-top pt-1 mt-1">
-            {% if prestamo.moneda == 'UF' %}
-              UF {{ total_pagado|clp }}{% if total_pagado_clp %}<br><span class="text-muted" style="font-size:.75rem">≈ $ {{ total_pagado_clp|clp }}</span>{% endif %}
-            {% else %}$ {{ total_pagado|clp }}{% endif %}
-          </div>
-        </div>
-
-        {# ── Pendiente ── #}
-        <div class="small fw-semibold text-warning mb-1"><i class="bi bi-clock me-1"></i>Pendiente</div>
-        <div class="row g-0 small">
-          <div class="col-7 text-muted">Capital</div>
-          <div class="col-5 text-end fw-semibold">
-            {% if prestamo.moneda == 'UF' %}UF {{ capital_pendiente|clp }}{% else %}$ {{ capital_pendiente|clp }}{% endif %}
-          </div>
-          <div class="col-7 text-muted">Interés</div>
-          <div class="col-5 text-end fw-semibold">
-            {% if prestamo.moneda == 'UF' %}UF {{ interes_pendiente|clp }}{% else %}$ {{ interes_pendiente|clp }}{% endif %}
-          </div>
-        </div>
-
-        {% if prestamo.moneda == 'UF' and uf_hoy %}
-        <div class="mt-2 text-muted" style="font-size:.72rem">UF hoy = $ {{ uf_hoy|clp }}</div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 bg-light">
+      <div class="card-body py-3 px-3">
+        <div class="text-muted small mb-1">Acreedor / Deudor</div>
+        <div class="fw-semibold">{{ prestamo.acreedor_deudor or '—' }}</div>
+        {% if prestamo.acreedor_rut %}
+        <div class="text-muted small">{{ prestamo.acreedor_rut }}</div>
         {% endif %}
       </div>
     </div>
   </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════════════
-     PRÉSTAMO LIBRE: formulario de pago + tabla de pagos
-══════════════════════════════════════════════════════════════════════════════ -->
-{% if prestamo.periodicidad == 'LIBRE' %}
-
-<div class="card mb-4">
-  <div class="card-header py-2 fw-semibold small">
-    <i class="bi bi-cash-coin me-1"></i>Registrar Pago
-  </div>
-  <div class="card-body">
-    <form method="post" action="{{ url_for('prestamos.agregar_pago', eid=empresa.id, pid=prestamo.id) }}">
-      <div class="row g-3 align-items-end">
-        <div class="col-md-3">
-          <label class="form-label small fw-semibold">Fecha de pago</label>
-          <input type="date" name="fecha_pago" class="form-control form-control-sm"
-                 value="{{ hoy.isoformat() }}" required>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 bg-light">
+      <div class="card-body py-3 px-3">
+        <div class="text-muted small mb-1">Saldo Inicial</div>
+        <div class="fw-semibold">
+          {% if prestamo.moneda == 'UF' %}
+          UF {{ "%.2f"|format(prestamo.monto_original) }}
+          {% else %}
+          $ {{ prestamo.monto_original|clp }}
+          {% endif %}
         </div>
-        <div class="col-md-2">
-          <label class="form-label small fw-semibold">Capital</label>
-          <input type="number" name="capital" class="form-control form-control-sm"
-                 step="0.01" min="0" value="0">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label small fw-semibold">Interés</label>
-          <input type="number" name="interes" class="form-control form-control-sm"
-                 step="0.01" min="0" value="0">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small fw-semibold">Notas</label>
-          <input type="text" name="notas" class="form-control form-control-sm"
-                 placeholder="Observación…">
-        </div>
-        <div class="col-md-2">
-          <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-plus me-1"></i>Registrar
-          </button>
-        </div>
+        <div class="text-muted small">{{ prestamo.moneda }} · {{ prestamo.subtipo or 'BANCARIO' }} · {{ prestamo.fecha_inicio|fecha_cl }}</div>
       </div>
-    </form>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 border-0 {% if prestamo.tipo == 'PAGAR' %}bg-danger bg-opacity-10{% else %}bg-success bg-opacity-10{% endif %}">
+      <div class="card-body py-3 px-3">
+        <div class="text-muted small mb-1">Saldo Actual</div>
+        <div class="fw-bold fs-5 {% if prestamo.tipo == 'PAGAR' %}text-danger{% else %}text-success{% endif %}">
+          {% if prestamo.moneda == 'UF' %}
+          UF {{ "%.2f"|format(saldo_actual) }}
+          {% else %}
+          $ {{ saldo_actual|clp }}
+          {% endif %}
+        </div>
+        <div class="text-muted small">Inicio: {{ prestamo.fecha_inicio|fecha_cl }}</div>
+      </div>
+    </div>
   </div>
 </div>
 
-{% if prestamo.cuotas %}
-<div class="card mb-4">
-  <div class="card-header py-2 fw-semibold small">
-    <i class="bi bi-list-ul me-1"></i>Pagos registrados ({{ prestamo.cuotas|length }})
+{% if prestamo.notas %}
+<div class="alert alert-secondary small mb-3">
+  <i class="bi bi-sticky me-1"></i>{{ prestamo.notas }}
+</div>
+{% endif %}
+
+{# ── Movements table ─────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="fw-semibold small">
+      <i class="bi bi-list-ul me-1"></i>Movimientos vinculados
+    </span>
+    <a href="{{ url_for('asientos.nuevo', eid=empresa.id) }}"
+       class="btn btn-outline-primary btn-sm py-0">
+      <i class="bi bi-plus-circle me-1"></i>Nuevo asiento
+    </a>
   </div>
+
+  {% if movimientos %}
   <div class="table-responsive">
     <table class="table table-sm table-hover mb-0">
-      <thead class="table-dark">
+      <thead class="table-light">
         <tr>
-          <th>N°</th>
           <th>Fecha</th>
-          <th class="text-end">Capital</th>
-          <th class="text-end">Interés</th>
-          <th class="text-end">Total</th>
-          <th>Notas</th>
+          <th>Asiento N°</th>
+          <th>Descripción</th>
+          <th class="text-center">Sentido</th>
+          <th class="text-end">Monto</th>
+          <th class="text-end">Saldo</th>
+          <th class="text-center">Estado</th>
         </tr>
       </thead>
       <tbody>
-        {% for c in prestamo.cuotas %}
-        <tr>
-          <td>{{ c.numero_cuota }}</td>
-          <td>{{ c.fecha_pago|fecha_cl if c.fecha_pago else c.fecha_vencimiento|fecha_cl }}</td>
-          <td class="text-end">$ {{ c.capital|clp }}</td>
-          <td class="text-end">$ {{ c.interes|clp }}</td>
-          <td class="text-end fw-semibold">$ {{ c.cuota_total|clp }}</td>
-          <td class="text-muted small">{{ c.notas or '' }}</td>
+        {# Opening balance row #}
+        <tr class="table-secondary">
+          <td colspan="4" class="text-muted small fst-italic">Saldo inicial</td>
+          <td></td>
+          <td class="text-end fw-semibold">
+            {% if prestamo.moneda == 'UF' %}
+            UF {{ "%.2f"|format(prestamo.monto_original) }}
+            {% else %}
+            $ {{ prestamo.monto_original|clp }}
+            {% endif %}
+          </td>
+          <td></td>
+        </tr>
+        {% for mv in movimientos %}
+        {% set a = mv.asiento %}
+        <tr {% if a.estado == 'BORRADOR' %}class="table-warning"{% endif %}>
+          <td class="small">{{ a.fecha|fecha_cl }}</td>
+          <td class="small">
+            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=a.id, back=request.url) }}"
+               class="text-decoration-none">
+              #{{ a.numero }}
+            </a>
+          </td>
+          <td class="small">{{ a.descripcion or '—' }}</td>
+          <td class="text-center">
+            {% if mv.sentido == '+' %}
+            <span class="badge bg-success">Cargo (+)</span>
+            {% else %}
+            <span class="badge bg-danger">Abono (−)</span>
+            {% endif %}
+          </td>
+          <td class="text-end small">
+            {% if prestamo.moneda == 'UF' %}
+            UF {{ "%.2f"|format(mv.monto) }}
+            {% else %}
+            $ {{ mv.monto|clp }}
+            {% endif %}
+          </td>
+          <td class="text-end fw-semibold">
+            {% if a.estado == 'CONFIRMADO' and mv.saldo is not none %}
+              {% if prestamo.moneda == 'UF' %}
+              UF {{ "%.2f"|format(mv.saldo) }}
+              {% else %}
+              $ {{ mv.saldo|clp }}
+              {% endif %}
+            {% else %}
+            <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if a.estado == 'CONFIRMADO' %}
+            <span class="badge bg-success">Confirmado</span>
+            {% elif a.estado == 'BORRADOR' %}
+            <span class="badge bg-warning text-dark">Borrador</span>
+            {% else %}
+            <span class="badge bg-secondary">{{ a.estado }}</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
-      <tfoot class="table-light fw-semibold">
+      <tfoot class="table-light">
         <tr>
-          <td colspan="2">Totales</td>
-          <td class="text-end">$ {{ total_capital|clp }}</td>
-          <td class="text-end">$ {{ total_interes|clp }}</td>
-          <td class="text-end">$ {{ total_cuotas|clp }}</td>
+          <td colspan="5" class="fw-semibold text-end small">Saldo actual:</td>
+          <td class="text-end fw-bold {% if prestamo.tipo == 'PAGAR' %}text-danger{% else %}text-success{% endif %}">
+            {% if prestamo.moneda == 'UF' %}
+            UF {{ "%.2f"|format(saldo_actual) }}
+            {% else %}
+            $ {{ saldo_actual|clp }}
+            {% endif %}
+          </td>
           <td></td>
         </tr>
       </tfoot>
     </table>
   </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-4 small">
+    <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+    No hay asientos vinculados a este préstamo.<br>
+    Para vincular, crea o edita un asiento y selecciona este préstamo en la sección de vinculación.
+  </div>
+  {% endif %}
 </div>
-{% else %}
-<div class="text-muted small">No hay pagos registrados aún.</div>
-{% endif %}
-
-{% else %}
-
-<!-- ══════════════════════════════════════════════════════════════════════════
-     PRÉSTAMO FIJO: tabla de amortización
-══════════════════════════════════════════════════════════════════════════════ -->
-
-{% if cuotas_regulares %}
-<div class="card mb-4">
-  <div class="card-header py-2 fw-semibold small d-flex justify-content-between">
-    <span><i class="bi bi-table me-1"></i>Tabla de amortización</span>
-    <span class="text-muted">
-      {{ cuotas_regulares|selectattr('pagada')|list|length }}
-      / {{ cuotas_regulares|length }} cuotas pagadas
-    </span>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-sm mb-0" style="font-size:.83rem;">
-      <thead class="table-dark">
-        <tr>
-          <th class="text-center">N°</th>
-          <th>Vencimiento</th>
-          <th class="text-end d-none d-xl-table-cell">Capital</th>
-          <th class="text-end d-none d-xl-table-cell">Interés</th>
-          <th class="text-end">Cuota</th>
-          {% if prestamo.moneda == 'UF' %}<th class="text-end">Cuota CLP</th>{% endif %}
-          <th class="text-end">Saldo</th>
-          <th class="text-center" style="min-width:200px;">Estado / Pago</th>
-          <th>Asientos</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in cuotas_regulares %}
-        {% set vencida = c.fecha_vencimiento < hoy and not c.pagada and not c.pagada_parcialmente %}
-        {% set parcial = c.pagada_parcialmente %}
-        <tr style="
-          {% if c.pagada %}background:#f0fff4;
-          {% elif parcial %}background:#fff8e1;
-          {% elif vencida %}background:#fff5f5;{% endif %}
-        ">
-          <td class="text-center">{{ c.numero_cuota }}</td>
-          <td {% if vencida %}class="text-danger fw-semibold"{% endif %}>
-            {{ c.fecha_vencimiento|fecha_cl }}
-            {% if vencida %}
-            <br><span class="badge bg-danger" style="font-size:.65rem;">Vencida</span>
-            {% endif %}
-          </td>
-          <td class="text-end d-none d-xl-table-cell">
-            {% if prestamo.moneda == 'UF' %}
-              UF {{ c.capital|clp }}
-              {% if (c.pagada or c.pagada_parcialmente) and c.uf_valor_pago %}
-              <br><span class="text-muted" style="font-size:.75rem">≈ $ {{ (c.capital * c.uf_valor_pago)|round|clp }}</span>
-              {% endif %}
-            {% else %}$ {{ c.capital|clp }}{% endif %}
-          </td>
-          <td class="text-end d-none d-xl-table-cell">
-            {% if prestamo.moneda == 'UF' %}
-              UF {{ c.interes|clp }}
-              {% if (c.pagada or c.pagada_parcialmente) and c.uf_valor_pago %}
-              <br><span class="text-muted" style="font-size:.75rem">≈ $ {{ (c.interes * c.uf_valor_pago)|round|clp }}</span>
-              {% endif %}
-            {% else %}$ {{ c.interes|clp }}{% endif %}
-          </td>
-          <td class="text-end fw-semibold">
-            {% if prestamo.moneda == 'UF' %}UF {{ c.cuota_total|clp }}
-            {% else %}$ {{ c.cuota_total|clp }}{% endif %}
-          </td>
-          {% if prestamo.moneda == 'UF' %}
-          <td class="text-end fw-semibold">
-            {% if (c.pagada or c.pagada_parcialmente) and c.cuota_total_pesos %}$ {{ c.cuota_total_pesos|clp }}
-            {% elif (c.pagada or c.pagada_parcialmente) and c.uf_valor_pago %}$ {{ (c.cuota_total * c.uf_valor_pago)|clp }}
-            {% elif uf_vals and c.fecha_vencimiento in uf_vals %}<span class="text-muted">≈ $ {{ (c.cuota_total * uf_vals[c.fecha_vencimiento])|clp }}</span>
-            {% elif uf_hoy %}<span class="text-muted">≈ $ {{ (c.cuota_total * uf_hoy)|clp }}</span>
-            {% else %}—{% endif %}
-          </td>
-          {% endif %}
-          <td class="text-end text-muted">
-            {% if prestamo.moneda == 'UF' %}UF {{ c.saldo_insoluto|clp }}{% else %}$ {{ c.saldo_insoluto|clp }}{% endif %}
-          </td>
-
-          {# ── Columna de estado/pago ── #}
-          <td>
-            {% if c.pagada %}
-              <div class="d-flex align-items-center gap-1 flex-wrap">
-                <span class="badge bg-success" style="font-size:.72rem;">
-                  <i class="bi bi-check2-circle me-1"></i>Pagado
-                </span>
-                {% if c.fecha_pago %}
-                <span class="text-muted" style="font-size:.72rem;">{{ c.fecha_pago|fecha_cl }}</span>
-                {% endif %}
-                {% for pago in c.pagos %}
-                  {% if pago.sin_efecto_contable %}
-                  <span class="badge bg-secondary" title="Sin efecto contable" style="font-size:.65rem;">Histórico</span>
-                  {% endif %}
-                {% endfor %}
-                <form method="post" class="d-inline"
-                      action="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}">
-                  <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-1"
-                          title="Revertir pago" style="font-size:.7rem;"
-                          onclick="return confirm('¿Revertir el pago de la cuota {{ c.numero_cuota }}? Se eliminarán los asientos generados.')">
-                    <i class="bi bi-arrow-counterclockwise"></i>
-                  </button>
-                </form>
-              </div>
-            {% elif parcial %}
-              {# Pago parcial #}
-              {% set mto_pag = c.monto_pagado_total|int %}
-              {% set mto_pend = c.monto_pendiente|int %}
-              <div class="d-flex align-items-center gap-1 flex-wrap">
-                <span class="badge" style="background:#fd7e14;font-size:.72rem;">
-                  <i class="bi bi-hourglass-split me-1"></i>Parcial
-                </span>
-                <span class="text-muted" style="font-size:.72rem;">
-                  ${{ mto_pag|clp }} pagado — ${{ mto_pend|clp }} pendiente
-                </span>
-                <button type="button" class="btn btn-success btn-sm py-0 px-2 btn-pagar-cuota"
-                        style="font-size:.72rem;" title="Registrar pago del saldo pendiente"
-                        data-preview-url="{{ url_for('prestamos.cuota_preview', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
-                        data-toggle-url="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
-                        data-cuota="{{ c.numero_cuota }}"
-                        data-monto-sugerido="{{ mto_pend }}">
-                  <i class="bi bi-plus-circle me-1"></i>Completar
-                </button>
-                <form method="post" class="d-inline"
-                      action="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}">
-                  <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1"
-                          title="Deshacer pagos parciales" style="font-size:.7rem;"
-                          onclick="return confirm('¿Deshacer todos los pagos de la cuota {{ c.numero_cuota }}?')">
-                    <i class="bi bi-x"></i>
-                  </button>
-                </form>
-              </div>
-            {% else %}
-              {# Sin pagar #}
-              <div class="d-flex align-items-center gap-1 flex-wrap">
-                <input type="date" class="form-control form-control-sm py-0 fecha-pago-input"
-                       style="width:120px; font-size:.73rem;" value="{{ hoy.isoformat() }}">
-                <form method="post" action="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}" style="display:inline;">
-                  <input type="hidden" name="fecha_pago" class="fecha-pago-ref">
-                  <input type="hidden" name="monto_real" class="monto-real-ref" value="{{ c.cuota_total_pesos or c.cuota_total|int }}">
-                  <button type="submit" class="btn btn-success btn-sm py-0 px-2"
-                          style="font-size:.73rem;" title="Pago completo"
-                          onclick="this.previousElementSibling.previousElementSibling.value=this.closest('.d-flex').querySelector('.fecha-pago-input').value">
-                    <i class="bi bi-check2"></i>
-                  </button>
-                </form>
-                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 btn-pagar-cuota"
-                        style="font-size:.73rem;" title="Ver asiento / pago parcial / sin efecto"
-                        data-preview-url="{{ url_for('prestamos.cuota_preview', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
-                        data-toggle-url="{{ url_for('prestamos.toggle_cuota', eid=empresa.id, pid=prestamo.id, cid=c.id) }}"
-                        data-cuota="{{ c.numero_cuota }}"
-                        data-cuota-total="{{ c.cuota_total_pesos or c.cuota_total|int }}"
-                        data-monto-sugerido="{{ c.cuota_total_pesos or c.cuota_total|int }}">
-                  <i class="bi bi-eye"></i>
-                </button>
-              </div>
-            {% endif %}
-          </td>
-
-          {# ── Asientos vinculados ── #}
-          <td class="small">
-            {% if c.pagos %}
-              {% for pago in c.pagos %}
-                {% if pago.asiento_id and pago.asiento %}
-                <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=pago.asiento_id, back=request.url) }}"
-                   class="d-block" title="Asiento N°{{ pago.asiento.numero }}">
-                  N°{{ pago.asiento.numero }}
-                </a>
-                {% elif pago.sin_efecto_contable %}
-                <span class="text-muted">Sin asiento</span>
-                {% endif %}
-              {% endfor %}
-            {% elif c.asiento_id and c.asiento %}
-              <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=c.asiento_id, back=request.url) }}"
-                 title="Asiento N°{{ c.asiento.numero }}">
-                N°{{ c.asiento.numero }}
-              </a>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      <tfoot class="table-light fw-semibold" style="font-size:.83rem;">
-        <tr>
-          <td colspan="2">Totales</td>
-          <td class="text-end d-none d-xl-table-cell">
-            {% if prestamo.moneda == 'UF' %}UF {{ total_capital|clp }}{% else %}$ {{ total_capital|clp }}{% endif %}
-          </td>
-          <td class="text-end d-none d-xl-table-cell">
-            {% if prestamo.moneda == 'UF' %}UF {{ total_interes|clp }}{% else %}$ {{ total_interes|clp }}{% endif %}
-          </td>
-          <td class="text-end">
-            {% if prestamo.moneda == 'UF' %}UF {{ total_cuotas|clp }}{% else %}$ {{ total_cuotas|clp }}{% endif %}
-          </td>
-          {% if prestamo.moneda == 'UF' %}
-          <td class="text-end">{% if total_cuotas_clp %}$ {{ total_cuotas_clp|clp }}{% else %}—{% endif %}</td>
-          {% endif %}
-          <td class="text-end text-danger">
-            {% if prestamo.moneda == 'UF' %}UF {{ capital_pendiente|clp }}{% else %}$ {{ capital_pendiente|clp }}{% endif %}
-            <div class="fw-normal text-muted" style="font-size:.72rem;">pendiente</div>
-          </td>
-          <td colspan="2"></td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-</div>
-{% elif prestamo.periodicidad != 'LIBRE' %}
-<div class="alert alert-info">
-  No se han generado cuotas para este préstamo. Verifica que el número de cuotas esté configurado.
-</div>
-{% endif %}
-
-{# ── Abonos extraordinarios a capital ── #}
-{% if cuotas_extraordinarias %}
-<div class="card mb-4 border-primary">
-  <div class="card-header py-2 fw-semibold small bg-primary bg-opacity-10">
-    <i class="bi bi-arrow-down-circle me-1 text-primary"></i>Abonos extraordinarios a capital
-    <span class="badge bg-primary ms-1">{{ cuotas_extraordinarias|length }}</span>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-sm mb-0" style="font-size:.83rem;">
-      <thead class="table-secondary">
-        <tr><th>Fecha</th><th class="text-end">Monto</th><th>Notas</th><th>Asiento</th></tr>
-      </thead>
-      <tbody>
-        {% for c in cuotas_extraordinarias %}
-        <tr>
-          <td>{{ (c.fecha_pago or c.fecha_vencimiento)|fecha_cl }}</td>
-          <td class="text-end fw-semibold">$ {{ c.capital|clp }}</td>
-          <td class="text-muted small">{{ c.notas or '' }}</td>
-          <td class="small">
-            {% if c.asiento_id and c.asiento %}
-            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=c.asiento_id, back=request.url) }}">N°{{ c.asiento.numero }}</a>
-            {% else %}<span class="text-muted">Sin asiento</span>{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
-
-{# ── Historial cronológico de pagos reales ── #}
-{% if pagos_historia %}
-<div class="card mb-4">
-  <div class="card-header py-2 fw-semibold small">
-    <i class="bi bi-clock-history me-1"></i>Historial de pagos reales
-    <span class="badge bg-secondary ms-1">{{ pagos_historia|length }}</span>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-sm mb-0" style="font-size:.83rem;">
-      <thead class="table-secondary">
-        <tr>
-          <th>#</th><th>Fecha real pago</th><th>Cuota</th>
-          <th class="text-end">Monto pagado</th><th>Tipo</th><th>Asiento</th><th>Notas</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% set ns = namespace(total=0) %}
-        {% for p in pagos_historia %}
-        {% set ns.total = ns.total + p.monto %}
-        <tr {% if p.sin_efecto %}class="text-muted"{% endif %}>
-          <td>{{ loop.index }}</td>
-          <td>{{ p.fecha|fecha_cl }}</td>
-          <td>{% if p.cuota_tipo == 'EXTRAORDINARIO' %}<span class="badge bg-primary" style="font-size:.7rem;">Abono</span>
-              {% elif p.cuota_num %}Cuota {{ p.cuota_num }}{% else %}—{% endif %}</td>
-          <td class="text-end fw-semibold">$ {{ p.monto|clp }}</td>
-          <td>{% if p.sin_efecto %}<span class="badge bg-secondary" style="font-size:.7rem;">Histórico</span>
-              {% else %}<span class="badge bg-success" style="font-size:.7rem;">Contabilizado</span>{% endif %}</td>
-          <td class="small">
-            {% if p.asiento_id %}
-            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=p.asiento_id, back=request.url) }}">N°{{ p.asiento_num }}</a>
-            {% else %}—{% endif %}
-          </td>
-          <td class="text-muted small">{{ p.notas }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      <tfoot class="fw-bold table-light">
-        <tr>
-          <td colspan="3" class="text-end">Total pagado real</td>
-          <td class="text-end">$ {{ ns.total|clp }}</td>
-          <td colspan="3"></td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-</div>
-{% endif %}
-
-{% endif %}
-
-{% if asientos_aumento %}
-<div class="card mb-4 border-info">
-  <div class="card-header py-2 fw-semibold small d-flex align-items-center gap-2 bg-info bg-opacity-10">
-    <i class="bi bi-graph-up-arrow text-info"></i>
-    Asientos que aumentan la deuda
-    <span class="badge bg-info text-dark">{{ asientos_aumento|length }}</span>
-  </div>
-  <div class="card-body p-0">
-    <table class="table table-sm mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>N°</th><th>Fecha</th><th>Descripción</th>
-          <th class="text-end">Monto</th><th>Estado</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in asientos_aumento %}
-        <tr>
-          <td><a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=a.id, back=request.url) }}">N°{{ a.numero }}</a></td>
-          <td>{{ a.fecha.strftime('%d/%m/%Y') }}</td>
-          <td class="text-truncate" style="max-width:240px">{{ a.descripcion }}</td>
-          <td class="text-end">
-            {% set monto = [a.total_debe, a.total_haber]|max %}
-            ${{ '{:,.0f}'.format(monto).replace(',', '.') }}
-          </td>
-          <td>
-            <span class="badge {% if a.estado == 'CONFIRMADO' %}bg-success{% else %}bg-secondary{% endif %}">
-              {{ a.estado }}
-            </span>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div class="card-footer py-1 small text-muted">
-    Estos asientos incrementan el saldo del préstamo — no requieren asignación de cuota.
-  </div>
-</div>
-{% endif %}
-
-{% if asientos_sin_cuota %}
-<div class="card mb-4 border-warning">
-  <div class="card-header py-2 fw-semibold small d-flex align-items-center gap-2">
-    <i class="bi bi-link-45deg text-warning"></i>
-    Asientos vinculados sin cuota asignada
-    <span class="badge bg-warning text-dark">{{ asientos_sin_cuota|length }}</span>
-  </div>
-  <div class="card-body p-0">
-    <table class="table table-sm mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>N°</th><th>Fecha</th><th>Descripción</th>
-          <th class="text-end">Monto</th><th>Estado</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in asientos_sin_cuota %}
-        <tr>
-          <td><a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=a.id, back=request.url) }}">N°{{ a.numero }}</a></td>
-          <td>{{ a.fecha.strftime('%d/%m/%Y') }}</td>
-          <td class="text-truncate" style="max-width:200px">{{ a.descripcion }}</td>
-          <td class="text-end">
-            {% set monto = [a.total_debe, a.total_haber]|max %}
-            ${{ '{:,.0f}'.format(monto).replace(',', '.') }}
-          </td>
-          <td>
-            <span class="badge {% if a.estado == 'CONFIRMADO' %}bg-success{% else %}bg-secondary{% endif %}">
-              {{ a.estado }}
-            </span>
-          </td>
-          <td>
-            <button type="button" class="btn btn-sm btn-outline-primary py-0 btn-asignar-cuota"
-                    data-aid="{{ a.id }}" data-num="{{ a.numero }}"
-                    data-monto="{{ [a.total_debe, a.total_haber]|max|int }}"
-                    title="Asignar a una cuota de este préstamo">
-              <i class="bi bi-check2-circle me-1"></i>Asignar cuota
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-{# Modal para asignar asiento a cuota #}
-<div class="modal fade" id="modalAsignarCuota" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h6 class="modal-title"><i class="bi bi-link-45deg me-1"></i>Asignar asiento a cuota</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <p class="small mb-2">Asiento <strong id="acModalNum"></strong> — <span id="acModalDesc"></span></p>
-        <label class="form-label fw-semibold small">Cuota del préstamo</label>
-        <select id="acCuotaSel" class="form-select form-select-sm">
-          <option value="">— seleccionar cuota —</option>
-          {% for c in prestamo.cuotas if not c.pagada %}
-          <option value="{{ c.id }}" data-capital="{{ c.capital|int }}" data-interes="{{ c.interes|int }}" data-total="{{ c.cuota_total|int }}">
-            Cuota {{ c.numero_cuota }} — vcto {{ c.fecha_vencimiento.strftime('%d/%m/%Y') }}
-            — ${{ '{:,.0f}'.format(c.cuota_total).replace(',', '.') }}
-          </option>
-          {% endfor %}
-        </select>
-        <input type="hidden" id="acAsientoId" value="">
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-sm btn-primary" id="acConfirmar">
-          <i class="bi bi-check-circle me-1"></i>Asignar y marcar pagada
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{# ── Modal abono a capital ── #}
-<div class="modal fade" id="modalAbonoCapital" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h6 class="modal-title"><i class="bi bi-arrow-down-circle me-2 text-primary"></i>Abono extraordinario a capital</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form method="post" action="{{ url_for('prestamos.abono_capital', eid=empresa.id, pid=prestamo.id) }}">
-        <div class="modal-body">
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label small fw-semibold">Fecha del abono</label>
-              <input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy.isoformat() }}" required>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label small fw-semibold">Monto (pesos)</label>
-              <input type="number" name="monto" class="form-control form-control-sm" step="1" min="1" required placeholder="0">
-            </div>
-            <div class="col-12">
-              <label class="form-label small fw-semibold">Notas</label>
-              <input type="text" name="notas" class="form-control form-control-sm" placeholder="Descripción del abono…">
-            </div>
-            <div class="col-12">
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" name="sin_efecto_contable" value="1" id="abonoSinEfecto">
-                <label class="form-check-label small" for="abonoSinEfecto">
-                  Sin efecto contable (período anterior — solo registra el abono sin crear asiento)
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer py-2">
-          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-sm btn-primary">
-            <i class="bi bi-check-circle me-1"></i>Registrar abono
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<script id="cuentas-data" type="application/json">{{ cuentas_json | safe }}</script>
-
-{# ── Modal preview asiento cuota ── #}
-<div class="modal fade" id="modalPagarCuota" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h6 class="modal-title mb-0"><i class="bi bi-journal-check me-2"></i>Asiento borrador — Cuota <span id="modal-num-cuota"></span></h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="modal-loading" class="text-center py-3 text-muted">
-          <div class="spinner-border spinner-border-sm me-2"></div>Calculando...
-        </div>
-        <div id="modal-error" class="alert alert-warning d-none"></div>
-        <div class="row g-2 mb-2 align-items-end">
-          <div class="col-auto">
-            <label class="form-label small fw-semibold mb-0">Monto real pagado</label>
-            <input type="number" id="modalMontoReal" class="form-control form-control-sm"
-                   style="width:150px;" step="1" min="1" placeholder="(monto cuota)">
-          </div>
-          <div class="col-auto">
-            <div class="form-check mb-1">
-              <input class="form-check-input" type="checkbox" id="modalSinEfecto">
-              <label class="form-check-label small" for="modalSinEfecto">
-                Sin efecto contable (período anterior)
-              </label>
-            </div>
-          </div>
-        </div>
-        <div id="modal-content" class="d-none">
-          <p class="mb-2 small text-muted" id="modal-desc"></p>
-          {% if prestamo.moneda == 'UF' %}
-          <div class="alert alert-info py-2 mb-2 small" id="modal-uf-info" style="display:none!important"></div>
-          {% endif %}
-          <table class="table table-sm table-bordered mb-0" style="font-size:.83rem">
-            <thead class="table-secondary">
-              <tr>
-                <th style="min-width:160px;">Cuenta</th>
-                <th style="min-width:130px;">Descripción</th>
-                <th class="text-end" style="width:110px;">Debe $</th>
-                <th class="text-end" style="width:110px;">Haber $</th>
-                <th style="width:32px;"></th>
-              </tr>
-            </thead>
-            <tbody id="modal-lineas"></tbody>
-            <tfoot class="fw-bold table-light">
-              <tr>
-                <td colspan="2" class="text-end small">
-                  <span id="modal-balance-badge"></span>
-                </td>
-                <td class="text-end" id="modal-total-debe"></td>
-                <td class="text-end" id="modal-total-haber"></td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-          <div class="mt-1">
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-agregar-fila">
-              <i class="bi bi-plus me-1"></i>Agregar fila
-            </button>
-          </div>
-          <div id="modal-sin-cuentas" class="alert alert-warning mt-2 small d-none">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            Algunas cuentas contables no están configuradas. El asiento no se generará, pero el pago se registrará igual.
-          </div>
-          <div id="modal-mov-diff" class="d-none mt-2 small"></div>
-
-          <div id="modal-movs-banco" class="mt-3 d-none">
-            <div class="d-flex align-items-center gap-2 mb-1">
-              <span class="small fw-semibold text-secondary">
-                <i class="bi bi-bank me-1"></i>Vincular con movimiento bancario
-              </span>
-              <span class="badge bg-secondary" id="modal-movs-count"></span>
-            </div>
-            <div class="border rounded" style="max-height:160px;overflow-y:auto;">
-              <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
-                <thead class="table-light sticky-top">
-                  <tr>
-                    <th class="py-1">Sel.</th>
-                    <th class="py-1">Fecha</th>
-                    <th class="py-1">Descripción</th>
-                    <th class="py-1 text-end">Monto</th>
-                    <th class="py-1">Banco</th>
-                  </tr>
-                </thead>
-                <tbody id="modal-movs-tbody"></tbody>
-              </table>
-            </div>
-            <div class="text-muted" style="font-size:.75rem;" id="modal-mov-seleccionado">Sin vincular (opcional)</div>
-          </div>
-          <div id="modal-sin-movs" class="alert alert-secondary py-1 mt-2 small d-none">
-            <i class="bi bi-bank me-1"></i>No hay movimientos bancarios sin procesar disponibles para vincular.
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-success btn-sm" id="btn-confirmar-pago" disabled>
-          <i class="bi bi-check2-circle me-1"></i>Confirmar pago
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<form id="form-pago-oculto" method="post" style="display:none">
-  <input type="hidden" name="fecha_pago" id="form-fecha-pago-oculto">
-  <input type="hidden" name="monto_real" id="form-monto-real-oculto">
-  <input type="hidden" name="sin_efecto_contable" id="form-sin-efecto-oculto" value="0">
-  <input type="hidden" name="movimiento_banco_id" id="form-mov-banco-oculto">
-  <input type="hidden" name="lineas_json" id="form-lineas-json">
-</form>
-
-<script>
-(function() {
-  const fmt = n => Math.round(n).toLocaleString('es-CL');
-
-  const CUENTAS = JSON.parse(document.getElementById('cuentas-data').textContent || '[]');
-
-  let currentToggleUrl = '';
-  let currentFechaPago = '';
-  let selectedMovMonto = null;
-
-  // ── Build account <select> ───────────────────────────────────────────────
-  function buildCuentaSelect(selectedId) {
-    const sel = document.createElement('select');
-    sel.className = 'form-select form-select-sm py-0 linea-cuenta';
-    sel.style.cssText = 'font-size:.78rem;min-width:160px;';
-    const blank = new Option('— Cuenta —', '');
-    sel.appendChild(blank);
-    CUENTAS.forEach(c => {
-      const opt = new Option(`${c.codigo} ${c.nombre}`, c.id);
-      if (c.id == selectedId) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    return sel;
-  }
-
-  // ── Add one editable row to the tbody ────────────────────────────────────
-  function addRow(l) {
-    l = l || {};
-    const tbody = document.getElementById('modal-lineas');
-    const tr = document.createElement('tr');
-    tr.dataset.esBanco = l.es_banco ? 'true' : 'false';
-
-    const tdCuenta = document.createElement('td');
-    tdCuenta.className = 'py-1';
-    tdCuenta.appendChild(buildCuentaSelect(l.cuenta_id));
-    tr.appendChild(tdCuenta);
-
-    const tdDesc = document.createElement('td');
-    tdDesc.className = 'py-1';
-    const inpDesc = document.createElement('input');
-    inpDesc.type = 'text';
-    inpDesc.className = 'form-control form-control-sm py-0 linea-desc';
-    inpDesc.value = l.descripcion || '';
-    inpDesc.style.cssText = 'min-width:120px;font-size:.8rem;';
-    tdDesc.appendChild(inpDesc);
-    tr.appendChild(tdDesc);
-
-    const tdDebe = document.createElement('td');
-    tdDebe.className = 'py-1';
-    const inpDebe = document.createElement('input');
-    inpDebe.type = 'number';
-    inpDebe.className = 'form-control form-control-sm py-0 text-end linea-debe';
-    inpDebe.value = l.debe || '';
-    inpDebe.min = '0'; inpDebe.step = '1';
-    inpDebe.style.cssText = 'width:100px;font-size:.8rem;';
-    inpDebe.addEventListener('input', recalcTotals);
-    tdDebe.appendChild(inpDebe);
-    tr.appendChild(tdDebe);
-
-    const tdHaber = document.createElement('td');
-    tdHaber.className = 'py-1';
-    const inpHaber = document.createElement('input');
-    inpHaber.type = 'number';
-    inpHaber.className = 'form-control form-control-sm py-0 text-end linea-haber';
-    inpHaber.value = l.haber || '';
-    inpHaber.min = '0'; inpHaber.step = '1';
-    inpHaber.style.cssText = 'width:100px;font-size:.8rem;';
-    inpHaber.addEventListener('input', recalcTotals);
-    tdHaber.appendChild(inpHaber);
-    tr.appendChild(tdHaber);
-
-    const tdDel = document.createElement('td');
-    tdDel.className = 'py-1 text-center';
-    const btnDel = document.createElement('button');
-    btnDel.type = 'button';
-    btnDel.className = 'btn btn-link text-danger p-0';
-    btnDel.title = 'Eliminar fila';
-    btnDel.innerHTML = '<i class="bi bi-x-lg" style="font-size:.85rem;"></i>';
-    btnDel.addEventListener('click', () => { tr.remove(); recalcTotals(); });
-    tdDel.appendChild(btnDel);
-    tr.appendChild(tdDel);
-
-    tbody.appendChild(tr);
-  }
-
-  // ── Recalculate totals and balance indicator ─────────────────────────────
-  function recalcTotals() {
-    let sumDebe = 0, sumHaber = 0;
-    document.querySelectorAll('#modal-lineas tr').forEach(tr => {
-      sumDebe  += parseFloat(tr.querySelector('.linea-debe')?.value  || 0) || 0;
-      sumHaber += parseFloat(tr.querySelector('.linea-haber')?.value || 0) || 0;
-    });
-    document.getElementById('modal-total-debe').textContent  = sumDebe  ? '$' + fmt(sumDebe)  : '';
-    document.getElementById('modal-total-haber').textContent = sumHaber ? '$' + fmt(sumHaber) : '';
-
-    const diff = Math.round(sumDebe - sumHaber);
-    const badge = document.getElementById('modal-balance-badge');
-    const btn   = document.getElementById('btn-confirmar-pago');
-    if (Math.abs(diff) <= 1) {
-      badge.innerHTML = '<span class="badge bg-success">Cuadrado ✓</span>';
-      btn.disabled = false;
-    } else {
-      const lado = diff > 0 ? 'más en Debe' : 'más en Haber';
-      badge.innerHTML = `<span class="badge bg-danger">Descuadrado $${fmt(Math.abs(diff))} ${lado}</span>`;
-      btn.disabled = true;
-    }
-    checkMovDiff(sumDebe, sumHaber);
-  }
-
-  // ── Compare selected bank movement amount vs asiento total ───────────────
-  function checkMovDiff(sumDebe, sumHaber) {
-    const el = document.getElementById('modal-mov-diff');
-    if (!el) return;
-    if (!selectedMovMonto) { el.classList.add('d-none'); return; }
-    const asientoTotal = Math.max(sumDebe, sumHaber);
-    const diff = Math.round(selectedMovMonto - asientoTotal);
-    el.classList.remove('d-none');
-    if (Math.abs(diff) <= 1) {
-      el.className = 'alert alert-success py-1 mt-2 small';
-      el.innerHTML = '<i class="bi bi-check-circle me-1"></i>Movimiento bancario cuadra con el asiento ✓';
-    } else {
-      el.className = 'alert alert-warning py-1 mt-2 small';
-      el.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i>
-        Diferencia con movimiento: <strong>$${fmt(Math.abs(diff))}</strong>
-        (movimiento $${fmt(selectedMovMonto)}, asiento $${fmt(asientoTotal)})
-        &nbsp;<a href="#" id="btn-ajustar-mov" class="small">Ajustar asiento al movimiento</a>`;
-      document.getElementById('btn-ajustar-mov').onclick = function(e) {
-        e.preventDefault(); ajustarAlMovimiento();
-      };
-    }
-  }
-
-  // ── Set the bank line amount to match the selected movement ──────────────
-  function ajustarAlMovimiento() {
-    if (!selectedMovMonto) return;
-    const bancoRow = [...document.querySelectorAll('#modal-lineas tr')]
-      .find(tr => tr.dataset.esBanco === 'true');
-    if (!bancoRow) return;
-    const haberInp = bancoRow.querySelector('.linea-haber');
-    const debeInp  = bancoRow.querySelector('.linea-debe');
-    if (parseFloat(haberInp?.value || 0) > 0) haberInp.value = selectedMovMonto;
-    else if (parseFloat(debeInp?.value || 0) > 0)  debeInp.value  = selectedMovMonto;
-    recalcTotals();
-  }
-
-  // ── Collect current lineas from the editable table ───────────────────────
-  function getLineasJson() {
-    const lineas = [];
-    document.querySelectorAll('#modal-lineas tr').forEach(tr => {
-      const sel = tr.querySelector('.linea-cuenta');
-      lineas.push({
-        cuenta_id: sel ? (sel.value || null) : null,
-        descripcion: tr.querySelector('.linea-desc')?.value || '',
-        debe:  parseFloat(tr.querySelector('.linea-debe')?.value  || 0) || 0,
-        haber: parseFloat(tr.querySelector('.linea-haber')?.value || 0) || 0,
-      });
-    });
-    return JSON.stringify(lineas);
-  }
-
-  // ── Render lineas as editable rows ───────────────────────────────────────
-  function renderLineas(lineas) {
-    document.getElementById('modal-lineas').innerHTML = '';
-    lineas.forEach(l => addRow(l));
-    recalcTotals();
-  }
-
-  // ── Render bank movements list ────────────────────────────────────────────
-  function renderMovimientos(movimientos) {
-    const movsSection = document.getElementById('modal-movs-banco');
-    const sinMovs     = document.getElementById('modal-sin-movs');
-    const movsTbody   = document.getElementById('modal-movs-tbody');
-    const movsCount   = document.getElementById('modal-movs-count');
-    const diffEl      = document.getElementById('modal-mov-diff');
-    movsTbody.innerHTML = '';
-    selectedMovMonto = null;
-    document.getElementById('form-mov-banco-oculto').value = '';
-    document.getElementById('modal-mov-seleccionado').textContent = 'Sin vincular (opcional)';
-    if (diffEl) diffEl.classList.add('d-none');
-
-    if (movimientos && movimientos.length > 0) {
-      movsSection.classList.remove('d-none');
-      sinMovs.classList.add('d-none');
-      movsCount.textContent = movimientos.length;
-      movimientos.forEach(m => {
-        const tr = document.createElement('tr');
-        tr.style.cursor = 'pointer';
-        tr.innerHTML = `
-          <td><input type="radio" class="form-check-input mov-radio" name="mov_sel" value="${m.id}"></td>
-          <td class="small">${m.fecha}</td>
-          <td class="small">${m.descripcion}</td>
-          <td class="text-end small fw-semibold">$${fmt(m.monto)}</td>
-          <td class="text-muted small">${m.banco}</td>`;
-        tr.addEventListener('click', () => {
-          tr.querySelector('.mov-radio').checked = true;
-          selectedMovMonto = m.monto;
-          document.getElementById('form-mov-banco-oculto').value = m.id;
-          document.getElementById('modal-mov-seleccionado').textContent =
-            `Vinculado: ${m.fecha} – ${m.descripcion} ($${fmt(m.monto)})`;
-          const sd = [...document.querySelectorAll('.linea-debe')].reduce((s,i)=>s+parseFloat(i.value||0),0);
-          const sh = [...document.querySelectorAll('.linea-haber')].reduce((s,i)=>s+parseFloat(i.value||0),0);
-          checkMovDiff(sd, sh);
-        });
-        movsTbody.appendChild(tr);
-      });
-    } else {
-      movsSection.classList.add('d-none');
-      sinMovs.classList.remove('d-none');
-    }
-  }
-
-  // ── "Agregar fila" button ─────────────────────────────────────────────────
-  document.getElementById('btn-agregar-fila').addEventListener('click', () => {
-    addRow();
-    recalcTotals();
-  });
-
-  let currentMontoSugerido = null;
-
-  // ── Main: button click opens modal and fetches preview ───────────────────
-  document.querySelectorAll('.btn-pagar-cuota').forEach(btn => {
-    btn.addEventListener('click', function() {
-      const cuota       = this.dataset.cuota;
-      const previewUrl  = this.dataset.previewUrl;
-      const toggleUrl   = this.dataset.toggleUrl;
-      const montoSug    = parseFloat(this.dataset.montoSugerido || 0);
-      const fechaInput  = this.closest('.d-flex').querySelector('.fecha-pago-input');
-      const fechaPago   = fechaInput ? fechaInput.value : '{{ hoy.isoformat() }}';
-
-      currentToggleUrl     = toggleUrl;
-      currentFechaPago     = fechaPago;
-      currentMontoSugerido = montoSug;
-
-      // Pre-fill monto_real input
-      const montoInp = document.getElementById('modalMontoReal');
-      montoInp.value = montoSug || '';
-      montoInp.placeholder = montoSug ? '$' + fmt(montoSug) : '(monto cuota)';
-
-      // Reset sin_efecto
-      document.getElementById('modalSinEfecto').checked = false;
-
-      document.getElementById('modal-num-cuota').textContent = cuota;
-      document.getElementById('modal-loading').classList.remove('d-none');
-      document.getElementById('modal-content').classList.add('d-none');
-      document.getElementById('modal-error').classList.add('d-none');
-      document.getElementById('btn-confirmar-pago').disabled = true;
-
-      new bootstrap.Modal(document.getElementById('modalPagarCuota')).show();
-
-      const fd = new FormData();
-      fd.append('fecha_pago', fechaPago);
-      fetch(previewUrl, {method: 'POST', body: fd})
-        .then(r => r.json())
-        .then(data => {
-          document.getElementById('modal-loading').classList.add('d-none');
-          if (data.error) {
-            document.getElementById('modal-error').textContent = data.error;
-            document.getElementById('modal-error').classList.remove('d-none');
-            return;
-          }
-
-          document.getElementById('modal-desc').textContent = data.descripcion + ' — ' + data.fecha;
-
-          const ufInfo = document.getElementById('modal-uf-info');
-          if (ufInfo && data.moneda === 'UF' && data.uf_valor) {
-            ufInfo.textContent = `Préstamo en UF · UF al ${data.fecha}: $${fmt(data.uf_valor)} · Cuota: $${fmt(data.total_pesos)}`;
-            ufInfo.style.display = '';
-          } else if (ufInfo) {
-            ufInfo.style.display = 'none';
-          }
-
-          renderLineas(data.lineas);
-          renderMovimientos(data.movimientos_banco || []);
-
-          document.getElementById('modal-sin-cuentas').classList.toggle('d-none', data.cuentas_ok !== false);
-          document.getElementById('modal-content').classList.remove('d-none');
-          document.getElementById('btn-confirmar-pago').disabled = false;
-        })
-        .catch(() => {
-          document.getElementById('modal-loading').classList.add('d-none');
-          document.getElementById('modal-error').textContent = 'Error al calcular el asiento. Intente nuevamente.';
-          document.getElementById('modal-error').classList.remove('d-none');
-        });
-    });
-  });
-
-  // ── Sin efecto contable: hide/show lineas editor ─────────────────────────
-  document.getElementById('modalSinEfecto').addEventListener('change', function() {
-    document.getElementById('modal-content').classList.toggle('d-none', this.checked);
-    document.getElementById('btn-confirmar-pago').disabled = false;
-  });
-
-  // ── Confirm button submits the hidden form with edited lineas ─────────────
-  document.getElementById('btn-confirmar-pago').addEventListener('click', function() {
-    const sinEfecto = document.getElementById('modalSinEfecto').checked;
-    const montoReal = document.getElementById('modalMontoReal').value;
-    const form = document.getElementById('form-pago-oculto');
-    form.action = currentToggleUrl;
-    document.getElementById('form-fecha-pago-oculto').value = currentFechaPago;
-    document.getElementById('form-monto-real-oculto').value = montoReal || '';
-    document.getElementById('form-sin-efecto-oculto').value = sinEfecto ? '1' : '0';
-    document.getElementById('form-lineas-json').value = sinEfecto ? '' : getLineasJson();
-    form.submit();
-  });
-
-})();
-
-// ── Asignar asiento a cuota ──
-document.querySelectorAll('.btn-asignar-cuota').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    document.getElementById('acModalNum').textContent = 'N°' + this.dataset.num;
-    document.getElementById('acModalDesc').textContent = '$' + parseInt(this.dataset.monto).toLocaleString('es-CL');
-    document.getElementById('acAsientoId').value = this.dataset.aid;
-    document.getElementById('acCuotaSel').value = '';
-    new bootstrap.Modal(document.getElementById('modalAsignarCuota')).show();
-  });
-});
-
-document.getElementById('acConfirmar') && document.getElementById('acConfirmar').addEventListener('click', function() {
-  const cuotaId = document.getElementById('acCuotaSel').value;
-  const asientoId = document.getElementById('acAsientoId').value;
-  if (!cuotaId) { alert('Selecciona una cuota'); return; }
-  const btn = this;
-  btn.disabled = true;
-  fetch('{{ url_for("prestamos.asignar_cuota_asiento", eid=empresa.id, pid=prestamo.id) }}', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-    body: new URLSearchParams({cuota_id: cuotaId, asiento_id: asientoId}),
-  })
-  .then(r => r.json())
-  .then(d => {
-    if (d.ok) {
-      if (d.warning) {
-        alert('⚠️ Cuota asignada, pero:\n\n' + d.warning);
-      }
-      location.reload();
-    } else {
-      alert(d.error || 'Error');
-      btn.disabled = false;
-    }
-  })
-  .catch(() => { btn.disabled = false; });
-});
-</script>
 {% endblock %}
