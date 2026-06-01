@@ -1,14 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}Informe Renta por Trabajador {{ anio }} – {{ empresa.razon_social }}{% endblock %}
 {% block breadcrumb %}
-<nav aria-label="breadcrumb">
-  <ol class="breadcrumb mb-2">
-    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">Remuneraciones</a></li>
     <li class="breadcrumb-item active">Informe de Renta</li>
-  </ol>
-</nav>
 {% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
