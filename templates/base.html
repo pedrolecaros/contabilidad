@@ -209,15 +209,7 @@
     <main class="col-12 main-content">
     {% endif %}
 
-      {%- set _bc -%}{% block breadcrumb %}{% endblock %}{%- endset -%}
-      {% if _bc | trim %}
-      <nav aria-label="breadcrumb">
-        <ol class="breadcrumb mb-2">
-          <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
-          {{ _bc }}
-        </ol>
-      </nav>
-      {% endif %}
+      {% block breadcrumb %}{% endblock %}
 
       <!-- Flash messages -->
       {% with messages = get_flashed_messages(with_categories=true) %}

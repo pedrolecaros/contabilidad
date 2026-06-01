@@ -1,9 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Liquidación {{ liq.periodo }} – {{ liq.empleado.nombre_completo }}{% endblock %}
 {% block breadcrumb %}
-<li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">Remuneraciones</a></li>
     <li class="breadcrumb-item active">{{ liq.empleado.nombre_completo }}</li>
+  </ol>
+</nav>
 {% endblock %}
 {% block content %}
 {% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}

@@ -1,8 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}Balance 8 Columnas – {{ empresa.razon_social }}{% endblock %}
 {% block breadcrumb %}
-<li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item active">Balance General</li>
+  </ol>
+</nav>
 {% endblock %}
 {% block content %}
 

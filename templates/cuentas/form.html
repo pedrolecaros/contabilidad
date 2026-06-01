@@ -1,9 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}{% if cuenta %}Editar Cuenta{% else %}Nueva Cuenta{% endif %}{% endblock %}
 {% block breadcrumb %}
-<li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('cuentas.lista', eid=empresa.id) }}">Plan de Cuentas</a></li>
     <li class="breadcrumb-item active">{% if cuenta %}Editar Cuenta{% else %}Nueva Cuenta{% endif %}</li>
+  </ol>
+</nav>
 {% endblock %}
 {% block content %}
 <div class="row justify-content-center">

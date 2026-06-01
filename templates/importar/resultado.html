@@ -1,9 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Resultado Importación{% endblock %}
 {% block breadcrumb %}
-<li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('importar.index', eid=empresa.id) }}">Importar</a></li>
     <li class="breadcrumb-item active">Resultado</li>
+  </ol>
+</nav>
 {% endblock %}
 {% block content %}
 <h5 class="mb-3"><i class="bi bi-check2-circle me-2"></i>Resultado de Importación</h5>

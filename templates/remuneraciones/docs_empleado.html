@@ -2,10 +2,15 @@
 {% block title %}Documentos – {{ emp.nombre_completo }}{% endblock %}
 
 {% block breadcrumb %}
-<li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">Remuneraciones</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=emp.id) }}">{{ emp.nombre_completo }}</a></li>
     <li class="breadcrumb-item active">Documentos</li>
+  </ol>
+</nav>
 {% endblock %}
 
 {% block content %}
