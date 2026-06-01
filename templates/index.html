@@ -1,13 +1,8 @@
 {% extends 'base.html' %}
 {% block title %}Contabilidad Chile – Empresas{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-building me-2"></i>Mis Empresas</h5>
-  <div class="d-flex gap-2">
-    <a href="{{ url_for('empresas.nueva') }}" class="btn btn-primary btn-sm">
-      <i class="bi bi-plus-lg me-1"></i>Nueva Empresa
-    </a>
-  </div>
+<div class="mb-4">
+  <img src="{{ url_for('static', filename='logo_ecox.png') }}" alt="Ecox" style="height:42px;object-fit:contain">
 </div>
 
 {# ── Consolidado + Configuración ──────────────────────────────────────── #}
@@ -45,6 +40,13 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0"><i class="bi bi-building me-2"></i>Mis Empresas</h5>
+  <a href="{{ url_for('empresas.nueva') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Nueva Empresa
+  </a>
 </div>
 
 {% if empresas %}

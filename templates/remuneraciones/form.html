@@ -27,8 +27,16 @@
     <label class="form-label">RUT <span class="text-danger">*</span></label>
     <input type="text" name="rut" class="form-control" value="{{ emp.rut if emp else '' }}" placeholder="12.345.678-9" required>
   </div>
-  <div class="col-md-6">
-    <label class="form-label">Nombre completo <span class="text-danger">*</span></label>
+  <div class="col-md-3">
+    <label class="form-label">Apellido Paterno <span class="text-danger">*</span></label>
+    <input type="text" name="apellido_paterno" class="form-control" value="{{ emp.apellido_paterno if emp and emp.apellido_paterno else '' }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Apellido Materno</label>
+    <input type="text" name="apellido_materno" class="form-control" value="{{ emp.apellido_materno if emp and emp.apellido_materno else '' }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Nombre(s) <span class="text-danger">*</span></label>
     <input type="text" name="nombre" class="form-control" value="{{ emp.nombre if emp else '' }}" required>
   </div>
   <div class="col-md-3">

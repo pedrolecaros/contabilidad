@@ -6,6 +6,7 @@ import io
 from models import db, Empresa, Cuenta, LineaAsiento, Asiento, DocumentoSII
 from sqlalchemy import func, case
 from collections import defaultdict
+from engine.contabilidad import sumas_balance as _sumas_balance, clasificar_cuenta_efe as _clasificar_cuenta_efe
 
 bp = Blueprint('reportes', __name__)
 

@@ -56,7 +56,7 @@
         {% for e in empleados %}
         <tr>
           <td class="text-muted">{{ e.rut }}</td>
-          <td><strong>{{ e.nombre }}</strong></td>
+          <td><strong>{{ e.nombre_completo }}</strong></td>
           <td>{{ e.cargo or '—' }}</td>
           <td><span class="badge bg-secondary">{{ e.tipo_contrato }}</span></td>
           <td class="text-end">$ {{ e.sueldo_base | clp }}</td>
@@ -76,9 +76,9 @@
                class="btn btn-outline-secondary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
             <form method="post" action="{{ url_for('remuneraciones.eliminar', eid=empresa.id, emp_id=e.id) }}"
                   style="display:inline"
-                  onsubmit="return confirm('¿Desactivar a {{ e.nombre }}?')">
+                  onsubmit="return confirm('¿Desactivar a {{ e.nombre_completo }}?')">
               <button class="btn btn-outline-warning btn-sm" title="Desactivar"
-                      onclick="return confirm('¿Desactivar a {{ e.nombre }}?')">
+                      onclick="return confirm('¿Desactivar a {{ e.nombre_completo }}?')">
                 <i class="bi bi-person-dash me-1"></i>Desactivar
               </button>
             </form>
@@ -119,7 +119,7 @@
           {% for e in empleados_inactivos %}
           <tr class="text-muted">
             <td>{{ e.rut }}</td>
-            <td>{{ e.nombre }}</td>
+            <td>{{ e.nombre_completo }}</td>
             <td>{{ e.cargo or '—' }}</td>
             <td class="text-end">
               <form method="post" action="{{ url_for('remuneraciones.reactivar', eid=empresa.id, emp_id=e.id) }}"

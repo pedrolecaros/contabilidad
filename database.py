@@ -58,6 +58,8 @@ def _migrar(app):
         # Integrity: one bank movement can only link to one asiento
         'CREATE UNIQUE INDEX IF NOT EXISTS uix_movimientos_banco_asiento ON movimientos_banco(asiento_id) WHERE asiento_id IS NOT NULL',
         "ALTER TABLE asientos ADD COLUMN prestamo_sentido VARCHAR(5) DEFAULT '-'",
+        "ALTER TABLE empleados ADD COLUMN apellido_paterno VARCHAR(100)",
+        "ALTER TABLE empleados ADD COLUMN apellido_materno VARCHAR(100)",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

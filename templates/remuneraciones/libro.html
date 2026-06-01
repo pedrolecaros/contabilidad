@@ -177,7 +177,7 @@
         <td class="col-rut text-center text-muted">{{ emp.rut }}</td>
         <td class="col-nombre">
           <a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=emp.id) }}"
-             class="text-decoration-none text-dark fw-semibold">{{ emp.nombre }}</a>
+             class="text-decoration-none text-dark fw-semibold">{{ emp.nombre_completo }}</a>
         </td>
         <td class="text-center">{{ emp.afp }}</td>
         <td class="text-center">{{ emp.tipo_salud }}{% if emp.isapre %} – {{ emp.isapre }}{% endif %}</td>
