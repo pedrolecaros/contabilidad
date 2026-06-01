@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Liquidación {{ liq.periodo }} – {{ liq.empleado.nombre }}</title>
+<title>Liquidación {{ liq.periodo }} – {{ liq.empleado.nombre_completo }}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; padding: 20px; }
@@ -48,7 +48,7 @@
   <h3>Trabajador</h3>
   <table>
     <tr>
-      <th style="width:20%">Nombre</th><td>{{ liq.empleado.nombre }}</td>
+      <th style="width:20%">Nombre</th><td>{{ liq.empleado.nombre_completo }}</td>
       <th style="width:15%">RUT</th><td>{{ liq.empleado.rut }}</td>
     </tr>
     <tr>
@@ -103,11 +103,16 @@
       <td class="text-right">{{ num(liq.afp) }}</td>
     </tr>
     <tr>
-      <td>
-        Salud ({{ liq.empleado.tipo_salud }}{% if liq.empleado.isapre %} – {{ liq.empleado.isapre }}{% endif %}, 7%)
-      </td>
+      <td>Salud legal 7% ({{ liq.empleado.tipo_salud }}{% if liq.empleado.isapre %} – {{ liq.empleado.isapre }}{% endif %})</td>
       <td class="text-right">{{ num(liq.salud) }}</td>
     </tr>
+    {% set extra_isapre = liq.total_descuentos - liq.afp - liq.salud - liq.cesantia_trab - (liq.impuesto_renta or 0) - (liq.apv or 0) %}
+    {% if extra_isapre > 0 and liq.empleado.isapre %}
+    <tr>
+      <td>Exceso plan {{ liq.empleado.isapre }}</td>
+      <td class="text-right">{{ num(extra_isapre) }}</td>
+    </tr>
+    {% endif %}
     <tr><td>Seguro de Cesantía – Trabajador (0.6%)</td><td class="text-right">{{ num(liq.cesantia_trab) }}</td></tr>
     {% if liq.impuesto_renta %}
     <tr><td>Impuesto Único 2ª Categoría</td><td class="text-right">{{ num(liq.impuesto_renta) }}</td></tr>
@@ -130,17 +135,6 @@
   </tr>
 </table>
 
-<!-- Aportes empleador -->
-<div class="seccion" style="margin-top:12px">
-  <h3>Aportes Empleador (referencia)</h3>
-  <table>
-    <tr><th>Concepto</th><th class="text-right" style="width:25%">Monto ($)</th></tr>
-    <tr><td>SIS – Seguro de Invalidez y Sobrevivencia (1.49%)</td><td class="text-right">{{ num(liq.sis) }}</td></tr>
-    <tr><td>Seguro de Cesantía – Empleador (2.4%)</td><td class="text-right">{{ num(liq.cesantia_emp) }}</td></tr>
-    <tr><td>Mutual de Seguridad</td><td class="text-right">{{ num(liq.mutual) }}</td></tr>
-    <tr class="total-row"><td>Costo Total Empresa</td><td class="text-right">{{ num(liq.costo_empresa) }}</td></tr>
-  </table>
-</div>
 
 <div style="font-size:9pt;color:#555;margin-top:8px">
   Renta imponible: ${{ num(liq.renta_imponible) }} &nbsp;|&nbsp;
@@ -150,7 +144,7 @@
 
 <div class="firma-row">
   <div class="firma-box">Empleador / Representante Legal</div>
-  <div class="firma-box">{{ liq.empleado.nombre }}<br>{{ liq.empleado.rut }}</div>
+  <div class="firma-box">{{ liq.empleado.nombre_completo }}<br>{{ liq.empleado.rut }}</div>
 </div>
 
 <div class="footer">

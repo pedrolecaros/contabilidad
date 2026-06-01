@@ -17,44 +17,8 @@ from routes import main, empresas, asientos, cuentas, importar, pendientes, repo
 
 
 def _auto_fetch_uf(app):
-    """Fetch full-year UF data on startup if today's value is missing."""
-    from datetime import date
-    import requests
-    from models import db, ValorUF
-
-    with app.app_context():
-        hoy = date.today()
-        try:
-            tiene_hoy = ValorUF.query.filter_by(fecha=hoy).first()
-            if tiene_hoy:
-                return  # already up to date
-
-            anio = hoy.year
-            headers = {'User-Agent': 'Mozilla/5.0 (compatible; contabilidad-app)'}
-            r = requests.get(f'https://mindicador.cl/api/uf/{anio}', timeout=20, headers=headers)
-            if r.status_code != 200:
-                return
-
-            actualizados = 0
-            for item in r.json().get('serie', []):
-                raw = item.get('fecha', '')[:10]
-                try:
-                    fecha = date.fromisoformat(raw)
-                    if fecha.year != anio:
-                        continue
-                    valor = float(item['valor'])
-                    existing = ValorUF.query.filter_by(fecha=fecha).first()
-                    if existing:
-                        existing.valor = valor
-                    else:
-                        db.session.add(ValorUF(fecha=fecha, valor=valor))
-                    actualizados += 1
-                except Exception:
-                    pass
-            if actualizados:
-                db.session.commit()
-        except Exception:
-            pass  # network unavailable — silently skip
+    from services.uf import fetch_today_if_missing
+    fetch_today_if_missing(app)
 
 
 def create_app(config_override=None):
@@ -93,6 +57,28 @@ def create_app(config_override=None):
             return '{:,.0f}'.format(float(value)).replace(',', '.')
         except (ValueError, TypeError):
             return str(value)
+
+    @app.template_filter('uf_fmt')
+    def fmt_uf(value):
+        """Formatea un valor UF con 2 decimales al estilo chileno: 40.610,69"""
+        if value is None:
+            return '—'
+        try:
+            v = float(value)
+            entero, dec = f'{v:,.2f}'.split('.')
+            return entero.replace(',', '.') + ',' + dec
+        except (ValueError, TypeError):
+            return str(value)
+
+    @app.template_filter('adjunto_url')
+    def fmt_adjunto_url(storage_key):
+        from storage import attachment_url
+        return attachment_url(storage_key)
+
+    @app.template_filter('adjunto_es_pdf')
+    def fmt_adjunto_es_pdf(storage_key):
+        from storage import is_pdf
+        return is_pdf(storage_key)
 
     @app.template_filter('fecha_cl')
     def fmt_fecha(value):

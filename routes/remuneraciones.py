@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, current_app, send_file
 from models import db, Empresa, Empleado, Liquidacion, VariablesMensuales, ValorUF
 from engine import remuneraciones as motor
 
@@ -75,6 +75,14 @@ def reactivar(eid, emp_id):
     return redirect(url_for('remuneraciones.index', eid=eid))
 
 
+def _mes_anterior():
+    from datetime import date
+    hoy = date.today()
+    if hoy.month == 1:
+        return f'{hoy.year - 1}-12'
+    return f'{hoy.year}-{hoy.month - 1:02d}'
+
+
 @bp.route('/empresa/<int:eid>/remuneraciones/<int:emp_id>/liquidar', methods=['GET', 'POST'])
 def liquidar(eid, emp_id):
     from datetime import date
@@ -90,8 +98,7 @@ def liquidar(eid, emp_id):
 
         if not periodo:
             flash('El período es obligatorio.', 'danger')
-            hoy = date.today()
-            periodo_default = f'{hoy.year}-{hoy.month:02d}'
+            periodo_default = _mes_anterior()
             vars_mes = VariablesMensuales.query.filter_by(periodo=periodo_default).first()
             return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
                                    vars_mes=vars_mes, periodo_default=periodo_default,
@@ -100,8 +107,7 @@ def liquidar(eid, emp_id):
         vars = VariablesMensuales.query.filter_by(periodo=periodo).first()
         if not vars:
             flash(f'No hay variables para {periodo}. Carga en Remuneraciones → Variables.', 'warning')
-            hoy = date.today()
-            periodo_default = f'{hoy.year}-{hoy.month:02d}'
+            periodo_default = _mes_anterior()
             vars_mes = VariablesMensuales.query.filter_by(periodo=periodo_default).first()
             return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
                                    vars_mes=vars_mes, periodo_default=periodo_default,
@@ -158,14 +164,24 @@ def liquidar(eid, emp_id):
         db.session.add(liq)
         db.session.commit()
         if accion == 'emitir':
-            # Go directly to the printable PDF view
+            # Generar PDF y guardarlo
+            try:
+                from services.pdf import guardar_liquidacion_pdf
+                from flask import current_app
+                storage_key = guardar_liquidacion_pdf(
+                    current_app._get_current_object(), liq,
+                    current_app.config['UPLOAD_FOLDER']
+                )
+                liq.archivo_url = storage_key
+                db.session.commit()
+            except Exception as e:
+                flash(f'Liquidación emitida pero no se pudo generar el PDF: {e}', 'warning')
             return redirect(url_for('remuneraciones.imprimir', eid=eid, liq_id=liq.id))
         flash(f'Borrador {periodo} guardado.', 'success')
         return redirect(url_for('remuneraciones.detalle', eid=eid, liq_id=liq.id))
 
     # GET
-    hoy = date.today()
-    periodo_default = f'{hoy.year}-{hoy.month:02d}'
+    periodo_default = _mes_anterior()
     vars_mes = VariablesMensuales.query.filter_by(periodo=periodo_default).first()
     ultima_liq = (Liquidacion.query
                   .filter_by(empresa_id=eid, empleado_id=emp_id)
@@ -192,9 +208,21 @@ def imprimir(eid, liq_id):
 
 @bp.route('/empresa/<int:eid>/remuneraciones/liquidacion/<int:liq_id>/emitir', methods=['POST'])
 def emitir_liq(eid, liq_id):
+    from flask import current_app
     liq = Liquidacion.query.filter_by(id=liq_id, empresa_id=eid).first_or_404()
     liq.estado = 'EMITIDA'
     db.session.commit()
+    if not liq.archivo_url:
+        try:
+            from services.pdf import guardar_liquidacion_pdf
+            storage_key = guardar_liquidacion_pdf(
+                current_app._get_current_object(), liq,
+                current_app.config['UPLOAD_FOLDER']
+            )
+            liq.archivo_url = storage_key
+            db.session.commit()
+        except Exception as e:
+            flash(f'Liquidación emitida pero no se pudo generar el PDF: {e}', 'warning')
     flash('Liquidación emitida.', 'success')
     return redirect(url_for('remuneraciones.detalle', eid=eid, liq_id=liq_id))
 
@@ -301,7 +329,7 @@ def buscar_liquidacion(eid):
     liqs = q.order_by(Liquidacion.periodo.desc()).limit(10).all()
     return jsonify([{
         'id':      l.id,
-        'nombre':  l.empleado.nombre,
+        'nombre':  l.empleado.nombre_completo,
         'periodo': l.periodo,
         'liquido': l.liquido,
         'url':     url_for('remuneraciones.detalle', eid=eid, liq_id=l.id),
@@ -457,7 +485,7 @@ def libro_excel(eid):
         emp = liq.empleado
         salud_txt = emp.tipo_salud + (f' – {emp.isapre}' if emp.isapre else '')
         values = [
-            idx, emp.rut, emp.nombre, emp.afp, salud_txt,
+            idx, emp.rut, emp.nombre_completo, emp.afp, salud_txt,
             liq.sueldo_base, liq.horas_extra, liq.gratificacion, liq.otros_haberes,
             liq.bono_colacion, liq.bono_movilizacion,
             liq.total_haberes, liq.renta_imponible,
@@ -513,15 +541,17 @@ def libro_excel(eid):
 
 @bp.route('/remuneraciones/variables')
 def variables():
+    next_url = request.args.get('next', '').strip()
     vars_list = VariablesMensuales.query.order_by(VariablesMensuales.periodo.desc()).all()
-    return render_template('remuneraciones/variables.html', vars_list=vars_list)
+    return render_template('remuneraciones/variables.html', vars_list=vars_list, next_url=next_url)
 
 
 @bp.route('/empresa/<int:eid>/remuneraciones/variables')
 def variables_eid(eid):
     empresa = Empresa.query.get_or_404(eid)
+    next_url = request.args.get('next', '').strip()
     vars_list = VariablesMensuales.query.order_by(VariablesMensuales.periodo.desc()).all()
-    return render_template('remuneraciones/variables.html', vars_list=vars_list, empresa=empresa)
+    return render_template('remuneraciones/variables.html', vars_list=vars_list, empresa=empresa, next_url=next_url)
 
 
 @bp.route('/remuneraciones/variables/guardar', methods=['POST'])
@@ -562,6 +592,9 @@ def variables_guardar():
     v.fecha_actualizacion = datetime.now()
     db.session.commit()
     flash(f'Variables {periodo} guardadas.', 'success')
+    next_url = request.form.get('next', '').strip()
+    if next_url and next_url.startswith('/'):
+        return redirect(next_url)
     return redirect(url_for('remuneraciones.variables'))
 
 
@@ -600,93 +633,63 @@ def variables_get(eid, periodo):
     })
 
 
-@bp.route('/remuneraciones/variables/fetch-indicadores')
-def variables_fetch_previred():
-    """Obtiene todos los indicadores previsionales desde previred.com."""
+@bp.route('/remuneraciones/variables/auto-fetch/<periodo>')
+def variables_auto_fetch(periodo):
+    """Retorna variables del período (DB o Previred). Si no están en DB, las obtiene y guarda."""
+    import json as _json
+    from datetime import datetime
+
+    v = VariablesMensuales.query.filter_by(periodo=periodo).first()
+    if v:
+        return jsonify({
+            'ok': True, 'source': 'db',
+            'periodo': v.periodo, 'uf': v.uf, 'utm': v.utm,
+            'tope_imponible': v.tope_imponible,
+            'tope_gratificacion': v.tope_gratificacion,
+        })
+
+    from importers.previred import scrape
     try:
-        from datetime import date
-        periodo = request.args.get('periodo', '')
-        if not periodo:
-            hoy = date.today()
-            periodo = hoy.strftime('%Y-%m')
-        result = _scrape_previred(periodo)
-        return jsonify(result)
+        data = scrape(periodo)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
+    if not data.get('ok'):
+        return jsonify(data)
 
-def _scrape_previred(periodo: str) -> dict:
-    """Scrape previred.com/indicadores-previsionales/ and return all indicator data."""
-    import requests as req
-    from bs4 import BeautifulSoup
-    import re
+    v = VariablesMensuales(periodo=periodo)
+    db.session.add(v)
+    v.uf = data.get('uf')
+    v.utm = data.get('utm')
+    v.tope_imponible = data.get('tope_imponible')
+    v.tope_gratificacion = data.get('tope_gratificacion')
+    v.imm = data.get('imm')
+    v.tasa_sis = data.get('tasa_sis')
+    tasas = data.get('tasas_afp') or {}
+    v.tasas_afp_json = _json.dumps(tasas) if tasas else None
+    v.fecha_actualizacion = datetime.now()
+    db.session.commit()
 
-    headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
-    r = req.get('https://www.previred.com/indicadores-previsionales/',
-                timeout=15, headers=headers)
-    if r.status_code != 200:
-        return {'ok': False, 'error': f'HTTP {r.status_code}'}
+    return jsonify({
+        'ok': True, 'source': 'previred',
+        'periodo': v.periodo, 'uf': v.uf, 'utm': v.utm,
+        'tope_imponible': v.tope_imponible,
+        'tope_gratificacion': v.tope_gratificacion,
+    })
 
-    soup = BeautifulSoup(r.text, 'html.parser')
-    lines = [l.strip() for l in soup.get_text().split('\n') if l.strip()]
 
-    def clp(s):
-        return float(s.replace('$', '').replace('\xa0', '').replace('.', '').replace(',', '.').strip())
-
-    def pct(s):
-        return float(s.replace('%', '').replace(',', '.').strip())
-
-    AFP_NAMES = ['Capital', 'Cuprum', 'Habitat', 'PlanVital', 'ProVida', 'Modelo', 'Uno']
-    result = {'ok': True, 'periodo': periodo, 'tasas_afp': {}}
-
-    anio, mes = int(periodo[:4]), int(periodo[5:7])
-
-    for i, l in enumerate(lines):
-        # UF: take the first "Al DD de MONTH del YYYY:" match (most current on the page)
-        if not result.get('uf'):
-            uf_match = re.match(r'Al \d+ de \w+ del \d{4}:', l)
-            if uf_match and i + 1 < len(lines):
-                try:
-                    result['uf'] = clp(lines[i + 1])
-                except Exception:
-                    pass
-
-        # AFP commissions: line is AFP name, next is "11,44%" (10% mandatory + commission)
-        if l in AFP_NAMES and i + 1 < len(lines):
-            try:
-                total_pct = pct(lines[i + 1])
-                result['tasas_afp'][l] = round(total_pct - 10.0, 2)
-            except Exception:
-                pass
-
-        # UTM: look for "VALOR" → "UTM" → "UTA" → period → value
-        if l == 'UTM' and i + 2 < len(lines):
-            try:
-                result['utm'] = clp(lines[i + 2])
-            except Exception:
-                pass
-
-        # IMM: "Trab. Dependientes e Independientes:" → amount
-        if 'Dependientes e Independientes' in l and i + 1 < len(lines):
-            try:
-                result['imm'] = clp(lines[i + 1])
-            except Exception:
-                pass
-
-        # SIS: "Tasa SIS" → "1,62%"
-        if l == 'Tasa SIS' and i + 1 < len(lines):
-            try:
-                result['tasa_sis'] = round(pct(lines[i + 1]) / 100, 6)
-            except Exception:
-                pass
-
-    # Derived topes
-    if result.get('uf'):
-        result['tope_imponible'] = round(result['uf'] * 90)
-    if result.get('imm'):
-        result['tope_gratificacion'] = round(result['imm'] * 4.75 / 12)
-
-    return result
+@bp.route('/remuneraciones/variables/fetch-indicadores')
+def variables_fetch_previred():
+    """Obtiene todos los indicadores previsionales desde previred.com."""
+    from datetime import date
+    from importers.previred import scrape
+    try:
+        periodo = request.args.get('periodo', '')
+        if not periodo:
+            periodo = date.today().strftime('%Y-%m')
+        return jsonify(scrape(periodo))
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
 
 
 # ── Tabla UF diaria ──────────────────────────────────────────────────────────
@@ -730,34 +733,11 @@ def uf_tabla():
 def uf_actualizar():
     """Descarga todos los valores UF del año desde mindicador.cl."""
     from datetime import date as dt
-    import requests as req
+    from services.uf import fetch_year
     hoy = dt.today()
     anio = request.form.get('anio', hoy.year, type=int)
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (compatible; contabilidad-app)'}
-        # mindicador.cl supports /api/uf/{year} for full-year data
-        r = req.get(f'https://mindicador.cl/api/uf/{anio}', timeout=20, headers=headers)
-        if r.status_code != 200:
-            flash(f'Error al consultar mindicador.cl: HTTP {r.status_code}', 'danger')
-            return redirect(url_for('remuneraciones.uf_tabla', anio=anio))
-        serie = r.json().get('serie', [])
-        actualizados = 0
-        for item in serie:
-            raw_fecha = item.get('fecha', '')[:10]
-            try:
-                fecha = dt.fromisoformat(raw_fecha)
-                if fecha.year != anio:
-                    continue
-                valor = float(item['valor'])
-                existing = ValorUF.query.filter_by(fecha=fecha).first()
-                if existing:
-                    existing.valor = valor
-                else:
-                    db.session.add(ValorUF(fecha=fecha, valor=valor))
-                actualizados += 1
-            except Exception:
-                pass
-        db.session.commit()
+        actualizados = fetch_year(anio)
         flash(f'{actualizados} valores UF actualizados para {anio}.', 'success')
     except Exception as e:
         flash(f'Error al conectar con mindicador.cl: {e}', 'danger')
@@ -808,6 +788,8 @@ def uf_get_valor():
 def _poblar(emp, form):
     emp.rut = form.get('rut', '').strip()
     emp.nombre = form.get('nombre', '').strip()
+    emp.apellido_paterno = form.get('apellido_paterno', '').strip() or None
+    emp.apellido_materno = form.get('apellido_materno', '').strip() or None
     emp.cargo = form.get('cargo', '').strip()
     emp.tipo_contrato = form.get('tipo_contrato', 'INDEFINIDO')
     raw_sueldo = (form.get('sueldo_base', '0') or '0').replace('.', '').replace(',', '.')
@@ -841,3 +823,75 @@ def _poblar(emp, form):
             emp.fecha_ingreso = date.fromisoformat(fi)
         except ValueError:
             pass
+
+
+# ── Documentos de empleado (contratos, anexos, etc.) ────────────────────────
+
+@bp.route('/empresa/<int:eid>/remuneraciones/<int:emp_id>/documentos')
+def docs_empleado(eid, emp_id):
+    from models import DocumentoEmpleado
+    empresa = Empresa.query.get_or_404(eid)
+    emp = Empleado.query.filter_by(id=emp_id, empresa_id=eid).first_or_404()
+    docs = (DocumentoEmpleado.query
+            .filter_by(empleado_id=emp_id)
+            .order_by(DocumentoEmpleado.fecha_documento.desc(),
+                      DocumentoEmpleado.creado_en.desc())
+            .all())
+    return render_template('remuneraciones/docs_empleado.html',
+                           empresa=empresa, emp=emp, docs=docs)
+
+
+@bp.route('/empresa/<int:eid>/remuneraciones/<int:emp_id>/documentos/subir', methods=['POST'])
+def docs_empleado_subir(eid, emp_id):
+    from models import DocumentoEmpleado
+    from storage import save_attachment
+    import re
+
+    emp = Empleado.query.filter_by(id=emp_id, empresa_id=eid).first_or_404()
+    empresa = Empresa.query.get_or_404(eid)
+    archivo = request.files.get('archivo')
+    if not archivo or not archivo.filename:
+        flash('Debes seleccionar un archivo.', 'danger')
+        return redirect(url_for('remuneraciones.docs_empleado', eid=eid, emp_id=emp_id))
+
+    rut_limpio = re.sub(r'[^\w]', '_', empresa.rut)
+    subfolder = f"{rut_limpio}/contratos/emp_{emp_id}"
+    try:
+        storage_key = save_attachment(
+            archivo, archivo.filename,
+            current_app.config['UPLOAD_FOLDER'],
+            subfolder=subfolder,
+        )
+    except ValueError as e:
+        flash(str(e), 'danger')
+        return redirect(url_for('remuneraciones.docs_empleado', eid=eid, emp_id=emp_id))
+
+    from datetime import date as _date
+    raw_fecha = request.form.get('fecha_documento', '').strip()
+    try:
+        fecha_doc = _date.fromisoformat(raw_fecha) if raw_fecha else None
+    except ValueError:
+        fecha_doc = None
+
+    doc = DocumentoEmpleado(
+        empleado_id=emp_id,
+        empresa_id=eid,
+        tipo=request.form.get('tipo', 'CONTRATO'),
+        descripcion=request.form.get('descripcion', '').strip() or None,
+        fecha_documento=fecha_doc,
+        archivo_url=storage_key,
+    )
+    db.session.add(doc)
+    db.session.commit()
+    flash('Documento subido correctamente.', 'success')
+    return redirect(url_for('remuneraciones.docs_empleado', eid=eid, emp_id=emp_id))
+
+
+@bp.route('/empresa/<int:eid>/remuneraciones/<int:emp_id>/documentos/<int:doc_id>/eliminar', methods=['POST'])
+def docs_empleado_eliminar(eid, doc_id, emp_id):
+    from models import DocumentoEmpleado
+    doc = DocumentoEmpleado.query.filter_by(id=doc_id, empresa_id=eid).first_or_404()
+    db.session.delete(doc)
+    db.session.commit()
+    flash('Documento eliminado.', 'success')
+    return redirect(url_for('remuneraciones.docs_empleado', eid=eid, emp_id=emp_id))

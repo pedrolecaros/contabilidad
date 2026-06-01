@@ -1,4 +1,6 @@
 import os
+import sqlite3
+import tempfile
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, send_file, current_app, request, flash, redirect, url_for
@@ -331,17 +333,21 @@ def _get_db_path():
     return db_path
 
 
-@bp.route('/adjunto/<filename>')
-def servir_adjunto(filename):
+@bp.route('/adjunto/<path:filepath>')
+def servir_adjunto(filepath):
     from flask import abort
+    import posixpath
     # Prevent path traversal
-    if '/' in filename or '\\' in filename or '..' in filename:
+    if '..' in filepath:
         abort(404)
     folder = current_app.config['UPLOAD_FOLDER']
-    path = os.path.join(folder, filename)
-    if not os.path.isfile(path):
+    # Resolve and verify the file is inside uploads/
+    safe = os.path.realpath(os.path.join(folder, filepath))
+    if not safe.startswith(os.path.realpath(folder)):
+        abort(403)
+    if not os.path.isfile(safe):
         abort(404)
-    return send_file(path)
+    return send_file(safe)
 
 
 @bp.route('/backup')
@@ -356,6 +362,41 @@ def backup():
     return send_file(tmp.name, as_attachment=True, download_name=nombre)
 
 
+@bp.route('/backup/documentos')
+def backup_documentos():
+    """Descarga un ZIP con los archivos de uploads/ filtrado por año."""
+    import zipfile
+    anio = request.args.get('anio', date.today().year, type=int)
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    if not os.path.isdir(upload_folder):
+        from flask import abort
+        abort(404)
+
+    buf = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
+    buf.close()
+    str_anio = str(anio)
+    added = 0
+    with zipfile.ZipFile(buf.name, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(upload_folder):
+            # Solo incluir archivos cuya ruta contiene el año
+            rel_root = os.path.relpath(root, upload_folder)
+            if str_anio not in rel_root and str_anio not in root:
+                continue
+            for fname in files:
+                fpath = os.path.join(root, fname)
+                arcname = os.path.join(rel_root, fname)
+                zf.write(fpath, arcname)
+                added += 1
+
+    if added == 0:
+        from flask import flash, redirect
+        flash(f'No hay documentos del año {anio}.', 'warning')
+        return redirect(url_for('main.db_manager'))
+
+    nombre_zip = f'documentos_{anio}_{date.today().isoformat()}.zip'
+    return send_file(buf.name, as_attachment=True, download_name=nombre_zip)
+
+
 @bp.route('/db', methods=['GET'])
 def db_manager():
     db_path = _get_db_path()
@@ -367,4 +408,5 @@ def db_manager():
         db_size_mb = None
         db_modified = None
 
-    return render_template('db.html', db_size_mb=db_size_mb, db_modified=db_modified)
+    return render_template('db.html', db_size_mb=db_size_mb, db_modified=db_modified,
+                           anio_actual=date.today().year)

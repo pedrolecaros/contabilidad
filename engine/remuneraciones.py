@@ -19,8 +19,8 @@ TRAMOS_IMPUESTO = [
     (50.0,  70.0,  0.135, 4.490),
     (70.0,  90.0,  0.230, 11.140),
     (90.0,  120.0, 0.304, 17.800),
-    (120.0, 150.0, 0.350, 23.320),
-    (150.0, float('inf'), 0.400, 30.820),
+    (120.0, 310.0, 0.350, 23.320),
+    (310.0, float('inf'), 0.400, 38.820),
 ]
 
 AFP_COMISIONES = {
@@ -36,7 +36,7 @@ AFP_COMISIONES = {
 TOPE_GRATIFICACION_DEFAULT = 209395.0
 
 
-def calcular(emp, utm: float, uf: float = None,
+def calcular(emp, utm, uf: float = None,
              tope_gratificacion: float = None,
              tope_imponible: float = None,
              horas_extra: float = 0.0,
@@ -47,6 +47,7 @@ def calcular(emp, utm: float, uf: float = None,
     Gratificación se auto-calcula: min(25% bruto, tope_gratificacion).
     Si isapre > 7% imponible, el exceso descuenta del líquido.
     """
+    utm = utm or 0.0
     tope_grat = tope_gratificacion or TOPE_GRATIFICACION_DEFAULT
     sis = tasa_sis if tasa_sis is not None else TASA_SIS
 
@@ -141,7 +142,13 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
 
 
 def _encontrar_bruto(emp, utm, tope_grat, monto_isapre, horas_extra, otros, tasa_sis=TASA_SIS):
-    """Binary search: find gross salary whose net == emp.sueldo_base."""
+    """Binary search: find gross salary whose BASE net == emp.sueldo_base.
+
+    Extras (horas_extra, otros) and isapre excess are intentionally excluded
+    from the search so they impact the final liquid independently:
+    - extras increase the liquid above the agreed amount (they are gross additions)
+    - isapre excess decreases the liquid (the employee absorbs the extra health cost)
+    """
     from types import SimpleNamespace
     objetivo = emp.sueldo_base
     emp_tmp = SimpleNamespace(
@@ -166,7 +173,8 @@ def _encontrar_bruto(emp, utm, tope_grat, monto_isapre, horas_extra, otros, tasa
         bruto = (lo + hi) / 2
         grat = round(min(bruto * 0.25, tope_grat))
         emp_tmp.sueldo_base = round(bruto)
-        res = _calcular_con_bruto(emp_tmp, utm, round(bruto), grat, monto_isapre, horas_extra, otros, tasa_sis)
+        # Search on base salary only — no extras, no isapre excess
+        res = _calcular_con_bruto(emp_tmp, utm, round(bruto), grat, 0, 0, 0, tasa_sis)
         diff = res['liquido'] - objetivo
         if diff < -0.5:
             lo = bruto

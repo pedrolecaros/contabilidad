@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block title %}Documentos – {{ emp.nombre_completo }}{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">Remuneraciones</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=emp.id) }}">{{ emp.nombre_completo }}</a></li>
+    <li class="breadcrumb-item active">Documentos</li>
+  </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Documentos &mdash; {{ emp.nombre_completo }}</h4>
+  <a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=emp.id) }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+{# ── Subir nuevo documento ── #}
+<div class="card shadow-sm mb-4" style="max-width:680px">
+  <div class="card-header py-2"><strong>Subir documento</strong></div>
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data"
+          action="{{ url_for('remuneraciones.docs_empleado_subir', eid=empresa.id, emp_id=emp.id) }}">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Tipo</label>
+          <select name="tipo" class="form-select">
+            <option value="CONTRATO">Contrato de trabajo</option>
+            <option value="ANEXO">Anexo</option>
+            <option value="FINIQUITO">Finiquito</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fecha del documento</label>
+          <input type="date" name="fecha_documento" class="form-control">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Descripción (opcional)</label>
+          <input type="text" name="descripcion" class="form-control" maxlength="200" placeholder="Ej: Contrato indefinido">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Archivo <span class="text-danger">*</span></label>
+          <input type="file" name="archivo" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+          <div class="form-text">PDF, JPG o PNG. Máx. 32 MB.</div>
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-upload me-1"></i>Subir documento
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Lista de documentos ── #}
+{% if docs %}
+<div style="max-width:780px">
+  <table class="table table-sm table-hover align-middle">
+    <thead class="table-secondary">
+      <tr>
+        <th>Tipo</th>
+        <th>Descripción</th>
+        <th>Fecha</th>
+        <th class="text-center">Ver</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in docs %}
+      {% set url_doc = doc.archivo_url | adjunto_url %}
+      <tr>
+        <td>
+          {% if doc.tipo == 'CONTRATO' %}<span class="badge bg-primary">Contrato</span>
+          {% elif doc.tipo == 'ANEXO' %}<span class="badge bg-info text-dark">Anexo</span>
+          {% elif doc.tipo == 'FINIQUITO' %}<span class="badge bg-warning text-dark">Finiquito</span>
+          {% else %}<span class="badge bg-secondary">Otro</span>{% endif %}
+        </td>
+        <td>{{ doc.descripcion or '—' }}</td>
+        <td class="text-nowrap">{{ doc.fecha_documento.strftime('%d/%m/%Y') if doc.fecha_documento else '—' }}</td>
+        <td class="text-center">
+          {% if url_doc %}
+          <a href="{{ url_doc }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-eye me-1"></i>Ver
+          </a>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          <form method="post"
+                action="{{ url_for('remuneraciones.docs_empleado_eliminar', eid=empresa.id, emp_id=emp.id, doc_id=doc.id) }}"
+                onsubmit="return confirm('¿Eliminar este documento?')">
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted">No hay documentos subidos aún.</p>
+{% endif %}
+{% endblock %}

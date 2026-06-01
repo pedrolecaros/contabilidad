@@ -8,23 +8,58 @@
   </a>
 </div>
 
-<div class="col-md-5">
-  <div class="card">
+<div class="col-md-6">
+  <div class="card mb-3">
     <div class="card-header py-2 small fw-semibold">
       <i class="bi bi-info-circle me-1"></i>Estado actual
     </div>
     <div class="card-body">
-      <dl class="row small mb-3">
-        <dt class="col-sm-5">Tamaño</dt>
+      <dl class="row small mb-0">
+        <dt class="col-sm-5">Tamaño BD</dt>
         <dd class="col-sm-7">{% if db_size_mb is not none %}{{ db_size_mb }} MB{% else %}—{% endif %}</dd>
         <dt class="col-sm-5">Última modificación</dt>
         <dd class="col-sm-7">{{ db_modified or '—' }}</dd>
       </dl>
-      <a href="{{ url_for('main.backup') }}" class="btn btn-dark btn-sm w-100">
-        <i class="bi bi-download me-2"></i>Descargar respaldo
-      </a>
-      <div class="form-text mt-2">
-        Descarga una copia del archivo <code>.db</code> para guardar en un lugar seguro.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header py-2 small fw-semibold">
+      <i class="bi bi-download me-1"></i>Descargar respaldo
+    </div>
+    <div class="card-body">
+      <p class="small text-muted mb-3">Selecciona qué quieres descargar:</p>
+
+      {# Base de datos #}
+      <div class="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom">
+        <div>
+          <div class="fw-semibold small">Base de datos</div>
+          <div class="text-muted" style="font-size:0.78rem">Archivo <code>.db</code> con todos los registros contables</div>
+        </div>
+        <a href="{{ url_for('main.backup') }}" class="btn btn-dark btn-sm ms-3 text-nowrap">
+          <i class="bi bi-download me-1"></i>Descargar
+        </a>
+      </div>
+
+      {# Documentos por año #}
+      <div class="d-flex align-items-start justify-content-between">
+        <div>
+          <div class="fw-semibold small">Documentos adjuntos</div>
+          <div class="text-muted" style="font-size:0.78rem">
+            ZIP con liquidaciones PDF, contratos y respaldos del año seleccionado
+          </div>
+        </div>
+        <form action="{{ url_for('main.backup_documentos') }}" method="get"
+              class="d-flex align-items-center gap-2 ms-3">
+          <select name="anio" class="form-select form-select-sm" style="width:100px">
+            {% for y in range(anio_actual, anio_actual - 5, -1) %}
+            <option value="{{ y }}" {{ 'selected' if y == anio_actual }}>{{ y }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-outline-dark btn-sm text-nowrap">
+            <i class="bi bi-file-zip me-1"></i>Descargar ZIP
+          </button>
+        </form>
       </div>
     </div>
   </div>

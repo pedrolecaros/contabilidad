@@ -1,19 +1,19 @@
 {% extends 'base.html' %}
-{% block title %}Nueva Liquidación – {{ emp.nombre }}{% endblock %}
+{% block title %}Nueva Liquidación – {{ emp.nombre_completo }}{% endblock %}
 {% block breadcrumb %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}">Remuneraciones</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=emp.id) }}">{{ emp.nombre }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('remuneraciones.historial', eid=empresa.id, emp_id=emp.id) }}">{{ emp.nombre_completo }}</a></li>
     <li class="breadcrumb-item active">Nueva Liquidación</li>
   </ol>
 </nav>
 {% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0">Nueva Liquidación &mdash; {{ emp.nombre }}</h4>
+  <h4 class="mb-0">Nueva Liquidación &mdash; {{ emp.nombre_completo }}</h4>
   <a href="{{ url_for('remuneraciones.index', eid=empresa.id) }}" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-arrow-left me-1"></i>Volver
   </a>
@@ -52,18 +52,23 @@
 
         <div id="vars_info" class="col-12">
           {% if vars_mes %}
-          <div class="alert alert-info py-2 small mb-0">
-            <strong>Variables {{ vars_mes.periodo }}:</strong>
-            UF ${{ vars_mes.uf | clp if vars_mes.uf else '—' }}
-            &nbsp;|&nbsp;
-            UTM ${{ vars_mes.utm | int | clp if vars_mes.utm else '—' }}
-            &nbsp;|&nbsp;
-            Tope grat. ${{ vars_mes.tope_gratificacion | int | clp if vars_mes.tope_gratificacion else '—' }}
+          <div class="alert alert-info py-2 small mb-0 d-flex justify-content-between align-items-center">
+            <span>
+              <strong>Variables {{ vars_mes.periodo }}:</strong>
+              UF ${{ vars_mes.uf | uf_fmt if vars_mes.uf else '—' }}
+              &nbsp;|&nbsp;
+              UTM ${{ vars_mes.utm | int | clp if vars_mes.utm else '—' }}
+              &nbsp;|&nbsp;
+              Tope grat. ${{ vars_mes.tope_gratificacion | int | clp if vars_mes.tope_gratificacion else '—' }}
+            </span>
+            <a href="{{ url_for('remuneraciones.variables', next=request.path) }}" class="ms-3 text-nowrap">
+              <i class="bi bi-pencil-square me-1"></i>Editar
+            </a>
           </div>
           {% else %}
           <div class="alert alert-warning py-2 small mb-0">
             No hay variables para este período.
-            <a href="{{ url_for('remuneraciones.variables') }}" target="_blank">Cargar variables →</a>
+            <a href="{{ url_for('remuneraciones.variables', next=request.path) }}">Cargar variables →</a>
           </div>
           {% endif %}
         </div>
@@ -174,16 +179,15 @@
           <tbody>
             <tr><td>AFP {{ preview.afp_nombre }} ({{ preview.tasa_afp | round(2) }}%)</td><td class="text-end">${{ preview.afp | clp }}</td></tr>
             <tr>
-              <td>
-                Salud
-                {% if preview.tipo_salud == 'ISAPRE' and preview.isapre %}
-                  – {{ preview.isapre }} (7% + exceso plan)
-                {% else %}
-                  FONASA (7%)
-                {% endif %}
-              </td>
-              <td class="text-end">${{ preview.salud | clp }}{% if preview.extra_isapre %} + ${{ preview.extra_isapre | clp }}{% endif %}</td>
+              <td>Salud legal (7%)</td>
+              <td class="text-end">${{ preview.salud | clp }}</td>
             </tr>
+            {% if preview.extra_isapre %}
+            <tr>
+              <td class="text-muted ps-3">Exceso plan {{ preview.isapre }}</td>
+              <td class="text-end text-muted">${{ preview.extra_isapre | clp }}</td>
+            </tr>
+            {% endif %}
             <tr><td>Seguro cesantía (0.6%)</td><td class="text-end">${{ preview.cesantia_trab | clp }}</td></tr>
             <tr><td>Impuesto 2ª categoría</td><td class="text-end">${{ preview.impuesto_renta | clp }}</td></tr>
             <tr class="table-secondary fw-bold"><td>Total descuentos</td><td class="text-end">${{ preview.total_descuentos | clp }}</td></tr>
@@ -225,23 +229,8 @@
     <form method="post">
       <input type="hidden" name="periodo"         value="{{ form_data.periodo }}">
       <input type="hidden" name="dias_trabajados" value="{{ form_data.dias_trabajados | default(30) }}">
-      <div class="row g-2 mb-3">
-        <div class="col-auto">
-          <label class="form-label small mb-1">Horas extra ($)</label>
-          <input type="number" name="horas_extra" class="form-control form-control-sm"
-                 min="0" step="1" value="{{ form_data.horas_extra }}" style="width:130px">
-        </div>
-        <div class="col-auto">
-          <label class="form-label small mb-1">Otros haberes variables ($)</label>
-          <input type="number" name="otros" class="form-control form-control-sm"
-                 min="0" step="1" value="{{ form_data.otros }}" style="width:130px">
-        </div>
-        <div class="col-auto d-flex align-items-end">
-          <button type="submit" name="accion" value="calcular" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-arrow-clockwise me-1"></i>Recalcular
-          </button>
-        </div>
-      </div>
+      <input type="hidden" name="horas_extra"     value="{{ form_data.horas_extra }}">
+      <input type="hidden" name="otros"           value="{{ form_data.otros }}">
       <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Guardar Borrador
       </button>
@@ -261,42 +250,68 @@
 
 {% block scripts %}
 <script>
+const _urlVarsGet    = '{{ url_for("remuneraciones.variables_get", eid=empresa.id, periodo="PERIODO") }}';
+const _urlAutoFetch  = '{{ url_for("remuneraciones.variables_auto_fetch", periodo="PERIODO") }}';
+const _urlVariables  = '{{ url_for("remuneraciones.variables") }}';
+
+function _showVarsOk(varsInfo, data, periodo, fromPrevired) {
+  const uf   = data.uf   ? '$' + formatUf(data.uf)                      : '—';
+  const utm  = data.utm  ? '$' + formatClp(Math.round(data.utm))         : '—';
+  const tope = data.tope_gratificacion ? '$' + formatClp(Math.round(data.tope_gratificacion)) : '—';
+  const badge = fromPrevired
+    ? ' <span class="badge bg-info text-dark ms-1">Obtenido de Previred</span>'
+    : '';
+  const editUrl = _urlVariables + '?next=' + encodeURIComponent(location.pathname);
+  varsInfo.innerHTML = `
+    <div class="alert alert-info py-2 small mb-0 d-flex justify-content-between align-items-center">
+      <span>
+        <strong>Variables ${periodo}:</strong>
+        UF ${uf} &nbsp;|&nbsp; UTM ${utm} &nbsp;|&nbsp; Tope grat. ${tope}${badge}
+      </span>
+      <a href="${editUrl}" class="ms-3 text-nowrap">
+        <i class="bi bi-pencil-square me-1"></i>Editar
+      </a>
+    </div>`;
+}
+
 async function cargarVariables(periodo) {
   if (!periodo) return;
   const varsInfo = document.getElementById('vars_info');
   if (!varsInfo) return;
+
+  // 1. Check DB
   try {
-    const url = '{{ url_for("remuneraciones.variables_get", eid=empresa.id, periodo="PERIODO") }}'.replace('PERIODO', periodo);
-    const resp = await fetch(url);
+    const resp = await fetch(_urlVarsGet.replace('PERIODO', periodo));
+    const data = await resp.json();
+    if (data.ok) { _showVarsOk(varsInfo, data, periodo, false); return; }
+  } catch (e) {}
+
+  // 2. Not in DB → auto-fetch from Previred
+  varsInfo.innerHTML = '<div class="alert alert-secondary py-2 small mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Obteniendo indicadores de Previred…</div>';
+  try {
+    const resp = await fetch(_urlAutoFetch.replace('PERIODO', periodo));
     const data = await resp.json();
     if (data.ok) {
-      const uf = data.uf ? '$' + formatClp(data.uf) : '—';
-      const utm = data.utm ? '$' + formatClp(Math.round(data.utm)) : '—';
-      const tope = data.tope_gratificacion ? '$' + formatClp(Math.round(data.tope_gratificacion)) : '—';
-      varsInfo.innerHTML = `
-        <div class="alert alert-info py-2 small mb-0">
-          <strong>Variables ${periodo}:</strong>
-          UF ${uf}
-          &nbsp;|&nbsp;
-          UTM ${utm}
-          &nbsp;|&nbsp;
-          Tope grat. ${tope}
-        </div>`;
+      _showVarsOk(varsInfo, data, periodo, data.source === 'previred');
     } else {
-      const varUrl = '{{ url_for("remuneraciones.variables") }}';
+      const next = encodeURIComponent(location.pathname);
       varsInfo.innerHTML = `
         <div class="alert alert-warning py-2 small mb-0">
-          No hay variables para este período.
-          <a href="${varUrl}" target="_blank">Cargar variables →</a>
+          No se pudieron obtener variables automáticamente.
+          <a href="${_urlVariables}?next=${next}">Cargar manualmente →</a>
         </div>`;
     }
   } catch (e) {
-    varsInfo.innerHTML = '<div class="alert alert-danger py-2 small mb-0">Error al consultar variables.</div>';
+    varsInfo.innerHTML = '<div class="alert alert-danger py-2 small mb-0">Error de conexión al obtener variables.</div>';
   }
 }
 
 function formatClp(n) {
   return Math.round(n).toLocaleString('es-CL');
+}
+
+function formatUf(n) {
+  return parseFloat(n).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function actualizarFactor(dias) {
@@ -305,6 +320,12 @@ function actualizarFactor(dias) {
   const lbl = document.getElementById('factor_label');
   if (lbl) lbl.textContent = `${d} días = ${pct}% del sueldo`;
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+  // Auto-load variables for the default period (step 1 only)
+  const periodoInput = document.getElementById('liquidar_periodo');
+  if (periodoInput) cargarVariables(periodoInput.value);
+});
 
 // Copiar del mes anterior
 document.addEventListener('DOMContentLoaded', function () {

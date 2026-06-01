@@ -206,6 +206,8 @@ class Empleado(db.Model):
     empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
     rut = db.Column(db.String(12), nullable=False)
     nombre = db.Column(db.String(200), nullable=False)
+    apellido_paterno = db.Column(db.String(100))
+    apellido_materno = db.Column(db.String(100))
     cargo = db.Column(db.String(200))
     fecha_ingreso = db.Column(db.Date)
     tipo_contrato = db.Column(db.String(20), default='INDEFINIDO')
@@ -231,6 +233,13 @@ class Empleado(db.Model):
     empresa = db.relationship('Empresa', backref=db.backref('empleados', lazy='dynamic'))
     liquidaciones = db.relationship('Liquidacion', backref='empleado', lazy='dynamic',
                                     cascade='all, delete-orphan')
+
+    @property
+    def nombre_completo(self):
+        if self.apellido_paterno:
+            am = (' ' + self.apellido_materno) if self.apellido_materno else ''
+            return f"{self.apellido_paterno}{am}, {self.nombre}"
+        return self.nombre
 
 
 class Liquidacion(db.Model):
@@ -265,6 +274,7 @@ class Liquidacion(db.Model):
     utm = db.Column(db.Float, default=68306.0)
     estado = db.Column(db.String(15), default='BORRADOR')   # BORRADOR | EMITIDA
     creado_en = db.Column(db.DateTime, default=datetime.now)
+    archivo_url = db.Column(db.String(500))   # PDF generado al emitir
 
     empresa = db.relationship('Empresa', backref=db.backref('liquidaciones', lazy='dynamic'))
 
@@ -355,4 +365,20 @@ class ArchivoImportado(db.Model):
 
     empresa = db.relationship('Empresa', backref=db.backref('archivos', lazy='dynamic'))
 
+
+class DocumentoEmpleado(db.Model):
+    __tablename__ = 'documentos_empleado'
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    # CONTRATO | ANEXO | FINIQUITO | OTRO
+    tipo = db.Column(db.String(20), nullable=False, default='CONTRATO')
+    descripcion = db.Column(db.String(300))
+    fecha_documento = db.Column(db.Date)
+    archivo_url = db.Column(db.String(500), nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.now)
+
+    empleado = db.relationship('Empleado', backref=db.backref('documentos', lazy='dynamic',
+                                                               order_by='DocumentoEmpleado.fecha_documento.desc()'))
+    empresa = db.relationship('Empresa')
 
