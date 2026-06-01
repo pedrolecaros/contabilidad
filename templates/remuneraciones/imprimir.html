@@ -30,7 +30,7 @@
 
 <div class="empresa-head">
   {% if empresa.logo_url %}
-  <img src="{{ empresa.logo_url }}" alt="Logo" style="max-height:70px;max-width:200px;object-fit:contain">
+  <img src="{{ empresa.logo_url | adjunto_url }}" alt="Logo" style="max-height:70px;max-width:200px;object-fit:contain">
   {% endif %}
   <h2>{{ empresa.razon_social }}</h2>
   <div class="sub">RUT: {{ empresa.rut }} &nbsp;|&nbsp; {{ empresa.giro or '' }}</div>
@@ -42,6 +42,7 @@
 </div>
 
 {% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+{% set no_imponibles = (liq.total_haberes | float) - (liq.renta_imponible | float) %}
 
 <!-- Datos empleado -->
 <div class="seccion">
@@ -72,6 +73,7 @@
     {% if liq.horas_extra %}<tr><td>Horas Extra</td><td class="text-right">{{ num(liq.horas_extra) }}</td></tr>{% endif %}
     {% if liq.gratificacion %}<tr><td>Gratificación</td><td class="text-right">{{ num(liq.gratificacion) }}</td></tr>{% endif %}
     {% if liq.otros_haberes %}<tr><td>Otros Haberes</td><td class="text-right">{{ num(liq.otros_haberes) }}</td></tr>{% endif %}
+    <tr style="background:#f5f5f5"><th style="font-weight:normal;color:#666">Subtotal Imponibles</th><th class="text-right" style="font-weight:normal;color:#666">{{ num(liq.renta_imponible) }}</th></tr>
   </table>
 </div>
 {% if liq.bono_colacion or liq.bono_movilizacion %}
@@ -81,6 +83,7 @@
     <tr><th>Concepto</th><th class="text-right" style="width:25%">Monto ($)</th></tr>
     {% if liq.bono_colacion %}<tr><td>Colación</td><td class="text-right">{{ num(liq.bono_colacion) }}</td></tr>{% endif %}
     {% if liq.bono_movilizacion %}<tr><td>Movilización</td><td class="text-right">{{ num(liq.bono_movilizacion) }}</td></tr>{% endif %}
+    <tr style="background:#f5f5f5"><th style="font-weight:normal;color:#666">Subtotal No Imponibles</th><th class="text-right" style="font-weight:normal;color:#666">{{ num(no_imponibles) }}</th></tr>
   </table>
 </div>
 {% endif %}
@@ -149,7 +152,7 @@
 
 <div class="footer">
   Emitido el {{ liq.creado_en.strftime('%d/%m/%Y %H:%M') if liq.creado_en else '' }} &nbsp;|&nbsp;
-  Conforme a normas vigentes Chile 2024-2025 &nbsp;|&nbsp; Compatible Previred
+  Conforme a normas vigentes Chile &nbsp;|&nbsp; Compatible Previred
 </div>
 
 <br>

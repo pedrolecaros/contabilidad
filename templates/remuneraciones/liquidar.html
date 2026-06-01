@@ -150,14 +150,21 @@
             <tr><td>Gratificación legal</td><td class="text-end">${{ preview.gratificacion | clp }}</td></tr>
             {% if preview.otros_haberes %}<tr><td>Otros haberes</td><td class="text-end">${{ preview.otros_haberes | clp }}</td></tr>{% endif %}
           </tbody>
+          <tfoot class="table-light">
+            <tr><th class="text-muted small fw-normal">Subtotal Imponibles</th><th class="text-end text-muted small fw-normal">${{ preview.renta_imponible | clp }}</th></tr>
+          </tfoot>
         </table>
         {% if preview.bono_colacion or preview.bono_movilizacion %}
+        {% set prev_no_imp = (preview.total_haberes | float) - (preview.renta_imponible | float) %}
         <table class="table table-sm mb-0 border-top">
           <thead class="table-secondary"><tr><th class="small text-uppercase">No Imponibles</th><th></th></tr></thead>
           <tbody>
             {% if preview.bono_colacion %}<tr><td>Colación</td><td class="text-end">${{ preview.bono_colacion | clp }}</td></tr>{% endif %}
             {% if preview.bono_movilizacion %}<tr><td>Movilización</td><td class="text-end">${{ preview.bono_movilizacion | clp }}</td></tr>{% endif %}
           </tbody>
+          <tfoot class="table-light">
+            <tr><th class="text-muted small fw-normal">Subtotal No Imponibles</th><th class="text-end text-muted small fw-normal">${{ prev_no_imp | clp }}</th></tr>
+          </tfoot>
         </table>
         {% endif %}
         <table class="table table-sm mb-0">
@@ -165,7 +172,6 @@
             <tr><th>Total haberes</th><th class="text-end">${{ preview.total_haberes | clp }}</th></tr>
           </tfoot>
         </table>
-        <div class="px-3 py-1 small text-muted">Renta imponible: ${{ preview.renta_imponible | clp }}</div>
       </div>
     </div>
   </div>
@@ -208,17 +214,56 @@
   </div>
 
   {# Aportes empleador #}
+  {% set prev_afp_prev = (preview.afp | float) + (preview.afp_emp | float) + (preview.sis | float) + (preview.ev_emp | float) + (preview.mutual | float) %}
+  {% set prev_afc_prev = (preview.cesantia_trab | float) + (preview.cesantia_emp | float) %}
+  {% set prev_sal_prev = (preview.salud | float) + (preview.extra_isapre | float) %}
+  {% set prev_total_prev = prev_afp_prev + prev_afc_prev + prev_sal_prev %}
   <div class="col-12">
     <div class="card shadow-sm">
       <div class="card-header py-2"><strong>Aportes empleador</strong></div>
       <div class="card-body p-0">
         <table class="table table-sm mb-0">
           <tbody>
-            <tr><td>SIS (1.49%)</td><td class="text-end">${{ preview.sis | clp }}</td></tr>
-            <tr><td>Seguro cesantía (2.4%)</td><td class="text-end">${{ preview.cesantia_emp | clp }}</td></tr>
-            <tr><td>Mutual de seguridad</td><td class="text-end">${{ preview.mutual | clp }}</td></tr>
-            <tr class="table-secondary fw-bold"><td>Costo total empresa</td><td class="text-end">${{ preview.costo_empresa | clp }}</td></tr>
+            <tr><td>AFP – Cargo Empleador (0.1%)</td><td class="text-end">${{ preview.afp_emp | clp }}</td></tr>
+            <tr><td>Seguro Social – Expectativa de Vida (0.9%)</td><td class="text-end">${{ preview.ev_emp | clp }}</td></tr>
+            <tr><td>SIS – Seguro Invalidez y Sobrevivencia (1.62%)</td><td class="text-end">${{ preview.sis | clp }}</td></tr>
+            <tr><td>Seguro Cesantía Empleador (2.4%)</td><td class="text-end">${{ preview.cesantia_emp | clp }}</td></tr>
+            <tr><td>Mutual de Seguridad</td><td class="text-end">${{ preview.mutual | clp }}</td></tr>
           </tbody>
+          <tfoot class="table-secondary fw-bold">
+            <tr><th>Costo total empresa</th><th class="text-end">${{ preview.costo_empresa | clp }}</th></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# Previred #}
+  <div class="col-12">
+    <div class="card shadow-sm border-primary">
+      <div class="card-header py-2 bg-primary text-white"><strong><i class="bi bi-send me-1"></i>Total a pagar Previred</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <td>AFP <span class="text-muted small">(trab. + emp. + SIS + EV + mutual)</span></td>
+              <td class="text-end">${{ prev_afp_prev | clp }}</td>
+            </tr>
+            <tr>
+              <td>Cesantía AFC <span class="text-muted small">(trab. + emp.)</span></td>
+              <td class="text-end">${{ prev_afc_prev | clp }}</td>
+            </tr>
+            <tr>
+              <td>Salud
+                {% if preview.isapre %}<span class="text-muted small">(7% + exceso {{ preview.isapre }})</span>
+                {% else %}<span class="text-muted small">(FONASA 7%)</span>{% endif %}
+              </td>
+              <td class="text-end">${{ prev_sal_prev | clp }}</td>
+            </tr>
+          </tbody>
+          <tfoot class="table-primary fw-bold">
+            <tr><th>Total Previred</th><th class="text-end">${{ prev_total_prev | clp }}</th></tr>
+          </tfoot>
         </table>
       </div>
     </div>

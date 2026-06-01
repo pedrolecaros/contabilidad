@@ -97,6 +97,10 @@
               <i class="bi bi-file-earmark-pdf text-danger"></i>
             </a>
             {% endif %}
+            <a href="{{ url_for('remuneraciones.detalle', eid=empresa.id, liq_id=l.id) }}"
+               class="ms-1 btn btn-outline-secondary btn-sm py-0 px-1" title="Ver detalle">
+              <i class="bi bi-eye"></i>
+            </a>
           </td>
         </tr>
         {% endfor %}

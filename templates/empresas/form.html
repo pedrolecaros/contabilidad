@@ -16,7 +16,7 @@
         <h5 class="mb-0">{% if empresa %}Editar empresa{% else %}Nueva empresa{% endif %}</h5>
       </div>
       <div class="card-body">
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
           <div class="mb-3">
             <label class="form-label fw-semibold">RUT <span class="text-danger">*</span></label>
             <input type="text" name="rut" class="form-control"
@@ -102,11 +102,16 @@
           <hr>
           <h6 class="text-muted small mb-2"><i class="bi bi-image me-1"></i>Logo e imagen</h6>
           <div class="mb-3">
-            <label class="form-label">Logo URL</label>
-            <input type="text" name="logo_url" class="form-control"
-                   value="{{ empresa.logo_url if empresa and empresa.logo_url else '' }}"
-                   placeholder="URL de la imagen del logo (o ruta relativa)">
-            <div class="form-text">Se mostrará en liquidaciones impresas. Deje en blanco si no hay logo.</div>
+            <label class="form-label">Logo</label>
+            {% if empresa and empresa.logo_url %}
+            <div class="mb-2">
+              <img src="{{ empresa.logo_url | adjunto_url }}" alt="Logo actual"
+                   style="max-height:60px;max-width:200px;object-fit:contain;border:1px solid #dee2e6;padding:4px;border-radius:4px">
+              <div class="form-text">Logo actual. Sube uno nuevo para reemplazarlo.</div>
+            </div>
+            {% endif %}
+            <input type="file" name="logo_file" class="form-control" accept="image/*">
+            <div class="form-text">PNG, JPG o WEBP. Se mostrará en liquidaciones impresas.</div>
           </div>
           {% if empresa %}
           <hr>

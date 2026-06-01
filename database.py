@@ -60,6 +60,8 @@ def _migrar(app):
         "ALTER TABLE asientos ADD COLUMN prestamo_sentido VARCHAR(5) DEFAULT '-'",
         "ALTER TABLE empleados ADD COLUMN apellido_paterno VARCHAR(100)",
         "ALTER TABLE empleados ADD COLUMN apellido_materno VARCHAR(100)",
+        "ALTER TABLE liquidaciones ADD COLUMN afp_emp REAL DEFAULT 0.0",
+        "ALTER TABLE liquidaciones ADD COLUMN ev_emp REAL DEFAULT 0.0",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

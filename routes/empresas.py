@@ -1,8 +1,20 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
 from models import db, Empresa
 from database import sembrar_plan_cuentas, copiar_plan_cuentas
 
 bp = Blueprint('empresas', __name__)
+
+
+def _guardar_logo(empresa_rut: str) -> str | None:
+    """Si se subió logo_file, lo guarda y retorna el storage key. Si no, retorna None."""
+    f = request.files.get('logo_file')
+    if not f or not f.filename:
+        return None
+    from storage import save_attachment
+    rut_limpio = empresa_rut.replace('.', '').replace('-', '')
+    return save_attachment(f, f.filename,
+                           current_app.config['UPLOAD_FOLDER'],
+                           subfolder=f'{rut_limpio}/logo')
 
 
 def _normalizar_rut(rut: str) -> str:
@@ -84,10 +96,13 @@ def nueva():
             contribuyente_iva='contribuyente_iva' in request.form,
             tasa_ppm=float(tasa_ppm_str) if tasa_ppm_str else 1.0,
             regimen=request.form.get('regimen', 'GENERAL'),
-            logo_url=request.form.get('logo_url', '').strip() or None,
         )
         db.session.add(empresa)
         db.session.commit()
+        logo_key = _guardar_logo(empresa.rut)
+        if logo_key:
+            empresa.logo_url = logo_key
+            db.session.commit()
         origen_plan = request.form.get('origen_plan', '').strip()
         if origen_plan:
             copiar_plan_cuentas(int(origen_plan), empresa.id)
@@ -121,7 +136,9 @@ def editar(eid):
         tasa_ppm_str = request.form.get('tasa_ppm', '1.0').strip()
         empresa.tasa_ppm = float(tasa_ppm_str) if tasa_ppm_str else 1.0
         empresa.regimen = request.form.get('regimen', 'GENERAL')
-        empresa.logo_url = request.form.get('logo_url', '').strip() or None
+        logo_key = _guardar_logo(empresa.rut)
+        if logo_key:
+            empresa.logo_url = logo_key
         db.session.commit()
         flash('Empresa actualizada', 'success')
         return redirect(url_for('main.index'))

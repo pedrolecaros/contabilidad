@@ -266,6 +266,8 @@ class Liquidacion(db.Model):
     liquido = db.Column(db.Float, default=0.0)
     # Aportes empleador
     sis = db.Column(db.Float, default=0.0)
+    afp_emp = db.Column(db.Float, default=0.0)
+    ev_emp = db.Column(db.Float, default=0.0)
     cesantia_emp = db.Column(db.Float, default=0.0)
     mutual = db.Column(db.Float, default=0.0)
     costo_empresa = db.Column(db.Float, default=0.0)

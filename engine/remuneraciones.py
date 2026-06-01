@@ -5,9 +5,11 @@ Normas vigentes 2024-2025 compatibles con Previred.
 
 # Tasas fijas legales
 TASA_AFP_OBLIGATORIO   = 0.10       # 10% obligatorio (igual en todas las AFP)
+TASA_AFP_EMP           = 0.001      # 0.1% cargo empleador AFP (uniforme todas las AFP)
+TASA_EV                = 0.009      # 0.9% Seguro Social – Expectativa de Vida (cargo empleador)
 TASA_CESANTIA_TRAB     = 0.006      # 0.6% trabajador
 TASA_CESANTIA_EMP      = 0.024      # 2.4% empleador (contrato indefinido)
-TASA_SIS               = 0.0149     # 1.49% SIS (seguro invalidez y sobrevivencia)
+TASA_SIS               = 0.0162     # 1.62% SIS (seguro invalidez y sobrevivencia) vigente 2026
 TASA_SALUD_FONASA      = 0.07       # 7% salud
 
 # Tramos impuesto único 2da categoría 2024 (en UTM)
@@ -108,9 +110,11 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
     liquido          = total_haberes - total_descuentos
 
     sis_emp         = round(renta_cot * tasa_sis)
+    afp_emp         = round(renta_cot * TASA_AFP_EMP)
+    ev_emp          = round(renta_cot * TASA_EV)
     cesantia_emp    = round(renta_cot * TASA_CESANTIA_EMP)
     mutual_emp      = round(renta_cot * (getattr(emp, 'tasa_mutual', 0) or 0))
-    costo_empresa   = total_haberes + sis_emp + cesantia_emp + mutual_emp
+    costo_empresa   = total_haberes + sis_emp + afp_emp + ev_emp + cesantia_emp + mutual_emp
 
     return {
         'sueldo_base':       sueldo_bruto,
@@ -128,6 +132,8 @@ def _calcular_con_bruto(emp, utm, sueldo_bruto, grat, monto_isapre, horas_extra,
         'total_descuentos':  total_descuentos,
         'liquido':           liquido,
         'sis':               sis_emp,
+        'afp_emp':           afp_emp,
+        'ev_emp':            ev_emp,
         'cesantia_emp':      cesantia_emp,
         'mutual':            mutual_emp,
         'costo_empresa':     costo_empresa,

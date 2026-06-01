@@ -5,40 +5,43 @@
   <img src="{{ url_for('static', filename='logo_ecox.png') }}" alt="Ecox" style="height:42px;object-fit:contain">
 </div>
 
-{# ── Consolidado + Configuración ──────────────────────────────────────── #}
-<div class="row g-3 mb-4">
-  <div class="col-md-4">
-    <div class="card">
-      <div class="card-header py-2 small fw-semibold">
-        <i class="bi bi-layers me-1"></i>Consolidado
-      </div>
-      <div class="card-body py-2 d-flex flex-column gap-1">
-        <a href="{{ url_for('main.consolidado') }}" class="btn btn-outline-secondary btn-sm text-start">
-          <i class="bi bi-journal-text me-2"></i>Contable
-        </a>
-        <a href="{{ url_for('main.consolidado_financiero') }}" class="btn btn-outline-secondary btn-sm text-start">
-          <i class="bi bi-graph-up me-2"></i>Financiero
-        </a>
-      </div>
-    </div>
+<div class="d-flex gap-2 mb-4">
+  <button class="btn btn-outline-secondary btn-sm" type="button"
+          data-bs-toggle="collapse" data-bs-target="#panel-consolidado"
+          aria-expanded="false">
+    <i class="bi bi-layers me-1"></i>Consolidado
+    <i class="bi bi-chevron-down ms-1" style="font-size:.75rem"></i>
+  </button>
+  <button class="btn btn-outline-secondary btn-sm" type="button"
+          data-bs-toggle="collapse" data-bs-target="#panel-config"
+          aria-expanded="false">
+    <i class="bi bi-gear me-1"></i>Configuración
+    <i class="bi bi-chevron-down ms-1" style="font-size:.75rem"></i>
+  </button>
+</div>
+
+<div class="collapse mb-3" id="panel-consolidado">
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('main.consolidado') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-journal-text me-1"></i>Contable
+    </a>
+    <a href="{{ url_for('main.consolidado_financiero') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-graph-up me-1"></i>Financiero
+    </a>
   </div>
-  <div class="col-md-4">
-    <div class="card">
-      <div class="card-header py-2 small fw-semibold">
-        <i class="bi bi-gear me-1"></i>Configuración
-      </div>
-      <div class="card-body py-2 d-flex flex-column gap-1">
-        <a href="{{ url_for('remuneraciones.uf_tabla') }}" class="btn btn-outline-secondary btn-sm text-start">
-          <i class="bi bi-calendar3 me-2"></i>Tabla de valores UF
-        </a>
-        <a href="{{ url_for('main.db_manager') }}" class="btn btn-outline-secondary btn-sm text-start">
-          <i class="bi bi-download me-2"></i>Descargar respaldo BD
-        </a>
-        <a href="#" class="btn btn-outline-secondary btn-sm text-start disabled">
-          <i class="bi bi-people me-2"></i>Usuarios
-        </a>
-      </div>
-    </div>
+</div>
+
+<div class="collapse mb-3" id="panel-config">
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('remuneraciones.uf_tabla') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-calendar3 me-1"></i>Tabla UF
+    </a>
+    <a href="{{ url_for('main.db_manager') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-download me-1"></i>Respaldo BD
+    </a>
+    <a href="#" class="btn btn-outline-secondary btn-sm disabled">
+      <i class="bi bi-people me-1"></i>Usuarios
+    </a>
   </div>
 </div>
 
