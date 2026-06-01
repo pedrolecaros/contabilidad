@@ -255,6 +255,12 @@ def eliminar_doc(eid, did):
     doc = DocumentoSII.query.get_or_404(did)
     tipo_dte = doc.tipo_dte
     folio = doc.folio
+    from routes.papelera import enviar_papelera, _ser_documento_sii
+    enviar_papelera(
+        'DOCUMENTO_SII', doc.id, doc.empresa_id,
+        f'{doc.tipo_libro} – {doc.razon_social_contraparte or ""} – {doc.fecha or ""}',
+        _ser_documento_sii(doc)
+    )
     db.session.delete(doc)
     db.session.commit()
     flash(f'Documento {tipo_dte} folio {folio} eliminado', 'success')
@@ -265,6 +271,12 @@ def eliminar_doc(eid, did):
 def eliminar_banco(eid, mid):
     mov = MovimientoBanco.query.get_or_404(mid)
     desc = (mov.descripcion or '')[:40]
+    from routes.papelera import enviar_papelera, _ser_movimiento_banco
+    enviar_papelera(
+        'MOVIMIENTO_BANCO', mov.id, mov.empresa_id,
+        f'Banco – {mov.descripcion or ""} – {mov.fecha or ""}',
+        _ser_movimiento_banco(mov)
+    )
     db.session.delete(mov)
     db.session.commit()
     flash(f'Movimiento "{desc}" eliminado', 'success')

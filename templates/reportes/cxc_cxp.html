@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}CxC / CxP – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">CxC / CxP</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+
+{% macro clp(v) %}{{ '{:,.0f}'.format(v|abs).replace(',','.') if v else '–' }}{% endmacro %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-journal-bookmark me-2"></i>Cuentas por Cobrar / Pagar</h5>
+  <small class="text-muted">Saldos desde el libro contable</small>
+</div>
+
+{% macro tabla_cx(lista, tot, color, label_tot) %}
+  {% if lista %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <tbody>
+        {% for entry in lista %}
+          {# ── Cabecera cuenta ── #}
+          <tr style="background:#f8f9fa;border-top:2px solid #dee2e6">
+            <td class="small fw-semibold py-1" style="padding-left:8px">
+              <span class="font-monospace text-muted me-1" style="font-size:.75rem">{{ entry.cuenta.codigo }}</span>
+              {{ entry.cuenta.nombre }}
+            </td>
+            <td class="text-end small fw-bold py-1 text-nowrap" style="padding-right:8px">
+              {{ clp(entry.saldo_total) }}
+            </td>
+            <td style="width:28px" class="py-1">
+              <a href="{{ url_for('reportes.mayor', eid=empresa.id, cuenta_id=entry.cuenta.id) }}"
+                 class="btn btn-link btn-sm p-0 text-muted" style="font-size:0.7rem" title="Ver mayor">
+                <i class="bi bi-book"></i>
+              </a>
+            </td>
+          </tr>
+          {# ── Filas por contraparte (solo si hay más de una o hay cp identificada) ── #}
+          {% if entry.filas|length > 1 or (entry.filas and entry.filas[0].cp) %}
+            {% for f in entry.filas %}
+            <tr>
+              <td class="small py-0" style="padding-left:24px;color:#555">
+                {% if f.cp %}
+                  <a href="{{ url_for('contrapartes.detalle', eid=empresa.id, cid=f.cp.id) }}"
+                     class="text-decoration-none text-dark">{{ f.cp.razon_social }}</a>
+                {% else %}
+                  <span class="text-muted fst-italic">Sin identificar</span>
+                {% endif %}
+              </td>
+              <td class="text-end small py-0 text-nowrap {{ 'text-danger' if f.saldo < 0 else 'text-muted' }}"
+                  style="padding-right:8px">
+                {{ clp(f.saldo) }}
+              </td>
+              <td></td>
+            </tr>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </tbody>
+      <tfoot class="fw-bold" style="background:var(--bs-{{ color }}-bg-subtle,#f8f9fa);border-top:2px solid">
+        <tr>
+          <td class="py-2" style="padding-left:8px">{{ label_tot }}</td>
+          <td class="text-end py-2" style="padding-right:8px">{{ clp(tot) }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted small">Sin saldos.</div>
+  {% endif %}
+{% endmacro %}
+
+<div class="row g-3">
+
+  {# ── CxC ── #}
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-arrow-down-circle me-1"></i>Cuentas por Cobrar</span>
+        <strong>{{ clp(tot_cxc) }}</strong>
+      </div>
+      {{ tabla_cx(cxc, tot_cxc, 'success', 'TOTAL CxC') }}
+    </div>
+  </div>
+
+  {# ── CxP ── #}
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-arrow-up-circle me-1"></i>Cuentas por Pagar</span>
+        <strong>{{ clp(tot_cxp) }}</strong>
+      </div>
+      {{ tabla_cx(cxp, tot_cxp, 'danger', 'TOTAL CxP') }}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

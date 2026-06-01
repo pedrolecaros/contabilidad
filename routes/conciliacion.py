@@ -306,6 +306,12 @@ def deshacer(eid, cid):
         a = Asiento.query.get(aid)
         if a:
             # Note: CuotaPrestamo system removed; no cuota cleanup needed here
+            from routes.papelera import enviar_papelera, _ser_asiento
+            enviar_papelera(
+                'ASIENTO', a.id, a.empresa_id,
+                f'Asiento #{a.numero} – {a.descripcion or ""}',
+                _ser_asiento(a)
+            )
             AsientoAudit.query.filter_by(asiento_id=aid).delete()
             LineaAsiento.query.filter_by(asiento_id=aid).delete()
             db.session.delete(a)

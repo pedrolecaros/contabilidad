@@ -1,16 +1,17 @@
 import calendar
 from datetime import date
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from models import db, Empresa, Contraparte, DocumentoSII, Conciliacion, MovimientoBanco, Cuenta
+from models import db, Empresa, Contraparte, DocumentoSII, Conciliacion, MovimientoBanco, Cuenta, LineaAsiento, Asiento
 from sqlalchemy import func
 
 bp = Blueprint('contrapartes', __name__)
 
 TIPO_LIBRO_MAP = {
-    'PROVEEDOR':  ['COMPRAS'],
-    'CLIENTE':    ['VENTAS'],
-    'HONORARIOS': ['HONORARIOS'],
-    'AMBOS':      ['COMPRAS', 'VENTAS'],
+    'PROVEEDOR':   ['COMPRAS'],
+    'CLIENTE':     ['VENTAS'],
+    'HONORARIOS':  ['HONORARIOS'],
+    'AMBOS':       ['COMPRAS', 'VENTAS'],
+    'RELACIONADA': [],  # solo movimientos contables, sin documentos SII
 }
 
 
@@ -280,6 +281,39 @@ def detalle(eid, cid):
                  .order_by('mes')
                  .all())
 
+    # ── Saldo contable (auxiliar) ────────────────────────────────────────────
+    # Todos los movimientos de asientos confirmados donde esta contraparte aparece
+    movs_aux = (LineaAsiento.query
+                .join(Asiento)
+                .filter(
+                    LineaAsiento.contraparte_id == cp.id,
+                    Asiento.empresa_id == eid,
+                    Asiento.estado == 'CONFIRMADO',
+                )
+                .order_by(Asiento.fecha, Asiento.numero)
+                .all())
+
+    # Agrupar por cuenta y calcular saldo
+    from collections import defaultdict
+    aux_por_cuenta = defaultdict(lambda: {'cuenta': None, 'lineas': [], 'debe': 0.0, 'haber': 0.0})
+    for l in movs_aux:
+        k = l.cuenta_id
+        aux_por_cuenta[k]['cuenta'] = l.cuenta
+        aux_por_cuenta[k]['lineas'].append(l)
+        aux_por_cuenta[k]['debe']  += l.debe
+        aux_por_cuenta[k]['haber'] += l.haber
+
+    # Calcular saldo neto por cuenta
+    for g in aux_por_cuenta.values():
+        c = g['cuenta']
+        if c and c.naturaleza == 'DEUDORA':
+            g['saldo'] = g['debe'] - g['haber']
+        else:
+            g['saldo'] = g['haber'] - g['debe']
+
+    aux_cuentas = sorted(aux_por_cuenta.values(), key=lambda g: g['cuenta'].codigo)
+    saldo_aux_total = sum(g['saldo'] for g in aux_cuentas)
+
     return render_template('contrapartes/detalle.html',
                            empresa=empresa, cp=cp,
                            docs=docs, desde_mes=desde_mes, hasta_mes=hasta_mes,
@@ -292,7 +326,10 @@ def detalle(eid, cid):
                            saldo_pendiente=saldo_pendiente,
                            conciliaciones=conciliaciones,
                            total_movs=total_movs,
-                           rows_hist=rows_hist)
+                           rows_hist=rows_hist,
+                           aux_cuentas=aux_cuentas,
+                           saldo_aux_total=saldo_aux_total,
+                           movs_aux=movs_aux)
 
 
 @bp.route('/empresa/<int:eid>/contrapartes/importar', methods=['POST'])

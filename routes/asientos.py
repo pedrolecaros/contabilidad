@@ -1,7 +1,7 @@
 import json
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, current_app
 from datetime import date
-from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion
+from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte
 from engine.asientos import confirmar_asiento, anular_asiento
 from engine.auditoria import registrar_auditoria
 
@@ -10,6 +10,11 @@ bp = Blueprint('asientos', __name__)
 
 def _cuentas_json(cuentas):
     return json.dumps([{'id': c.id, 'codigo': c.codigo, 'nombre': c.nombre} for c in cuentas])
+
+
+def _contrapartes_json(eid):
+    cp = Contraparte.query.filter_by(empresa_id=eid, activo=True).order_by(Contraparte.razon_social).all()
+    return json.dumps([{'id': c.id, 'nombre': c.razon_social, 'rut': c.rut} for c in cp])
 
 
 def _prestamo_dict(p):
@@ -61,16 +66,19 @@ def _parse_monto(v):
 
 def _guardar_lineas(asiento_id, form):
     LineaAsiento.query.filter_by(asiento_id=asiento_id).delete()
-    cuenta_ids = form.getlist('cuenta_id[]')
-    debes      = form.getlist('debe[]')
-    haberes    = form.getlist('haber[]')
-    descs      = form.getlist('linea_desc[]')
+    cuenta_ids      = form.getlist('cuenta_id[]')
+    debes           = form.getlist('debe[]')
+    haberes         = form.getlist('haber[]')
+    descs           = form.getlist('linea_desc[]')
+    contraparte_ids = form.getlist('contraparte_id[]')
     for orden, (cid, d, h, ld) in enumerate(zip(cuenta_ids, debes, haberes, descs)):
         if not cid:
             continue
+        cpid_raw = contraparte_ids[orden] if orden < len(contraparte_ids) else ''
         db.session.add(LineaAsiento(
             asiento_id=asiento_id,
             cuenta_id=int(cid),
+            contraparte_id=int(cpid_raw) if cpid_raw else None,
             debe=_parse_monto(d),
             haber=_parse_monto(h),
             descripcion=ld.strip(),
@@ -265,7 +273,8 @@ def nuevo(eid):
     prestamos_json = json.dumps([_prestamo_dict(p) for p in prestamos_eid])
     return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
                            cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]',
-                           fecha_default=fecha_default, prestamos_json=prestamos_json)
+                           fecha_default=fecha_default, prestamos_json=prestamos_json,
+                           contrapartes_json=_contrapartes_json(eid))
 
 
 @bp.route('/empresa/<int:eid>/asientos/<int:aid>/editar', methods=['GET', 'POST'])
@@ -321,10 +330,11 @@ def editar(eid, aid):
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
     lineas_json = json.dumps([{
-        'cuenta_id': l.cuenta_id,
-        'debe':      l.debe,
-        'haber':     l.haber,
-        'descripcion': l.descripcion or '',
+        'cuenta_id':     l.cuenta_id,
+        'debe':          l.debe,
+        'haber':         l.haber,
+        'descripcion':   l.descripcion or '',
+        'contraparte_id': l.contraparte_id or '',
     } for l in asiento.lineas])
 
     # Load prestamos for the selector
@@ -339,6 +349,7 @@ def editar(eid, aid):
                            cuentas_json=_cuentas_json(cuentas),
                            asiento=asiento, lineas_json=lineas_json,
                            prestamos_json=prestamos_json,
+                           contrapartes_json=_contrapartes_json(eid),
                            back_url=back_url)
 
 
@@ -366,6 +377,12 @@ def eliminar(eid, aid):
         d.conciliacion_id = None
 
     # Borrar registros con FK NOT NULL
+    from routes.papelera import enviar_papelera, _ser_asiento
+    enviar_papelera(
+        'ASIENTO', asiento.id, asiento.empresa_id,
+        f'Asiento #{asiento.numero} – {asiento.descripcion or ""}',
+        _ser_asiento(asiento)
+    )
     AsientoAudit.query.filter_by(asiento_id=aid).delete()
     LineaAsiento.query.filter_by(asiento_id=aid).delete()
     db.session.delete(asiento)

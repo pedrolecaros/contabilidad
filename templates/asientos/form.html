@@ -199,6 +199,7 @@
 const cuentas = {{ cuentas_json|safe }};
 const lineasIniciales = {{ lineas_json|safe }};
 const PRESTAMOS_FORM = {{ prestamos_json|safe if prestamos_json is defined else '[]' }};
+const contrapartes = {{ contrapartes_json|safe if contrapartes_json is defined else '[]' }};
 let tomSelects = [];
 
 // Cuenta id → codigo map for detecting prestamo accounts
@@ -231,6 +232,14 @@ function agregarLinea(datos) {
   // Marcar como auto-sincronizada si coincide con la descripción global (o si es nueva)
   const esAuto = !datos || lineaDesc === descGlobal();
 
+  const cpVal = datos && datos.contraparte_id ? datos.contraparte_id : '';
+  const cpNom = cpVal ? (contrapartes.find(c => c.id == cpVal) || {}).nombre || '' : '';
+  const cpOptions = contrapartes.map(cp =>
+    `<option value="${cp.id}" ${cpVal==cp.id ? 'selected' : ''}>${cp.nombre}</option>`
+  ).join('');
+  // Mostrar selector solo si ya tiene contraparte asignada
+  const cpVisible = cpVal ? '' : 'display:none';
+
   tr.innerHTML = `
     <td>
       <select name="cuenta_id[]" id="ts-${idx}" class="ts-cuenta">
@@ -242,10 +251,18 @@ function agregarLinea(datos) {
         ).join('')}
       </select>
     </td>
-    <td><input type="text" name="linea_desc[]" class="form-control form-control-sm linea-desc"
-               value="${lineaDesc}"
-               data-auto="${esAuto}"
-               placeholder="Detalle"></td>
+    <td>
+      <div class="d-flex align-items-center gap-1">
+        <input type="text" name="linea_desc[]" class="form-control form-control-sm linea-desc"
+               value="${lineaDesc}" data-auto="${esAuto}" placeholder="Detalle">
+        ${contrapartes.length ? `<button type="button" class="btn btn-link btn-sm p-0 text-muted flex-shrink-0 btn-cp-toggle"
+                title="Asignar auxiliar" style="font-size:0.7rem;line-height:1">aux</button>` : ''}
+      </div>
+      ${contrapartes.length ? `<select name="contraparte_id[]" class="form-select form-select-sm mt-1" style="font-size:0.75rem;${cpVisible}">
+        <option value="">— sin auxiliar —</option>
+        ${cpOptions}
+      </select>` : '<input type="hidden" name="contraparte_id[]" value="">'}
+    </td>
     <td><input type="text" name="debe[]" class="form-control form-control-sm text-end monto monto-input"
                inputmode="numeric" value="${datos ? (datos.debe||0) : 0}"></td>
     <td><input type="text" name="haber[]" class="form-control form-control-sm text-end monto monto-input"
@@ -259,6 +276,17 @@ function agregarLinea(datos) {
     </td>`;
 
   tbody.appendChild(tr);
+
+  // Toggle auxiliar selector
+  const btnCp = tr.querySelector('.btn-cp-toggle');
+  if (btnCp) {
+    btnCp.addEventListener('click', function() {
+      const sel = this.closest('td').querySelector('select[name="contraparte_id[]"]');
+      const visible = sel.style.display !== 'none';
+      sel.style.display = visible ? 'none' : '';
+      if (visible) sel.value = '';
+    });
+  }
 
   // Desmarcar auto-sync si el usuario escribe algo distinto
   const inpDesc = tr.querySelector('.linea-desc');

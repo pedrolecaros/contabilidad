@@ -747,13 +747,20 @@ def sii_bulk_start():
     if not periodo:
         return jsonify({'ok': False, 'error': 'Falta el período'})
 
-    empresas = (Empresa.query
-                .filter(Empresa.activa == True,
-                        Empresa.clave_sii.isnot(None),
-                        Empresa.clave_sii != '')
-                .order_by(Empresa.razon_social).all())
+    # eids opcionales: filtrar solo las empresas seleccionadas
+    eids_raw = request.form.get('eids', '')
+    eids_sel = [int(x) for x in eids_raw.split(',') if x.strip().isdigit()] if eids_raw else []
+
+    q = (Empresa.query
+         .filter(Empresa.activa == True,
+                 Empresa.clave_sii.isnot(None),
+                 Empresa.clave_sii != ''))
+    if eids_sel:
+        q = q.filter(Empresa.id.in_(eids_sel))
+    empresas = q.order_by(Empresa.razon_social).all()
+
     if not empresas:
-        return jsonify({'ok': False, 'error': 'No hay empresas con clave SII configurada'})
+        return jsonify({'ok': False, 'error': 'No hay empresas seleccionadas con clave SII configurada'})
 
     empresas_data = [
         (e.id, e.nombre_fantasia or e.razon_social, e.rut, e.clave_sii)

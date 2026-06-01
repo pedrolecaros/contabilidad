@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block title %}Libro Auxiliar – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('reportes.mayor', eid=empresa.id, cuenta_id=cuenta_sel.id if cuenta_sel else '', desde=desde.isoformat(), hasta=hasta.isoformat()) }}">Libro Mayor</a></li>
+    <li class="breadcrumb-item active">Auxiliar{% if cuenta_sel %} – {{ cuenta_sel.nombre }}{% endif %}</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Libro Auxiliar por Contraparte</h5>
+</div>
+
+<form class="row g-2 mb-4 align-items-end" method="get">
+  <div class="col-auto">
+    <label class="form-label small mb-1">Cuenta</label>
+    <select name="cuenta_id" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">-- Seleccione --</option>
+      {% for c in cuentas %}
+      <option value="{{ c.id }}" {{ 'selected' if cuenta_sel and cuenta_sel.id==c.id }}>
+        {{ c.codigo }} – {{ c.nombre }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Desde</label>
+    <input type="date" name="desde" class="form-control form-control-sm" value="{{ desde.isoformat() }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Hasta</label>
+    <input type="date" name="hasta" class="form-control form-control-sm" value="{{ hasta.isoformat() }}">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-primary btn-sm">Ver</button>
+  </div>
+</form>
+
+{% if cuenta_sel and grupos %}
+<div class="mb-2 text-muted small">
+  <strong>{{ cuenta_sel.codigo }} – {{ cuenta_sel.nombre }}</strong>
+  &nbsp;|&nbsp; {{ desde.strftime('%d/%m/%Y') }} al {{ hasta.strftime('%d/%m/%Y') }}
+</div>
+
+{% for cp_id, g in grupos %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center
+              {{ 'bg-light' if cp_id is none else '' }}">
+    <span class="fw-semibold">
+      {% if g.cp %}
+        <i class="bi bi-building me-1"></i>{{ g.cp.razon_social }}
+        <span class="text-muted fw-normal small ms-1">{{ g.cp.rut }}</span>
+      {% else %}
+        <i class="bi bi-dash-circle me-1 text-muted"></i><span class="text-muted">Sin contraparte asignada</span>
+      {% endif %}
+    </span>
+    <span class="badge bg-{{ 'success' if g.saldo >= 0 else 'danger' }} fs-6">
+      {{ '$' + num(g.saldo) if g.saldo >= 0 else '-$' + num(g.saldo | abs) }}
+    </span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-secondary">
+        <tr>
+          <th style="width:9%">Fecha</th>
+          <th style="width:6%">N°</th>
+          <th>Descripción</th>
+          <th class="text-end" style="width:13%">Debe</th>
+          <th class="text-end" style="width:13%">Haber</th>
+          <th class="text-end" style="width:13%">Saldo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set ns = namespace(saldo=0) %}
+        {% for l in g.lineas %}
+        {% if cuenta_sel.naturaleza == 'DEUDORA' %}
+          {% set ns.saldo = ns.saldo + (l.debe|float) - (l.haber|float) %}
+        {% else %}
+          {% set ns.saldo = ns.saldo + (l.haber|float) - (l.debe|float) %}
+        {% endif %}
+        <tr>
+          <td class="text-nowrap font-monospace small">{{ l.asiento.fecha.strftime('%d/%m/%Y') }}</td>
+          <td class="text-nowrap">
+            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=l.asiento_id) }}"
+               class="text-decoration-none font-monospace small">N°{{ l.asiento.numero }}</a>
+          </td>
+          <td class="small">{{ l.descripcion or l.asiento.descripcion }}</td>
+          <td class="text-end text-nowrap small {{ 'text-primary' if l.debe else 'text-muted' }}">
+            {{ '$' + num(l.debe) if l.debe else '—' }}
+          </td>
+          <td class="text-end text-nowrap small {{ 'text-danger' if l.haber else 'text-muted' }}">
+            {{ '$' + num(l.haber) if l.haber else '—' }}
+          </td>
+          <td class="text-end text-nowrap small fw-semibold {{ 'text-success' if ns.saldo >= 0 else 'text-danger' }}">
+            {{ '$' + num(ns.saldo) if ns.saldo >= 0 else '-$' + num(ns.saldo | abs) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-semibold small">
+        <tr>
+          <td colspan="3" class="text-end">Total</td>
+          <td class="text-end">$ {{ num(g.debe) }}</td>
+          <td class="text-end text-danger">$ {{ num(g.haber) }}</td>
+          <td class="text-end {{ 'text-success' if g.saldo >= 0 else 'text-danger' }}">
+            {{ '$' + num(g.saldo) if g.saldo >= 0 else '-$' + num(g.saldo | abs) }}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+{% elif cuenta_sel %}
+<div class="alert alert-info">No hay movimientos con contraparte en este período para {{ cuenta_sel.nombre }}.</div>
+{% endif %}
+{% endblock %}

@@ -460,17 +460,39 @@
 
         <!-- Paso 1: formulario periodo -->
         <div id="bajarForm">
-          <p class="text-muted small mb-3">
-            Descarga compras, ventas y honorarios del mes seleccionado para todas las empresas
-            con clave SII registrada. Se hace de a una empresa a la vez.
-          </p>
-          <div class="d-flex align-items-center gap-3">
+          <div class="d-flex align-items-center gap-3 mb-3">
             <label class="fw-semibold text-nowrap mb-0">Período:</label>
             <input type="month" id="bajarPeriodo" class="form-control form-control-sm" style="width:160px">
-            <button class="btn btn-primary btn-sm" onclick="iniciarBajarTodos()">
-              <i class="bi bi-play-fill me-1"></i>Iniciar descarga
-            </button>
           </div>
+
+          <div class="mb-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="fw-semibold small">Empresas</span>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-link btn-sm p-0" onclick="bajarSelAll(true)">Todas</button>
+                <span class="text-muted">·</span>
+                <button type="button" class="btn btn-link btn-sm p-0" onclick="bajarSelAll(false)">Ninguna</button>
+              </div>
+            </div>
+            <div class="border rounded px-2 py-1" style="max-height:220px;overflow-y:auto">
+              {% for e in empresas %}
+              {% if e.clave_sii %}
+              <div class="form-check py-1 border-bottom" style="border-color:#f0f0f0!important">
+                <input class="form-check-input chk-bajar-empresa" type="checkbox"
+                       id="chkEmp{{ e.id }}" value="{{ e.id }}" checked>
+                <label class="form-check-label small" for="chkEmp{{ e.id }}">
+                  {{ e.nombre_fantasia or e.razon_social }}
+                  <span class="text-muted" style="font-size:.75rem">{{ e.rut }}</span>
+                </label>
+              </div>
+              {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-sm" onclick="iniciarBajarTodos()">
+            <i class="bi bi-play-fill me-1"></i>Iniciar descarga
+          </button>
         </div>
 
         <!-- Paso 2: progreso (oculto al inicio) -->
@@ -543,9 +565,17 @@
   let _bajarJobId = null;
   let _bajarTimer = null;
 
+  window.bajarSelAll = function(checked) {
+    document.querySelectorAll('.chk-bajar-empresa').forEach(c => c.checked = checked);
+  };
+
   window.iniciarBajarTodos = function () {
     const periodo = document.getElementById('bajarPeriodo').value;
     if (!periodo) { alert('Selecciona un período'); return; }
+
+    const eids = [...document.querySelectorAll('.chk-bajar-empresa:checked')]
+                   .map(c => c.value).join(',');
+    if (!eids) { alert('Selecciona al menos una empresa'); return; }
 
     document.getElementById('bajarForm').classList.add('d-none');
     document.getElementById('bajarProgress').classList.remove('d-none');
@@ -555,7 +585,7 @@
     fetch('/consolidado/sii-bajar-todos', {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: `periodo=${encodeURIComponent(periodo)}`,
+      body: `periodo=${encodeURIComponent(periodo)}&eids=${encodeURIComponent(eids)}`,
     })
     .then(r => r.json())
     .then(data => {

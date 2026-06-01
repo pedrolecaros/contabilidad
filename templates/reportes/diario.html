@@ -80,7 +80,8 @@
         <td></td>
         <td class="font-monospace text-muted">{{ l.cuenta.codigo }}</td>
         <td style="padding-left:12px">
-          {{ l.cuenta.nombre }}
+          <a href="{{ url_for('reportes.mayor', eid=empresa.id, cuenta_id=l.cuenta_id, desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
+             class="text-decoration-none text-dark">{{ l.cuenta.nombre }}</a>
           {% if l.descripcion %}<span class="text-muted ms-1 small">· {{ l.descripcion }}</span>{% endif %}
         </td>
         <td class="text-end">{% if l.debe %}{{ l.debe|clp }}{% endif %}</td>

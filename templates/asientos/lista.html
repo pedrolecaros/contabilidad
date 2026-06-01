@@ -112,7 +112,8 @@
         <th class="sortable" data-col="1" data-type="num" style="cursor:pointer;white-space:nowrap">N° <span class="sort-icon text-muted">⇅</span></th>
         <th class="sortable" data-col="2" data-type="date" style="cursor:pointer;white-space:nowrap">Fecha <span class="sort-icon text-muted">⇅</span></th>
         <th class="sortable" data-col="3" data-type="text" style="cursor:pointer;white-space:nowrap">Descripción <span class="sort-icon text-muted">⇅</span></th>
-        <th style="min-width:320px">
+        <th class="text-end pe-3" style="white-space:nowrap">Monto</th>
+        <th style="min-width:280px;border-left:2px solid #495057">
           <div class="d-flex align-items-baseline gap-1">
             <span>Cuentas</span>
             <span class="ms-auto font-monospace fw-normal text-success" style="min-width:72px;text-align:right;font-size:.8em">Debe</span>
@@ -121,6 +122,7 @@
         </th>
         <th class="sortable" data-col="5" data-type="text" style="cursor:pointer;white-space:nowrap">Estado <span class="sort-icon text-muted">⇅</span></th>
         <th class="sortable" data-col="6" data-type="text" style="cursor:pointer;white-space:nowrap">Conciliación <span class="sort-icon text-muted">⇅</span></th>
+        <th class="text-center" title="Respaldo documental"><i class="bi bi-paperclip"></i></th>
         <th class="text-center">Acciones</th>
       </tr>
     </thead>
@@ -150,8 +152,13 @@
         <td class="small">{{ a.fecha|fecha_cl }}</td>
         <td class="small">{{ (a.descripcion or '')[:40] }}{% if a.descripcion and a.descripcion|length > 40 %}…{% endif %}</td>
 
+        <!-- Monto -->
+        <td class="text-end font-monospace small text-nowrap pe-3 {{ 'text-muted' if a.estado == 'ANULADO' }}">
+          {{ a.total_debe|clp }}
+        </td>
+
         <!-- Cuentas con debe/haber por línea -->
-        <td style="min-width:320px">
+        <td style="min-width:280px;border-left:2px solid #dee2e6">
           {% for l in lineas %}
           <div class="d-flex align-items-baseline gap-1" style="font-size:.76rem;line-height:1.5">
             <span class="font-monospace text-muted" style="min-width:42px;flex-shrink:0">{{ l.cuenta.codigo }}</span>
@@ -189,43 +196,41 @@
                  title="{{ label }}{% if conc and conc.descripcion %}: {{ conc.descripcion[:60] }}{% endif %}">
                 <i class="bi bi-link-45deg me-1"></i>Conciliado
               </a>
-            {% elif a.estado == 'CONFIRMADO' %}
-              {% if a.origen in origenes_sii %}
-                <a href="{{ url_for('conciliacion.index', eid=empresa.id, mes=a.fecha.strftime('%Y-%m')) }}"
-                   class="badge bg-warning text-dark text-decoration-none"
-                   title="Sin conciliar con banco">
-                  <i class="bi bi-link me-1"></i>Sin conciliar
-                </a>
-              {% else %}
-                {# BANCO origin: Sin respaldo button #}
-                {% if not a.respaldo_url %}
-                <button type="button"
-                   class="badge border-0 text-white btn-sin-respaldo"
-                   style="background:#fd7e14; cursor:pointer"
-                   data-aid="{{ a.id }}"
-                   data-url="{{ url_for('asientos.subir_respaldo', eid=empresa.id, aid=a.id) }}"
-                   title="Sin respaldo — clic para subir">
-                  <i class="bi bi-exclamation-circle me-1"></i>Sin respaldo
-                </button>
-                {% else %}
-                  <span class="badge bg-secondary">OK</span>
-                {% endif %}
-              {% endif %}
+            {% elif a.estado == 'CONFIRMADO' and a.origen in origenes_sii %}
+              <a href="{{ url_for('conciliacion.index', eid=empresa.id, mes=a.fecha.strftime('%Y-%m')) }}"
+                 class="badge bg-warning text-dark text-decoration-none"
+                 title="Sin conciliar con banco">
+                <i class="bi bi-link me-1"></i>Sin conciliar
+              </a>
             {% else %}
               <span class="text-muted small">—</span>
             {% endif %}
-          {% elif a.estado == 'CONFIRMADO' and not a.respaldo_url %}
-            {# MANUAL or other origin: show Sin respaldo button if no file attached #}
+          {% else %}
+            <span class="text-muted small">—</span>
+          {% endif %}
+        </td>
+
+        <!-- Respaldo -->
+        <td class="text-center">
+          {% if a.respaldo_url %}
+            <a href="{{ attachment_url(a.respaldo_url) }}" target="_blank"
+               class="text-success" title="Ver respaldo">
+              <i class="bi bi-paperclip"></i>
+            </a>
+          {% elif a.origen in ('LIBRO_COMPRAS','LIBRO_VENTAS','HONORARIOS') %}
+            {# Respaldo implícito en factura/boleta SII #}
+            <i class="bi bi-receipt text-secondary" style="font-size:.8rem" title="Factura/boleta SII"></i>
+          {% elif a.estado == 'CONFIRMADO' %}
             <button type="button"
-               class="badge border-0 text-white btn-sin-respaldo"
-               style="background:#fd7e14; cursor:pointer"
+               class="btn btn-link p-0 text-warning btn-sin-respaldo"
+               style="font-size:.85rem"
                data-aid="{{ a.id }}"
                data-url="{{ url_for('asientos.subir_respaldo', eid=empresa.id, aid=a.id) }}"
                title="Sin respaldo — clic para subir">
-              <i class="bi bi-paperclip me-1"></i>Sin respaldo
+              <i class="bi bi-exclamation-circle"></i>
             </button>
           {% else %}
-            <span class="text-muted small">—</span>
+            <span class="text-muted" style="font-size:.75rem">—</span>
           {% endif %}
         </td>
 
@@ -271,7 +276,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="text-center text-muted py-4">No hay asientos</td></tr>
+      <tr><td colspan="10" class="text-center text-muted py-4">No hay asientos</td></tr>
       {% endfor %}
     </tbody>
   </table>

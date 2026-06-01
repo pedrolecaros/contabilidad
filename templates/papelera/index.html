@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}Papelera – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Papelera</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-trash3 me-2"></i>Papelera
+    {% if items %}<span class="badge bg-secondary ms-2">{{ items|length }}</span>{% endif %}
+  </h5>
+  {% if items %}
+  <form method="post" action="{{ url_for('papelera.vaciar', eid=empresa.id) }}"
+        onsubmit="return confirm('¿Vaciar toda la papelera? Esta acción no se puede deshacer.')">
+    <button class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-trash3-fill me-1"></i>Vaciar papelera
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not items %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-trash3 fs-1 d-block mb-2 opacity-25"></i>
+  La papelera está vacía.
+  <div class="small mt-1">Los elementos eliminados aparecen aquí durante {{ dias }} días.</div>
+</div>
+{% else %}
+
+<p class="text-muted small mb-3">
+  <i class="bi bi-info-circle me-1"></i>
+  Los elementos se eliminan permanentemente después de {{ dias }} días.
+</p>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Tipo</th>
+        <th>Descripción</th>
+        <th class="text-end">Eliminado</th>
+        <th class="text-end">Expira</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      {% set dias_restantes = ((item.expires_at - now).days) %}
+      <tr>
+        <td>
+          {% if item.tipo == 'ASIENTO' %}
+            <span class="badge bg-primary">Asiento</span>
+          {% elif item.tipo == 'LIQUIDACION' %}
+            <span class="badge bg-success">Liquidación</span>
+          {% elif item.tipo == 'DOCUMENTO_SII' %}
+            <span class="badge bg-warning text-dark">Doc. SII</span>
+          {% elif item.tipo == 'MOVIMIENTO_BANCO' %}
+            <span class="badge bg-dark">Banco</span>
+          {% else %}
+            <span class="badge bg-secondary">{{ item.tipo }}</span>
+          {% endif %}
+        </td>
+        <td class="small">{{ item.descripcion or '—' }}</td>
+        <td class="text-end small text-muted text-nowrap">{{ item.deleted_at|fecha_cl }}</td>
+        <td class="text-end small text-nowrap">
+          {% if dias_restantes <= 7 %}
+            <span class="text-danger fw-semibold">{{ dias_restantes }}d</span>
+          {% else %}
+            <span class="text-muted">{{ dias_restantes }}d</span>
+          {% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          <form method="post" action="{{ url_for('papelera.restaurar', eid=empresa.id, pid=item.id) }}"
+                class="d-inline">
+            <button class="btn btn-sm btn-outline-success py-0 px-2" title="Restaurar">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Restaurar
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('papelera.eliminar', eid=empresa.id, pid=item.id) }}"
+                class="d-inline ms-1"
+                onsubmit="return confirm('¿Eliminar permanentemente?')">
+            <button class="btn btn-sm btn-outline-danger py-0 px-2" title="Eliminar para siempre">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -105,10 +105,13 @@ class LineaAsiento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     asiento_id = db.Column(db.Integer, db.ForeignKey('asientos.id'), nullable=False)
     cuenta_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=False)
+    contraparte_id = db.Column(db.Integer, db.ForeignKey('contrapartes.id'), nullable=True)
     debe = db.Column(db.Float, default=0.0)
     haber = db.Column(db.Float, default=0.0)
     descripcion = db.Column(db.String(300))
     orden = db.Column(db.Integer, default=0)
+
+    contraparte = db.relationship('Contraparte', backref=db.backref('lineas_asiento', lazy='dynamic'))
 
 
 class AsientoAudit(db.Model):
@@ -366,6 +369,21 @@ class ArchivoImportado(db.Model):
     cuenta_bancaria = db.Column(db.String(50))
 
     empresa = db.relationship('Empresa', backref=db.backref('archivos', lazy='dynamic'))
+
+
+class Papelera(db.Model):
+    __tablename__ = 'papelera'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    tipo = db.Column(db.String(30), nullable=False)
+    # ASIENTO, LIQUIDACION, DOCUMENTO_SII, MOVIMIENTO_BANCO
+    objeto_id = db.Column(db.Integer, nullable=False)   # original PK (for display)
+    descripcion = db.Column(db.String(500))             # human-readable label
+    datos_json = db.Column(db.Text, nullable=False)     # JSON snapshot
+    deleted_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+    empresa = db.relationship('Empresa', backref=db.backref('papelera_items', lazy='dynamic'))
 
 
 class DocumentoEmpleado(db.Model):

@@ -1,0 +1,259 @@
+{% extends 'base.html' %}
+{% block title %}Balance General – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Balance General</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+
+<style>
+  .bg-panel { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; }
+  .panel-title {
+    font-size: 0.7rem; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; padding: 8px 12px;
+    border-bottom: 2px solid currentColor;
+  }
+  .panel-activo .panel-title  { color: #0d6efd; border-color: #0d6efd; background: #e7f0ff; border-radius: 6px 6px 0 0; }
+  .panel-pasivo .panel-title  { color: #dc3545; border-color: #dc3545; background: #fde8ea; border-radius: 6px 6px 0 0; }
+  .panel-patrim .panel-title  { color: #198754; border-color: #198754; background: #e2f5ea; border-radius: 6px 6px 0 0; }
+
+  .gaap-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+  .gaap-table td { padding: 3px 10px; vertical-align: middle; }
+  .gaap-table td.num { text-align: right; white-space: nowrap; min-width: 110px; }
+  .gaap-table tr.titulo td {
+    font-weight: 700; font-size: 0.75rem; color: #555;
+    text-transform: uppercase; letter-spacing: .04em;
+    padding-top: 10px; padding-bottom: 2px;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .gaap-table tr.titulo td.num { text-align: right; }
+  .gaap-table tr.detalle td { color: #333; }
+  .gaap-table tr.detalle td:first-child { padding-left: 22px; }
+  .gaap-table tr.detalle td.num { color: #222; }
+  .gaap-table tr.detalle td.num.negativo { color: #dc3545; }
+  .gaap-table tr.subtotal td {
+    font-weight: 600; font-size: 0.82rem;
+    border-top: 1px solid #aaa;
+    padding-top: 4px; padding-bottom: 4px;
+    background: #f0f2f5;
+  }
+  .gaap-table tr.subtotal td.num { text-align: right; }
+
+  .gaap-table tfoot tr.subtotal-section td {
+    font-weight: 600; font-size: 0.83rem;
+    border-top: 2px solid #aaa;
+    background: #f0f2f5;
+    padding: 5px 10px;
+    text-align: right;
+  }
+  .gaap-table tfoot tr.subtotal-section td:first-child { text-align: left; }
+
+  .total-panel {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 6px; padding: 10px 14px;
+    font-weight: 700; font-size: 0.88rem;
+    border-top: 3px double #333;
+    background: #e9ecef; border-radius: 0 0 6px 6px;
+    letter-spacing: .02em;
+  }
+  .total-panel .total-amount { font-size: 1rem; }
+  .total-panel.total-ok  { background: #d4edda; color: #155724; }
+  .total-panel.total-err { background: #f8d7da; color: #721c24; }
+
+  .resultado-util { color: #198754; font-weight: 600; }
+  .resultado-perd { color: #dc3545; font-weight: 600; }
+
+  @media print {
+    .gaap-table { font-size: 8pt !important; }
+    .no-print { display: none !important; }
+  }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-bar-chart-steps me-2"></i>Balance General</h5>
+  <button onclick="window.print()" class="btn btn-sm btn-dark no-print">
+    <i class="bi bi-printer me-1"></i>Imprimir / PDF
+  </button>
+</div>
+
+<form class="row g-2 mb-3 align-items-center no-print" method="get">
+  <div class="col-auto">
+    <div class="border rounded px-2 py-1 d-flex align-items-center gap-2 bg-light">
+      <label class="form-label mb-0 small fw-semibold text-nowrap">Período:</label>
+      <input type="date" name="desde" value="{{ desde }}" class="form-control form-control-sm">
+      <span>—</span>
+      <input type="date" name="hasta" value="{{ hasta }}" class="form-control form-control-sm">
+    </div>
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-secondary btn-sm">Actualizar</button>
+  </div>
+</form>
+
+{# ── Header formal ── #}
+<div class="text-center mb-4">
+  <div style="font-size:14pt;font-weight:700;text-transform:uppercase;letter-spacing:.04em">
+    {{ empresa.razon_social }}
+  </div>
+  <div style="font-size:9pt;color:#555;margin-top:2px">RUT: {{ empresa.rut }}</div>
+  {% if empresa.giro %}<div style="font-size:8pt;color:#777">{{ empresa.giro }}</div>{% endif %}
+  <div style="font-size:10pt;font-weight:700;margin-top:6px;text-transform:uppercase">
+    Balance General al {{ hasta.strftime('%d de %B de %Y')|upper }}
+  </div>
+  <div style="font-size:8pt;color:#777">(en pesos chilenos)</div>
+</div>
+
+{% macro num(v) %}
+  {% if v == 0 %}–
+  {% elif v < 0 %}<span class="text-danger">({{ '{:,.0f}'.format(v|abs).replace(',','.') }})</span>
+  {% else %}{{ '{:,.0f}'.format(v).replace(',','.') }}
+  {% endif %}
+{% endmacro %}
+
+{% macro num_plain(v) %}{{ '{:,.0f}'.format(v|abs).replace(',','.') if v else '–' }}{% endmacro %}
+
+{# helper: preceding titulo for a list index #}
+
+<div class="row g-3">
+
+  {# ════════════════ ACTIVOS ════════════════ #}
+  <div class="col-lg-6">
+    <div class="bg-panel panel-activo">
+      <div class="panel-title"><i class="bi bi-box-seam me-1"></i>Activos</div>
+      <table class="gaap-table">
+        <tbody>
+          {% set ns = namespace(last_titulo='') %}
+          {% for f in activos %}
+            {% if f.cuenta.es_titulo %}
+              {% set ns.last_titulo = f.cuenta.nombre %}
+              <tr class="titulo">
+                <td>{{ f.cuenta.nombre }}</td>
+                <td class="num"></td>
+              </tr>
+            {% else %}
+              {% if f.valor != 0 %}
+              <tr class="detalle">
+                <td style="padding-left:{{ (f.cuenta.nivel - 1) * 12 + 22 }}px">
+                  {{ f.cuenta.nombre }}
+                  <span class="text-muted" style="font-size:0.7rem;font-family:monospace"> {{ f.cuenta.codigo }}</span>
+                </td>
+                <td class="num {{ 'negativo' if f.valor < 0 else '' }}">{{ num(f.valor) }}</td>
+              </tr>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# ── Total Activos ── #}
+    <div class="total-panel">
+      <span>TOTAL ACTIVOS</span>
+      <span class="total-amount">{{ num_plain(tot_activo) }}</span>
+    </div>
+  </div>
+
+  {# ════════════════ PASIVOS + PATRIMONIO ════════════════ #}
+  {% set total_pp = tot_pasivo + tot_patrimonio + resultado_er %}
+  {% set diferencia = (tot_activo - total_pp)|round(0) %}
+  <div class="col-lg-6">
+
+    {# — Pasivos — #}
+    <div class="bg-panel panel-pasivo mb-3">
+      <div class="panel-title"><i class="bi bi-arrow-up-circle me-1"></i>Pasivos</div>
+      <table class="gaap-table">
+        <tbody>
+          {% for f in pasivos %}
+            {% if f.cuenta.es_titulo %}
+              <tr class="titulo">
+                <td>{{ f.cuenta.nombre }}</td>
+                <td class="num"></td>
+              </tr>
+            {% else %}
+              {% if f.valor != 0 %}
+              <tr class="detalle">
+                <td style="padding-left:{{ (f.cuenta.nivel - 1) * 12 + 22 }}px">
+                  {{ f.cuenta.nombre }}
+                  <span class="text-muted" style="font-size:0.7rem;font-family:monospace"> {{ f.cuenta.codigo }}</span>
+                </td>
+                <td class="num {{ 'negativo' if f.valor < 0 else '' }}">{{ num(f.valor) }}</td>
+              </tr>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="subtotal-section">
+            <td>Total Pasivos</td>
+            <td class="num">{{ num_plain(tot_pasivo) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    {# — Patrimonio — #}
+    <div class="bg-panel panel-patrim">
+      <div class="panel-title"><i class="bi bi-bank me-1"></i>Patrimonio</div>
+      <table class="gaap-table">
+        <tbody>
+          {% for f in patrimonio %}
+            {% if f.cuenta.es_titulo %}
+              <tr class="titulo">
+                <td>{{ f.cuenta.nombre }}</td>
+                <td class="num"></td>
+              </tr>
+            {% else %}
+              {% if f.valor != 0 %}
+              <tr class="detalle">
+                <td style="padding-left:{{ (f.cuenta.nivel - 1) * 12 + 22 }}px">
+                  {{ f.cuenta.nombre }}
+                  <span class="text-muted" style="font-size:0.7rem;font-family:monospace"> {{ f.cuenta.codigo }}</span>
+                </td>
+                <td class="num {{ 'negativo' if f.valor < 0 else '' }}">{{ num(f.valor) }}</td>
+              </tr>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {% if resultado_er != 0 %}
+          <tr class="detalle">
+            <td style="padding-left:22px" class="{{ 'resultado-util' if resultado_er > 0 else 'resultado-perd' }}">
+              {{ 'Utilidad del Ejercicio' if resultado_er > 0 else 'Pérdida del Ejercicio' }}
+            </td>
+            <td class="num {{ 'resultado-util' if resultado_er > 0 else 'resultado-perd' }}">
+              {{ num(resultado_er) }}
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+        <tfoot>
+          <tr class="subtotal-section">
+            <td>Total Patrimonio</td>
+            <td class="num">{{ num_plain(tot_patrimonio + resultado_er) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    {# ── Total Pasivos + Patrimonio ── #}
+    <div class="total-panel {% if diferencia == 0 %}total-ok{% else %}total-err{% endif %}">
+      <span>TOTAL PASIVOS Y PATRIMONIO</span>
+      <span class="total-amount">
+        {{ num_plain(total_pp) }}
+        {% if diferencia == 0 %}
+          <i class="bi bi-check-circle ms-2" title="Balance cuadrado"></i>
+        {% else %}
+          <small class="ms-2 fw-normal" style="font-size:0.75rem">
+            (dif. {{ num_plain(diferencia) }})
+          </small>
+        {% endif %}
+      </span>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

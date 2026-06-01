@@ -250,12 +250,12 @@
                                        desde=desde.isoformat(), hasta=hasta.isoformat()) %}
             <tr>
               <td class="cod">
-                <a href="{{ url_mayor }}" target="_blank"
+                <a href="{{ url_mayor }}"
                    class="text-decoration-none text-muted font-monospace"
                    title="Ver Libro Mayor de {{ f.cuenta.nombre }}">{{ f.cuenta.codigo }}</a>
               </td>
               <td class="cuenta-nom" style="padding-left:{{ (f.cuenta.nivel-1)*8 + 4 }}px">
-                <a href="{{ url_mayor }}" target="_blank"
+                <a href="{{ url_mayor }}"
                    class="text-decoration-none text-dark"
                    title="Ver Libro Mayor de {{ f.cuenta.nombre }}">{{ f.cuenta.nombre }}</a>
               </td>
@@ -270,18 +270,6 @@
             </tr>
             {% endif %}
           {% endfor %}
-          {# Fila de subtotal de sección #}
-          <tr class="subtotal">
-            <td colspan="2">TOTAL {{ label }}</td>
-            <td>{{ num(ns.sd) }}</td>
-            <td>{{ num(ns.sh) }}</td>
-            <td class="sep-l">{{ num(ns.sald) }}</td>
-            <td>{{ num(ns.sala) }}</td>
-            <td class="sep-l">{{ num(ns.bgd) }}</td>
-            <td>{{ num(ns.bgh) }}</td>
-            <td class="sep-l">{{ num(ns.erd) }}</td>
-            <td>{{ num(ns.erh) }}</td>
-          </tr>
         {% endif %}
       {% endfor %}
     </tbody>

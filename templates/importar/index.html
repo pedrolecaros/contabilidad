@@ -31,7 +31,7 @@
       <div class="col-auto">
         <label class="form-label small mb-1">Período</label>
         <input type="month" id="autoMes" class="form-control form-control-sm"
-               value="{{ mes_anterior }}">
+               placeholder="aaaa-mm" required>
       </div>
       <div class="col-auto">
         <label class="form-label small mb-1">Libro</label>
@@ -56,7 +56,12 @@
     <div id="siiProgreso" class="d-none mt-2">
       <div class="d-flex justify-content-between align-items-center mb-1">
         <small id="siiProgresoMsg" class="text-muted"></small>
-        <small id="siiProgresoPct" class="text-muted fw-semibold"></small>
+        <div class="d-flex align-items-center gap-2">
+          <small id="siiProgresoPct" class="text-muted fw-semibold"></small>
+          <button id="btnCancelarSii" class="btn btn-sm btn-outline-danger py-0 px-2 d-none" style="font-size:0.75rem">
+            <i class="bi bi-x-circle me-1"></i>Cancelar
+          </button>
+        </div>
       </div>
       <div class="progress mb-2" style="height:6px">
         <div id="siiProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
@@ -424,7 +429,8 @@ const STATUS_URL = '{{ url_for("importar.sii_status", eid=empresa.id, job_id="JO
 const SK = 'sii_jobs_{{ empresa.id }}';   // sessionStorage key
 
 let ocultarTimer = null;
-let activoPolling = false;   // evitar doble-polling
+let activoPolling = false;
+let cancelado     = false;
 
 // ── Utilidades de progreso ────────────────────────────────────────────────
 function progresoMostrar(tipos) {
@@ -464,6 +470,8 @@ function progresoOcultar() {
 
 function setBotones(dis) {
   document.querySelectorAll('.btn-auto-sii, #btnDescargarTodo').forEach(b => b.disabled = dis);
+  const btnC = document.getElementById('btnCancelarSii');
+  if (btnC) btnC.classList.toggle('d-none', !dis);
 }
 
 // ── sessionStorage helpers ────────────────────────────────────────────────
@@ -473,8 +481,9 @@ function jobLimpiar(tipo)  { const j = jobsLeer(); delete j[tipo]; jobsGuardar(j
 
 // ── Polling de un job ─────────────────────────────────────────────────────
 async function pollJob(job_id, tipo, onProgress) {
-  while (true) {
+  while (!cancelado) {
     await new Promise(r => setTimeout(r, 1800));
+    if (cancelado) break;
     let job;
     try {
       const r = await fetch(STATUS_URL + '/' + job_id);
@@ -488,7 +497,21 @@ async function pollJob(job_id, tipo, onProgress) {
       return job;
     }
   }
+  jobLimpiar(tipo);
+  return {status:'cancelado', result:{ok:false, error:'Cancelado por el usuario'}};
 }
+
+// ── Botón Cancelar ────────────────────────────────────────────────────────
+document.getElementById('btnCancelarSii').addEventListener('click', function() {
+  cancelado = true;
+  activoPolling = false;
+  sessionStorage.removeItem(SK);
+  setBotones(false);
+  progresoActualizar('Cancelado', 0);
+  siiBar.className = 'progress-bar bg-secondary';
+  siiBar.style.width = '100%';
+  progresoOcultar();
+});
 
 // ── Descarga individual ───────────────────────────────────────────────────
 async function descargarUno(tipo, periodo) {
@@ -524,6 +547,7 @@ document.querySelectorAll('.btn-auto-sii').forEach(btn => {
     const periodo = document.getElementById('autoMes').value;
     if (!periodo) { alert('Selecciona un período'); return; }
 
+    cancelado = false;
     activoPolling = true;
     setBotones(true);
     progresoMostrar([tipo]);
@@ -560,6 +584,7 @@ document.getElementById('btnDescargarTodo').addEventListener('click', async func
   if (!periodo) { alert('Selecciona un período'); return; }
 
   const tipos = ['compras','ventas','honorarios'];
+  cancelado = false;
   activoPolling = true;
   setBotones(true);
   progresoMostrar(tipos);
@@ -587,8 +612,9 @@ document.getElementById('btnDescargarTodo').addEventListener('click', async func
 
     // Poll
     let results = {};
-    while (true) {
+    while (!cancelado) {
       await new Promise(res => setTimeout(res, 1800));
+      if (cancelado) break;
       let job;
       try { job = await (await fetch(STATUS_URL + '/' + job_id)).json(); }
       catch { job = {status:'error', message:'Sin conexión', pct:0}; }
@@ -602,6 +628,7 @@ document.getElementById('btnDescargarTodo').addEventListener('click', async func
         break;
       }
     }
+    if (cancelado) return;
 
     tipos.forEach(t => {
       const r = results[t];

@@ -124,7 +124,18 @@
               {{ f.rut_contraparte }}
             </a>
           </td>
-          <td class="small">{{ (f.razon_social or '')[:45] }}</td>
+          {% set rut_norm = f.rut_contraparte.replace('.','').replace('-','').upper() %}
+          {% set cp_id = cp_por_rut.get(rut_norm) %}
+          <td class="small">
+            {% if cp_id %}
+              <a href="{{ url_for('contrapartes.detalle', eid=empresa.id, cid=cp_id) }}"
+                 class="text-decoration-none text-dark" title="Ver ficha de contraparte">
+                {{ (f.razon_social or '')[:45] }}
+              </a>
+            {% else %}
+              {{ (f.razon_social or '')[:45] }}
+            {% endif %}
+          </td>
           <td class="text-center small">{{ f.ndocs }}</td>
           <td class="text-end small">{{ f.total_neto|clp }}</td>
           <td class="text-end small">{{ f.total_iva|clp }}</td>

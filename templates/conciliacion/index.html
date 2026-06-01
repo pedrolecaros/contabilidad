@@ -195,7 +195,8 @@
                 <td class="py-1">
                   <input type="checkbox" name="mov_ids" value="{{ m.id }}"
                          class="form-check-input chk-mov"
-                         data-cargo="{{ m.cargo or 0 }}" data-abono="{{ m.abono or 0 }}">
+                         data-cargo="{{ m.cargo or 0 }}" data-abono="{{ m.abono or 0 }}"
+                         data-desc="{{ m.descripcion or '' }}">
                 </td>
                 <td class="small py-1">{{ m.fecha|fecha_cl }}</td>
                 <td class="small py-1" style="max-width:200px">
@@ -850,7 +851,9 @@ function actualizarBarra() {
     label.innerHTML = `<strong>${movsSel.length}</strong> mov  ·  Total banco: <strong>$${fmtCLP(totalBanco)}</strong>`;
     _totalBanco = totalBanco;
     if (document.getElementById('tbodyLineas').rows.length === 0) {
-      _addLinea(totalBanco);
+      const descs = movsSel.map(c => (c.dataset.desc || '').trim()).filter(Boolean);
+      const descInicial = [...new Set(descs)].join(' / ');
+      _addLinea(totalBanco, descInicial);
     }
     _actualizarRestante();
   } else {
@@ -919,7 +922,7 @@ function _initTsLinea(sel, btnSueldo) {
   });
 }
 
-function _addLinea(monto) {
+function _addLinea(monto, desc) {
   const tbody = document.getElementById('tbodyLineas');
   const tr = document.createElement('tr');
 
@@ -941,6 +944,7 @@ function _addLinea(monto) {
   inpNota.type = 'text'; inpNota.name = 'nota';
   inpNota.className = 'form-control form-control-sm';
   inpNota.placeholder = 'Descripción';
+  if (desc) inpNota.value = desc;
 
   const btnBuscarSueldo = document.createElement('button');
   btnBuscarSueldo.type = 'button';

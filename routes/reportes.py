@@ -3,7 +3,7 @@ from datetime import date
 import calendar
 import csv
 import io
-from models import db, Empresa, Cuenta, LineaAsiento, Asiento, DocumentoSII
+from models import db, Empresa, Cuenta, LineaAsiento, Asiento, DocumentoSII, Contraparte
 from sqlalchemy import func, case
 from collections import defaultdict
 from engine.contabilidad import sumas_balance as _sumas_balance, clasificar_cuenta_efe as _clasificar_cuenta_efe
@@ -303,6 +303,12 @@ def ap_ar(eid):
             .order_by(DocumentoSII.fecha)
             .all())
 
+    cp_por_rut = {
+        cp.rut.replace('.', '').replace('-', '').upper(): cp.id
+        for cp in Contraparte.query.filter_by(empresa_id=eid).all()
+        if cp.rut
+    }
+
     return render_template('reportes/ap_ar.html',
         empresa=empresa, desde=desde, hasta=hasta,
         proveedores=proveedores, clientes=clientes, honorarios=honorarios,
@@ -312,7 +318,144 @@ def ap_ar(eid):
         docs_detalle=docs_detalle,
         rut_detalle=rut_detalle,
         tipo_detalle=tipo_detalle,
+        cp_por_rut=cp_por_rut,
     )
+
+
+@bp.route('/empresa/<int:eid>/reportes/cxc-cxp')
+def cxc_cxp(eid):
+    empresa = Empresa.query.get_or_404(eid)
+
+    # Todas las lineas de cuentas CxC/CxP (con o sin contraparte)
+    lineas = (LineaAsiento.query
+              .join(Asiento)
+              .join(Cuenta, LineaAsiento.cuenta_id == Cuenta.id)
+              .filter(
+                  Asiento.empresa_id == eid,
+                  Asiento.estado == 'CONFIRMADO',
+                  Cuenta.tipo.in_(['ACTIVO', 'PASIVO']),
+                  Cuenta.es_titulo == False,
+                  db.or_(
+                      Cuenta.codigo.like('1.1.%'),
+                      Cuenta.codigo.like('2.%'),
+                  ),
+              )
+              .all())
+
+    # Acumula por (cuenta_id, contraparte_id) — None = sin aux
+    totales_cuenta = defaultdict(lambda: {'debe': 0.0, 'haber': 0.0, 'cuenta': None})
+    por_cp         = defaultdict(lambda: {'debe': 0.0, 'haber': 0.0, 'cuenta': None, 'cp': None})
+
+    for l in lineas:
+        totales_cuenta[l.cuenta_id]['debe']   += l.debe
+        totales_cuenta[l.cuenta_id]['haber']  += l.haber
+        totales_cuenta[l.cuenta_id]['cuenta']  = l.cuenta
+        if l.contraparte_id:
+            por_cp[(l.cuenta_id, l.contraparte_id)]['debe']   += l.debe
+            por_cp[(l.cuenta_id, l.contraparte_id)]['haber']  += l.haber
+            por_cp[(l.cuenta_id, l.contraparte_id)]['cuenta']  = l.cuenta
+            por_cp[(l.cuenta_id, l.contraparte_id)]['cp']      = l.contraparte
+
+    def _saldo(g, naturaleza):
+        return g['debe'] - g['haber'] if naturaleza == 'DEUDORA' else g['haber'] - g['debe']
+
+    cxc = []
+    cxp = []
+
+    for cid, gt in totales_cuenta.items():
+        c = gt['cuenta']
+        saldo_total = _saldo(gt, c.naturaleza)
+        if saldo_total == 0:
+            continue
+
+        # Desglose por contraparte para esta cuenta
+        filas_cp = []
+        saldo_cp_sum = 0.0
+        for (cid2, cpid), gc in por_cp.items():
+            if cid2 != cid:
+                continue
+            s = _saldo(gc, c.naturaleza)
+            if s == 0:
+                continue
+            filas_cp.append({'cp': gc['cp'], 'saldo': s})
+            saldo_cp_sum += s
+
+        # Residuo sin contraparte identificada
+        residuo = round(saldo_total - saldo_cp_sum, 2)
+        if abs(residuo) >= 1:
+            filas_cp.append({'cp': None, 'saldo': residuo})
+
+        filas_cp.sort(key=lambda r: r['cp'].razon_social if r['cp'] else 'zz')
+        entry = {'cuenta': c, 'saldo_total': saldo_total, 'filas': filas_cp}
+
+        if c.tipo == 'ACTIVO':
+            cxc.append(entry)
+        else:
+            cxp.append(entry)
+
+    cxc.sort(key=lambda r: r['cuenta'].codigo)
+    cxp.sort(key=lambda r: r['cuenta'].codigo)
+
+    tot_cxc = sum(r['saldo_total'] for r in cxc)
+    tot_cxp = sum(r['saldo_total'] for r in cxp)
+
+    return render_template('reportes/cxc_cxp.html',
+        empresa=empresa,
+        cxc=cxc, cxp=cxp,
+        tot_cxc=tot_cxc, tot_cxp=tot_cxp)
+
+
+@bp.route('/empresa/<int:eid>/reportes/balance-gaap')
+def balance_gaap(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    desde, hasta = _rango_fechas()
+
+    sumas = _sumas_balance(eid, desde, hasta)
+    cuentas = (Cuenta.query
+               .filter_by(empresa_id=eid, activa=True)
+               .order_by(Cuenta.codigo).all())
+
+    activos, pasivos, patrimonio = [], [], []
+    tot_activo = tot_pasivo = tot_patrimonio = 0.0
+    tot_sd = tot_sh = 0.0
+
+    for c in cuentas:
+        sd, sh = sumas.get(c.id, (0.0, 0.0))
+        if not c.es_titulo:
+            tot_sd += sd
+            tot_sh += sh
+        if c.tipo == 'ACTIVO':
+            valor = sd - sh  # DEUDORA: positivo = activo
+            if not c.es_titulo:
+                tot_activo += valor
+            activos.append({'cuenta': c, 'valor': valor})
+        elif c.tipo == 'PASIVO':
+            valor = sh - sd  # ACREEDORA: positivo = pasivo
+            if not c.es_titulo:
+                tot_pasivo += valor
+            pasivos.append({'cuenta': c, 'valor': valor})
+        elif c.tipo == 'PATRIMONIO':
+            valor = sh - sd  # ACREEDORA: positivo = patrimonio
+            if not c.es_titulo:
+                tot_patrimonio += valor
+            patrimonio.append({'cuenta': c, 'valor': valor})
+
+    # Resultado del ejercicio (ingresos - gastos)
+    resultado_er = 0.0
+    for c in cuentas:
+        if c.es_titulo or c.tipo not in ('INGRESO', 'GASTO'):
+            continue
+        sd, sh = sumas.get(c.id, (0.0, 0.0))
+        if c.tipo == 'INGRESO':
+            resultado_er += sh - sd
+        else:
+            resultado_er -= sd - sh
+
+    return render_template('reportes/balance_gaap.html',
+        empresa=empresa, desde=desde, hasta=hasta,
+        activos=activos, pasivos=pasivos, patrimonio=patrimonio,
+        tot_activo=tot_activo, tot_pasivo=tot_pasivo,
+        tot_patrimonio=tot_patrimonio, resultado_er=resultado_er)
 
 
 @bp.route('/empresa/<int:eid>/reportes/balance/imprimir')
@@ -743,3 +886,52 @@ def efe(eid):
                            seccion_fin=dict(seccion_fin),
                            total_op=total_op, total_inv=total_inv, total_fin=total_fin,
                            variacion=variacion)
+
+
+@bp.route('/empresa/<int:eid>/reportes/auxiliar')
+def auxiliar(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    desde, hasta = _rango_fechas()
+    cuenta_id = request.args.get('cuenta_id', type=int)
+
+    cuentas_detalle = (Cuenta.query
+                       .filter_by(empresa_id=eid, es_titulo=False, activa=True)
+                       .order_by(Cuenta.codigo).all())
+    cuenta_sel = Cuenta.query.get(cuenta_id) if cuenta_id else None
+
+    grupos = {}  # contraparte_id (o None) → {'cp': Contraparte|None, 'lineas': [...], 'saldo': float}
+    if cuenta_sel:
+        lineas = (LineaAsiento.query
+                  .join(Asiento)
+                  .filter(
+                      LineaAsiento.cuenta_id == cuenta_id,
+                      Asiento.estado == 'CONFIRMADO',
+                      Asiento.fecha >= desde,
+                      Asiento.fecha <= hasta,
+                  )
+                  .order_by(Asiento.fecha, Asiento.numero)
+                  .all())
+        for l in lineas:
+            key = l.contraparte_id
+            if key not in grupos:
+                grupos[key] = {'cp': l.contraparte, 'lineas': [], 'debe': 0.0, 'haber': 0.0}
+            grupos[key]['lineas'].append(l)
+            grupos[key]['debe']  += l.debe
+            grupos[key]['haber'] += l.haber
+
+        # Calcular saldo neto por grupo según naturaleza de la cuenta
+        for g in grupos.values():
+            if cuenta_sel.naturaleza == 'DEUDORA':
+                g['saldo'] = g['debe'] - g['haber']
+            else:
+                g['saldo'] = g['haber'] - g['debe']
+
+    # Ordenar: primero grupos con contraparte (por nombre), luego sin contraparte
+    grupos_ordenados = sorted(
+        grupos.items(),
+        key=lambda kv: (kv[0] is None, kv[1]['cp'].razon_social if kv[1]['cp'] else '')
+    )
+
+    return render_template('reportes/auxiliar.html', empresa=empresa,
+                           cuentas=cuentas_detalle, cuenta_sel=cuenta_sel,
+                           grupos=grupos_ordenados, desde=desde, hasta=hasta)

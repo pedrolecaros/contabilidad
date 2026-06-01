@@ -62,6 +62,17 @@ def _migrar(app):
         "ALTER TABLE empleados ADD COLUMN apellido_materno VARCHAR(100)",
         "ALTER TABLE liquidaciones ADD COLUMN afp_emp REAL DEFAULT 0.0",
         "ALTER TABLE liquidaciones ADD COLUMN ev_emp REAL DEFAULT 0.0",
+        "ALTER TABLE lineas_asiento ADD COLUMN contraparte_id INTEGER REFERENCES contrapartes(id)",
+        """CREATE TABLE IF NOT EXISTS papelera (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    tipo VARCHAR(30) NOT NULL,
+    objeto_id INTEGER NOT NULL,
+    descripcion VARCHAR(500),
+    datos_json TEXT NOT NULL,
+    deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL
+)""",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

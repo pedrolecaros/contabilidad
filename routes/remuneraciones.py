@@ -231,6 +231,12 @@ def emitir_liq(eid, liq_id):
 def eliminar_liq(eid, liq_id):
     liq = Liquidacion.query.filter_by(id=liq_id, empresa_id=eid).first_or_404()
     emp_id = liq.empleado_id
+    from routes.papelera import enviar_papelera, _ser_liquidacion
+    enviar_papelera(
+        'LIQUIDACION', liq.id, liq.empresa_id,
+        f'Liquidación {liq.empleado.nombre_completo} – {liq.periodo}',
+        _ser_liquidacion(liq)
+    )
     db.session.delete(liq)
     db.session.commit()
     flash('Liquidación eliminada.', 'success')

@@ -5,7 +5,7 @@
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('asientos.lista', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
-    <li class="breadcrumb-item"><a href="{{ url_for('contrapartes.index', eid=empresa.id) }}">Proveedores / Clientes</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}">Proveedores / Clientes</a></li>
     <li class="breadcrumb-item active">{{ cp.razon_social }}</li>
   </ol>
 </nav>
@@ -22,6 +22,8 @@
         <span class="badge bg-success">Cliente</span>
       {% elif cp.tipo == 'HONORARIOS' %}
         <span class="badge bg-warning text-dark">Honorarios</span>
+      {% elif cp.tipo == 'RELACIONADA' %}
+        <span class="badge bg-info text-dark">Empresa Relacionada</span>
       {% else %}
         <span class="badge bg-secondary">Ambos</span>
       {% endif %}
@@ -40,7 +42,7 @@
   <div class="d-flex gap-2">
     <a href="{{ url_for('contrapartes.editar', eid=empresa.id, cid=cp.id) }}"
        class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Editar</a>
-    <a href="{{ url_for('contrapartes.index', eid=empresa.id) }}"
+    <a href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}"
        class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Volver</a>
   </div>
 </div>
@@ -89,6 +91,64 @@
     </div>
   </div>
 </div>
+
+{% macro num(v) %}{{ '{:,.0f}'.format(v|float|abs).replace(',','.') }}{% endmacro %}
+
+<!-- Saldo contable auxiliar -->
+{% if aux_cuentas %}
+<div class="card mb-4 border-0 shadow-sm">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-journal-bookmark me-1"></i>Saldo contable</span>
+    <span class="fw-bold fs-6 {{ 'text-success' if saldo_aux_total >= 0 else 'text-danger' }}">
+      {{ '$' + num(saldo_aux_total) if saldo_aux_total >= 0 else '-$' + num(saldo_aux_total) }}
+    </span>
+  </div>
+  {% for g in aux_cuentas %}
+  <div class="border-top">
+    <div class="px-3 py-1 d-flex justify-content-between align-items-center bg-light">
+      <span class="small fw-semibold font-monospace text-muted">{{ g.cuenta.codigo }}</span>
+      <span class="small fw-semibold">{{ g.cuenta.nombre }}</span>
+      <span class="small fw-bold ms-auto {{ 'text-success' if g.saldo >= 0 else 'text-danger' }}">
+        {{ '$' + num(g.saldo) if g.saldo >= 0 else '-$' + num(g.saldo) }}
+      </span>
+      <a href="{{ url_for('reportes.auxiliar', eid=empresa.id, cuenta_id=g.cuenta.id) }}"
+         class="btn btn-link btn-sm py-0 ms-2 text-muted" title="Ver auxiliar completo">
+        <i class="bi bi-box-arrow-up-right"></i>
+      </a>
+    </div>
+    <table class="table table-sm mb-0" style="font-size:.8rem">
+      <tbody>
+        {% set ns = namespace(saldo=0) %}
+        {% for l in g.lineas %}
+          {% if g.cuenta.naturaleza == 'DEUDORA' %}
+            {% set ns.saldo = ns.saldo + (l.debe|float) - (l.haber|float) %}
+          {% else %}
+            {% set ns.saldo = ns.saldo + (l.haber|float) - (l.debe|float) %}
+          {% endif %}
+        <tr>
+          <td class="text-muted text-nowrap" style="width:90px">{{ l.asiento.fecha.strftime('%d/%m/%Y') }}</td>
+          <td>
+            <a href="{{ url_for('asientos.detalle', eid=empresa.id, aid=l.asiento_id) }}"
+               class="text-decoration-none text-muted font-monospace" style="font-size:.75rem">N°{{ l.asiento.numero }}</a>
+            <span class="ms-1">{{ l.descripcion or l.asiento.descripcion }}</span>
+          </td>
+          <td class="text-end text-nowrap {{ 'text-primary' if l.debe else 'text-muted' }}" style="width:100px">
+            {% if l.debe %}$ {{ num(l.debe) }}{% endif %}
+          </td>
+          <td class="text-end text-nowrap {{ 'text-danger' if l.haber else 'text-muted' }}" style="width:100px">
+            {% if l.haber %}$ {{ num(l.haber) }}{% endif %}
+          </td>
+          <td class="text-end text-nowrap fw-semibold {{ 'text-success' if ns.saldo >= 0 else 'text-danger' }}" style="width:110px">
+            {{ '$' + num(ns.saldo) if ns.saldo >= 0 else '-$' + num(ns.saldo) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 <!-- Saldo pendiente -->
 {% if docs_pendientes %}
