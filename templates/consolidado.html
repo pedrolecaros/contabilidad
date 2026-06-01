@@ -18,38 +18,28 @@
 </div>
 
 <!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
-<ul class="nav nav-tabs mb-3" id="consolidadoTabs" role="tablist">
-  <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="tab-contable" data-bs-toggle="tab"
-            data-bs-target="#pane-contable" type="button" role="tab"
-            aria-controls="pane-contable" aria-selected="true">
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('main.consolidado') }}">
       <i class="bi bi-journal-text me-1"></i>Contable
-    </button>
+    </a>
   </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="tab-financiero" data-bs-toggle="tab"
-            data-bs-target="#pane-financiero" type="button" role="tab"
-            aria-controls="pane-financiero" aria-selected="false">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('main.consolidado_financiero') }}">
       <i class="bi bi-graph-up me-1"></i>Financiero
-    </button>
+    </a>
   </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="tab-interempresa" data-bs-toggle="tab"
-            data-bs-target="#pane-interempresa" type="button" role="tab"
-            aria-controls="pane-interempresa" aria-selected="false">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('main.consolidado_interempresa') }}">
       <i class="bi bi-diagram-3 me-1"></i>Interempresa
       {% if interempresa %}
       <span class="badge bg-primary ms-1" style="font-size:.65rem;">{{ interempresa|length }}</span>
       {% endif %}
-    </button>
+    </a>
   </li>
 </ul>
 
 <div class="tab-content">
-
-  <!-- ══════════════════════════════════════════════════════════════════════
-       TAB CONTABLE
-  ══════════════════════════════════════════════════════════════════════════ -->
   <div class="tab-pane fade show active" id="pane-contable" role="tabpanel">
 
     <!-- Top bar: filtro + backup -->
@@ -169,17 +159,13 @@
                       {{ short }}&#10003;
                     </span>
                   {% elif lib['loaded'] and lib['n_docs'] == 0 %}
-                    {# Loaded but SII returned no documents #}
-                    <span class="badge bg-secondary" style="font-size:.65rem;"
-                          title="{{ tipo }}: cargado pero sin registros en el período">
-                      {{ short }}°
-                    </span>
-                  {% else %}
-                    {# Not loaded #}
-                    <span class="badge bg-light text-muted border" style="font-size:.65rem;"
-                          title="{{ tipo }}: no cargado">
+                    {# Downloaded but SII had no records for this period #}
+                    <span class="badge bg-white text-muted border" style="font-size:.65rem;"
+                          title="{{ tipo }}: descargado, sin registros en el período">
                       {{ short }}
                     </span>
+                  {% else %}
+                    {# Not downloaded — show nothing #}
                   {% endif %}
                   {% endfor %}
                 </div>
@@ -230,220 +216,6 @@
 
   </div><!-- /pane-contable -->
 
-  <!-- ══════════════════════════════════════════════════════════════════════
-       TAB FINANCIERO
-  ══════════════════════════════════════════════════════════════════════════ -->
-  <div class="tab-pane fade" id="pane-financiero" role="tabpanel">
-    <div class="text-center py-5 text-muted">
-      <i class="bi bi-graph-up display-4"></i>
-      <p class="mt-3 small">Balances y resultados consolidados ponderados por participación</p>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════════════════════════════════════
-       TAB INTEREMPRESA
-  ══════════════════════════════════════════════════════════════════════════ -->
-  <div class="tab-pane fade" id="pane-interempresa" role="tabpanel">
-
-    <div class="d-flex justify-content-between align-items-center mb-3 mt-1">
-      <div>
-        <h6 class="mb-0"><i class="bi bi-diagram-3 me-1"></i>Préstamos intercompany</h6>
-        <div class="text-muted small">Préstamos donde ambas partes son empresas del grupo</div>
-      </div>
-    </div>
-
-    {% if not interempresa %}
-    <div class="alert alert-secondary">
-      No hay préstamos intercompany activos. Para registrar uno, ve a
-      <a href="#">Préstamos</a> de la empresa correspondiente y selecciona una empresa relacionada.
-    </div>
-    {% else %}
-
-    {# Build maps for consistency check #}
-    {# pagar_map[eid_deudor][eid_acreedor] = lista de préstamos PAGAR #}
-    {# cobrar_map[eid_acreedor][eid_deudor] = lista de préstamos COBRAR #}
-
-    {# Collect all unique (empresa_id, empresa_relacionada_id) pairs #}
-    {% set pagar_map = {} %}
-    {% set cobrar_map = {} %}
-    {% for p in interempresa %}
-      {% if p.tipo == 'PAGAR' %}
-        {% if p.empresa_id not in pagar_map %}{% set _ = pagar_map.update({p.empresa_id: {}}) %}{% endif %}
-        {% if p.empresa_relacionada_id not in pagar_map[p.empresa_id] %}
-          {% set _ = pagar_map[p.empresa_id].update({p.empresa_relacionada_id: []}) %}
-        {% endif %}
-        {% set _ = pagar_map[p.empresa_id][p.empresa_relacionada_id].append(p) %}
-      {% else %}
-        {% if p.empresa_id not in cobrar_map %}{% set _ = cobrar_map.update({p.empresa_id: {}}) %}{% endif %}
-        {% if p.empresa_relacionada_id not in cobrar_map[p.empresa_id] %}
-          {% set _ = cobrar_map[p.empresa_id].update({p.empresa_relacionada_id: []}) %}
-        {% endif %}
-        {% set _ = cobrar_map[p.empresa_id][p.empresa_relacionada_id].append(p) %}
-      {% endif %}
-    {% endfor %}
-
-    {# Map empresa id -> empresa object #}
-    {% set emp_map = {} %}
-    {% for e in empresas %}{% set _ = emp_map.update({e.id: e}) %}{% endfor %}
-
-    <!-- Summary table of inter-company loans -->
-    <div class="table-responsive mb-4">
-      <table class="table table-sm table-bordered">
-        <thead class="table-dark">
-          <tr>
-            <th>Empresa deudora (Pagar)</th>
-            <th>Empresa acreedora (Cobrar)</th>
-            <th class="text-end">Monto deudora</th>
-            <th class="text-end">Monto acreedora</th>
-            <th class="text-center">Consistencia</th>
-            <th>Préstamos</th>
-          </tr>
-        </thead>
-        <tbody>
-          {# Iterate over PAGAR loans and check counterpart #}
-          {% for eid_deu, acreedores in pagar_map.items() %}
-          {% for eid_acr, pagars in acreedores.items() %}
-          {% set monto_pagar = pagars | sum(attribute='monto_original') %}
-          {# Find counterpart COBRAR: cobrar_map[eid_acr][eid_deu] #}
-          {% set cobrar_list = cobrar_map.get(eid_acr, {}).get(eid_deu, []) %}
-          {% set monto_cobrar = cobrar_list | sum(attribute='monto_original') %}
-
-          {# Consistency check #}
-          {% if cobrar_list | length == 0 %}
-            {% set status = 'missing' %}
-          {% elif monto_cobrar == 0 or monto_pagar == 0 %}
-            {% set status = 'missing' %}
-          {% elif ((monto_pagar - monto_cobrar) / monto_pagar) | abs > 0.01 %}
-            {% set status = 'diff' %}
-          {% else %}
-            {% set status = 'ok' %}
-          {% endif %}
-
-          <tr {% if status == 'missing' %}class="table-danger"
-              {% elif status == 'diff' %}class="table-warning"{% endif %}>
-            <td>
-              {% if eid_deu in emp_map %}
-              <a href="{{ url_for('prestamos.lista', eid=eid_deu) }}" class="text-decoration-none fw-semibold">
-                {{ emp_map[eid_deu].nombre_fantasia or emp_map[eid_deu].razon_social }}
-              </a>
-              {% else %}ID {{ eid_deu }}{% endif %}
-            </td>
-            <td>
-              {% if eid_acr in emp_map %}
-              <a href="{{ url_for('prestamos.lista', eid=eid_acr) }}" class="text-decoration-none fw-semibold">
-                {{ emp_map[eid_acr].nombre_fantasia or emp_map[eid_acr].razon_social }}
-              </a>
-              {% else %}ID {{ eid_acr }}{% endif %}
-            </td>
-            <td class="text-end">
-              {% for p in pagars %}
-              <div>
-                <span class="badge bg-danger" style="font-size:.65rem;">P</span>
-                {% if p.moneda == 'UF' %}UF {{ p.monto_original|clp }}
-                {% else %}$ {{ p.monto_original|clp }}{% endif %}
-                <a href="{{ url_for('prestamos.detalle', eid=p.empresa_id, pid=p.id) }}"
-                   class="text-muted ms-1" style="font-size:.75rem;">{{ p.nombre[:25] }}</a>
-              </div>
-              {% endfor %}
-            </td>
-            <td class="text-end">
-              {% if cobrar_list %}
-              {% for p in cobrar_list %}
-              <div>
-                <span class="badge bg-success" style="font-size:.65rem;">C</span>
-                {% if p.moneda == 'UF' %}UF {{ p.monto_original|clp }}
-                {% else %}$ {{ p.monto_original|clp }}{% endif %}
-                <a href="{{ url_for('prestamos.detalle', eid=p.empresa_id, pid=p.id) }}"
-                   class="text-muted ms-1" style="font-size:.75rem;">{{ p.nombre[:25] }}</a>
-              </div>
-              {% endfor %}
-              {% else %}
-              <span class="text-danger small"><i class="bi bi-x-circle"></i> Sin contrapartida</span>
-              {% endif %}
-            </td>
-            <td class="text-center">
-              {% if status == 'ok' %}
-              <span class="badge bg-success"><i class="bi bi-check2"></i> Ok</span>
-              {% elif status == 'diff' %}
-              <span class="badge bg-warning text-dark"
-                    title="Diferencia: {{ ((monto_pagar - monto_cobrar)|abs)|clp }}">
-                <i class="bi bi-exclamation-triangle"></i> Diferencia
-              </span>
-              {% else %}
-              <span class="badge bg-danger">
-                <i class="bi bi-x-circle"></i> Falta COBRAR
-              </span>
-              {% endif %}
-            </td>
-            <td class="small text-muted">
-              {{ pagars | length }} pagar{% if cobrar_list %} / {{ cobrar_list | length }} cobrar{% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-          {% endfor %}
-
-          {# Also check for COBRAR with no matching PAGAR #}
-          {% for eid_acr, deudores in cobrar_map.items() %}
-          {% for eid_deu, cobras in deudores.items() %}
-          {# Skip if we already covered this pair via pagar_map #}
-          {% if eid_deu not in pagar_map or eid_acr not in pagar_map.get(eid_deu, {}) %}
-          {% set monto_cobrar = cobras | sum(attribute='monto_original') %}
-          <tr class="table-danger">
-            <td>
-              {% if eid_deu in emp_map %}
-              <a href="{{ url_for('prestamos.lista', eid=eid_deu) }}" class="text-decoration-none fw-semibold">
-                {{ emp_map[eid_deu].nombre_fantasia or emp_map[eid_deu].razon_social }}
-              </a>
-              {% else %}ID {{ eid_deu }}{% endif %}
-            </td>
-            <td>
-              {% if eid_acr in emp_map %}
-              <a href="{{ url_for('prestamos.lista', eid=eid_acr) }}" class="text-decoration-none fw-semibold">
-                {{ emp_map[eid_acr].nombre_fantasia or emp_map[eid_acr].razon_social }}
-              </a>
-              {% else %}ID {{ eid_acr }}{% endif %}
-            </td>
-            <td class="text-end">
-              <span class="text-danger small"><i class="bi bi-x-circle"></i> Sin PAGAR</span>
-            </td>
-            <td class="text-end">
-              {% for p in cobras %}
-              <div>
-                <span class="badge bg-success" style="font-size:.65rem;">C</span>
-                {% if p.moneda == 'UF' %}UF {{ p.monto_original|clp }}
-                {% else %}$ {{ p.monto_original|clp }}{% endif %}
-                <a href="{{ url_for('prestamos.detalle', eid=p.empresa_id, pid=p.id) }}"
-                   class="text-muted ms-1" style="font-size:.75rem;">{{ p.nombre[:25] }}</a>
-              </div>
-              {% endfor %}
-            </td>
-            <td class="text-center">
-              <span class="badge bg-danger">
-                <i class="bi bi-x-circle"></i> Falta PAGAR
-              </span>
-            </td>
-            <td class="small text-muted">
-              0 pagar / {{ cobras | length }} cobrar
-            </td>
-          </tr>
-          {% endif %}
-          {% endfor %}
-          {% endfor %}
-
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Legend -->
-    <div class="d-flex gap-3 small text-muted flex-wrap">
-      <span><span class="badge bg-success">Ok</span> Ambas partes registradas y montos coinciden (&lt;1% diferencia)</span>
-      <span><span class="badge bg-warning text-dark">Diferencia</span> Montos difieren más de 1%</span>
-      <span><span class="badge bg-danger">Falta</span> Una de las partes no tiene el préstamo espejo</span>
-    </div>
-
-    {% endif %}
-  </div><!-- /pane-interempresa -->
-
 </div><!-- /tab-content -->
 
 <!-- ── Modal: Bajar libros SII masivo ──────────────────────────────────────── -->
@@ -484,6 +256,15 @@
                   {{ e.nombre_fantasia or e.razon_social }}
                   <span class="text-muted" style="font-size:.75rem">{{ e.rut }}</span>
                 </label>
+              </div>
+              {% else %}
+              <div class="py-1 border-bottom d-flex align-items-center gap-2" style="border-color:#f0f0f0!important">
+                <i class="bi bi-lock text-muted" style="font-size:.8rem"></i>
+                <span class="small text-muted">
+                  {{ e.nombre_fantasia or e.razon_social }}
+                  <span style="font-size:.75rem">{{ e.rut }}</span>
+                  <span class="fst-italic" style="font-size:.72rem"> — sin clave SII</span>
+                </span>
               </div>
               {% endif %}
               {% endfor %}
@@ -637,10 +418,10 @@
   function _cellHtml(r) {
     if (!r) return '<span class="text-muted">—</span>';
     if (!r.ok) return `<span class="text-danger small" title="${r.error||''}"><i class="bi bi-x-circle"></i> Error</span>`;
-    if (r.aviso) return `<span class="text-muted small"><i class="bi bi-check2 text-success"></i> ${r.aviso}</span>`;
-    if (r.importados === 0) return `<span class="text-secondary small" title="El SII no tiene registros para este período"><i class="bi bi-dash-circle"></i> Sin registros</span>`;
+    if (r.aviso) return `<span class="text-muted" title="${r.aviso}">—</span>`;
+    if (r.importados === 0) return `<span class="text-muted">—</span>`;
     const errs = (r.errores||[]).length;
-    return `<span class="text-success small"><i class="bi bi-check2-circle"></i> ${r.importados} docs${errs ? ' ·<span class="text-warning"> '+errs+' err</span>' : ''}</span>`;
+    return `<span class="text-success small"><i class="bi bi-check2-circle"></i> ${r.importados} docs${errs ? ' · <span class="text-warning">'+errs+' err</span>' : ''}</span>`;
   }
 
   function _showResults(results) {

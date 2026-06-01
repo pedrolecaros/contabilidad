@@ -477,6 +477,16 @@ def _run_sii_batch_job(app, job_id, eid, rut, clave_sii, tipos, periodo):
                 if isinstance(contenido, SIIEmptyPeriodError):
                     results[tipo] = {'ok': True, 'tipo': tipo, 'importados': 0, 'errores': [],
                                      'nombre': '', 'aviso': str(contenido)}
+                    ya = ArchivoImportado.query.filter_by(
+                        empresa_id=eid, tipo=tipo.upper(), periodo=periodo).first()
+                    if not ya:
+                        db.session.add(ArchivoImportado(
+                            empresa_id=eid, tipo=tipo.upper(),
+                            nombre_archivo=f'sii_{tipo}_{periodo}_vacio',
+                            sha256=f'empty_{tipo}_{eid}_{periodo}',
+                            ndocs=0, periodo=periodo,
+                        ))
+                        db.session.commit()
                     continue
 
                 if isinstance(contenido, Exception):
@@ -678,6 +688,17 @@ def _run_sii_bulk_job(app, job_id, empresas_data, periodo):
                         if isinstance(contenido, SIIEmptyPeriodError):
                             tipo_results[tipo] = {'ok': True, 'importados': 0,
                                                    'aviso': str(contenido)}
+                            # Register empty period so grid shows the white badge
+                            ya = ArchivoImportado.query.filter_by(
+                                empresa_id=eid, tipo=tipo.upper(), periodo=periodo).first()
+                            if not ya:
+                                db.session.add(ArchivoImportado(
+                                    empresa_id=eid, tipo=tipo.upper(),
+                                    nombre_archivo=f'sii_{tipo}_{periodo}_vacio',
+                                    sha256=f'empty_{tipo}_{eid}_{periodo}',
+                                    ndocs=0, periodo=periodo,
+                                ))
+                                db.session.commit()
                             continue
                         if isinstance(contenido, Exception):
                             tipo_results[tipo] = {'ok': False, 'error': str(contenido)}

@@ -325,6 +325,24 @@ def consolidado_financiero():
     )
 
 
+@bp.route('/consolidado/interempresa')
+def consolidado_interempresa():
+    empresas = Empresa.query.filter_by(activa=True).order_by(Empresa.razon_social).all()
+    ids = [e.id for e in empresas]
+
+    interempresa = (Prestamo.query
+        .filter(Prestamo.empresa_id.in_(ids),
+                Prestamo.empresa_relacionada_id.in_(ids),
+                Prestamo.activo == True)
+        .order_by(Prestamo.empresa_id, Prestamo.tipo)
+        .all())
+
+    return render_template('consolidado_interempresa.html',
+        empresas=empresas,
+        interempresa=interempresa,
+    )
+
+
 def _get_db_path():
     uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
     db_path = uri.replace('sqlite:///', '')

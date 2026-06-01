@@ -234,7 +234,8 @@ def _rcv_descargar_detalles(page, tipo_label: str, periodo_yyyymm: str) -> bytes
             'no se encontraron registros', 'no existen documentos',
             'no hay documentos', 'sin documentos', '0 documentos',
             'sin movimientos', 'no hay movimientos',
-            'no existen datos', 'no hay datos',
+            'no existen datos', 'no hay datos', 'sin datos',
+            'no hay información de registro', 'no hay informaci',
         ]
         if any(f in content for f in frases_vacias):
             raise SIIEmptyPeriodError(
@@ -262,7 +263,8 @@ def _rcv_click_tab(page, text: str) -> bool:
 
 
 def _descargar_compras_y_ventas(page, rut: str, periodo_yyyymm: str,
-                                 hacer_compras: bool, hacer_ventas: bool) -> dict:
+                                 hacer_compras: bool, hacer_ventas: bool,
+                                 progress_cb=None, pct_compras=20, pct_ventas=45) -> dict:
     """
     Descarga compras y/o ventas en una sola visita al RCV.
 
@@ -284,10 +286,14 @@ def _descargar_compras_y_ventas(page, rut: str, periodo_yyyymm: str,
 
     # --- COMPRAS (tab activo por defecto tras Consultar) ---
     if hacer_compras:
+        if progress_cb:
+            progress_cb(pct_compras, 'Descargando Compras…')
         resultado['compras'] = _rcv_descargar_detalles(page, 'compras', periodo_yyyymm)
 
     # --- VENTAS (click tab visible; NO hacer segundo Consultar) ---
     if hacer_ventas:
+        if progress_cb:
+            progress_cb(pct_ventas, 'Descargando Ventas…')
         _rcv_click_tab(page, 'VENTA')
         resultado['ventas'] = _rcv_descargar_detalles(page, 'ventas', periodo_yyyymm)
 
@@ -328,13 +334,27 @@ def _descargar_honorarios(page, rut: str, periodo_yyyymm: str) -> bytes:
 
     _screenshot(page, f'bhe_{periodo_yyyymm}_informe')
 
+    # Detectar período vacío ANTES de intentar la descarga (evita cuelgue de 30s)
+    _BHE_FRASES_VACIAS = [
+        'no existen boletas', 'sin boletas', 'no hay boletas',
+        'no existen registros', 'sin registros', 'no hay registros',
+        'sin datos', 'no hay datos', 'no existen datos',
+        'no hay información', 'totales* :', '0 documentos',
+    ]
+    content_early = page.content().lower()
+    # "sin datos" aparece en la celda de la tabla; Totales en 0 también indica vacío
+    if any(f in content_early for f in _BHE_FRASES_VACIAS):
+        # Confirmar que los totales son cero (la frase "sin datos" puede aparecer en tablas vacías)
+        if 'sin datos' in content_early or 'no existen boletas' in content_early or 'no hay boletas' in content_early:
+            raise SIIEmptyPeriodError(
+                f"Sin boletas de honorarios para el período {periodo_yyyymm[:4]}-{mes_zz}."
+            )
+
     # El botón de planilla electrónica llama a VerPlanillaMensualRec()
     planilla = page.locator('input[name="planilla"]')
     if planilla.count() == 0:
-        # Puede ser que no hay boletas para este período
         content = page.content().lower()
-        if any(f in content for f in ['no existen boletas', 'sin boletas', 'no hay boletas',
-                                       'no existen registros', 'sin registros', 'no hay registros']):
+        if any(f in content for f in _BHE_FRASES_VACIAS):
             raise SIIEmptyPeriodError(
                 f"Sin boletas de honorarios para el período {periodo_yyyymm[:4]}-{mes_zz}."
             )
@@ -385,13 +405,23 @@ def descargar_lote(rut: str, clave: str, periodo: str, tipos: list,
             # ── RCV (compras + ventas juntas para no repetir login) ──
             tipos_rcv = [t for t in tipos if t in ('compras', 'ventas')]
             if tipos_rcv:
-                if progress_cb:
-                    progress_cb(20, 'Descargando Registro de Compras y Ventas…')
+                hacer_compras = 'compras' in tipos_rcv
+                hacer_ventas  = 'ventas'  in tipos_rcv
+                # Assign percentages based on which books are being downloaded
+                if hacer_compras and hacer_ventas:
+                    pct_c, pct_v = 20, 45
+                elif hacer_compras:
+                    pct_c, pct_v = 20, 20
+                else:
+                    pct_c, pct_v = 20, 20
                 try:
                     rcv = _descargar_compras_y_ventas(
                         page, rut, periodo_sii,
-                        hacer_compras='compras' in tipos_rcv,
-                        hacer_ventas='ventas' in tipos_rcv,
+                        hacer_compras=hacer_compras,
+                        hacer_ventas=hacer_ventas,
+                        progress_cb=progress_cb,
+                        pct_compras=pct_c,
+                        pct_ventas=pct_v,
                     )
                     resultados.update(rcv)
                 except Exception as e:

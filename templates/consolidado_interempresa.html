@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+{% block title %}Consolidado Interempresa – Contabilidad Chile{% endblock %}
+
+{% macro clp(v) %}{{ '{:,.0f}'.format(v|float).replace(',','.') }}{% endmacro %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item active">Consolidado Interempresa</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Consolidado Interempresa</h5>
+  <a href="{{ url_for('main.consolidado') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('main.consolidado') }}">
+      <i class="bi bi-journal-text me-1"></i>Contable
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('main.consolidado_financiero') }}">
+      <i class="bi bi-graph-up me-1"></i>Financiero
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('main.consolidado_interempresa') }}">
+      <i class="bi bi-diagram-3 me-1"></i>Interempresa
+      {% if interempresa %}
+      <span class="badge bg-primary ms-1" style="font-size:.65rem;">{{ interempresa|length }}</span>
+      {% endif %}
+    </a>
+  </li>
+</ul>
+
+<!-- ── Content ────────────────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h6 class="mb-0"><i class="bi bi-diagram-3 me-1"></i>Préstamos intercompany</h6>
+    <div class="text-muted small">Préstamos donde ambas partes son empresas del grupo</div>
+  </div>
+</div>
+
+{% if not interempresa %}
+<div class="text-muted small">No hay préstamos interempresa activos.</div>
+{% else %}
+
+{# Build maps for consistency check #}
+{# pagar_map[eid_deudor][eid_acreedor] = lista de préstamos PAGAR #}
+{# cobrar_map[eid_acreedor][eid_deudor] = lista de préstamos COBRAR #}
+
+{% set pagar_map = {} %}
+{% set cobrar_map = {} %}
+{% for p in interempresa %}
+  {% if p.tipo == 'PAGAR' %}
+    {% if p.empresa_id not in pagar_map %}{% set _ = pagar_map.update({p.empresa_id: {}}) %}{% endif %}
+    {% if p.empresa_relacionada_id not in pagar_map[p.empresa_id] %}
+      {% set _ = pagar_map[p.empresa_id].update({p.empresa_relacionada_id: []}) %}
+    {% endif %}
+    {% set _ = pagar_map[p.empresa_id][p.empresa_relacionada_id].append(p) %}
+  {% else %}
+    {% if p.empresa_id not in cobrar_map %}{% set _ = cobrar_map.update({p.empresa_id: {}}) %}{% endif %}
+    {% if p.empresa_relacionada_id not in cobrar_map[p.empresa_id] %}
+      {% set _ = cobrar_map[p.empresa_id].update({p.empresa_relacionada_id: []}) %}
+    {% endif %}
+    {% set _ = cobrar_map[p.empresa_id][p.empresa_relacionada_id].append(p) %}
+  {% endif %}
+{% endfor %}
+
+{# Map empresa id -> empresa object #}
+{% set emp_map = {} %}
+{% for e in empresas %}{% set _ = emp_map.update({e.id: e}) %}{% endfor %}
+
+<!-- Summary table of inter-company loans -->
+<div class="table-responsive mb-4">
+  <table class="table table-sm table-bordered">
+    <thead class="table-dark">
+      <tr>
+        <th>Empresa deudora (Pagar)</th>
+        <th>Empresa acreedora (Cobrar)</th>
+        <th class="text-end">Monto deudora</th>
+        <th class="text-end">Monto acreedora</th>
+        <th class="text-center">Consistencia</th>
+        <th>Préstamos</th>
+      </tr>
+    </thead>
+    <tbody>
+      {# Iterate over PAGAR loans and check counterpart #}
+      {% for eid_deu, acreedores in pagar_map.items() %}
+      {% for eid_acr, pagars in acreedores.items() %}
+      {% set monto_pagar = pagars | sum(attribute='monto_original') %}
+      {# Find counterpart COBRAR: cobrar_map[eid_acr][eid_deu] #}
+      {% set cobrar_list = cobrar_map.get(eid_acr, {}).get(eid_deu, []) %}
+      {% set monto_cobrar = cobrar_list | sum(attribute='monto_original') %}
+
+      {# Consistency check #}
+      {% if cobrar_list | length == 0 %}
+        {% set status = 'missing' %}
+      {% elif monto_cobrar == 0 or monto_pagar == 0 %}
+        {% set status = 'missing' %}
+      {% elif ((monto_pagar - monto_cobrar) / monto_pagar) | abs > 0.01 %}
+        {% set status = 'diff' %}
+      {% else %}
+        {% set status = 'ok' %}
+      {% endif %}
+
+      <tr {% if status == 'missing' %}class="table-danger"
+          {% elif status == 'diff' %}class="table-warning"{% endif %}>
+        <td>
+          {% if eid_deu in emp_map %}
+          <a href="{{ url_for('prestamos.lista', eid=eid_deu) }}" class="text-decoration-none fw-semibold">
+            {{ emp_map[eid_deu].nombre_fantasia or emp_map[eid_deu].razon_social }}
+          </a>
+          {% else %}ID {{ eid_deu }}{% endif %}
+        </td>
+        <td>
+          {% if eid_acr in emp_map %}
+          <a href="{{ url_for('prestamos.lista', eid=eid_acr) }}" class="text-decoration-none fw-semibold">
+            {{ emp_map[eid_acr].nombre_fantasia or emp_map[eid_acr].razon_social }}
+          </a>
+          {% else %}ID {{ eid_acr }}{% endif %}
+        </td>
+        <td class="text-end">
+          {% for p in pagars %}
+          <div>
+            <span class="badge bg-danger" style="font-size:.65rem;">P</span>
+            {% if p.moneda == 'UF' %}UF {{ clp(p.monto_original) }}
+            {% else %}$ {{ clp(p.monto_original) }}{% endif %}
+            <a href="{{ url_for('prestamos.detalle', eid=p.empresa_id, pid=p.id) }}"
+               class="text-muted ms-1" style="font-size:.75rem;">{{ p.nombre[:25] }}</a>
+          </div>
+          {% endfor %}
+        </td>
+        <td class="text-end">
+          {% if cobrar_list %}
+          {% for p in cobrar_list %}
+          <div>
+            <span class="badge bg-success" style="font-size:.65rem;">C</span>
+            {% if p.moneda == 'UF' %}UF {{ clp(p.monto_original) }}
+            {% else %}$ {{ clp(p.monto_original) }}{% endif %}
+            <a href="{{ url_for('prestamos.detalle', eid=p.empresa_id, pid=p.id) }}"
+               class="text-muted ms-1" style="font-size:.75rem;">{{ p.nombre[:25] }}</a>
+          </div>
+          {% endfor %}
+          {% else %}
+          <span class="text-danger small"><i class="bi bi-x-circle"></i> Sin contrapartida</span>
+          {% endif %}
+        </td>
+        <td class="text-center">
+          {% if status == 'ok' %}
+          <span class="badge bg-success"><i class="bi bi-check2"></i> Ok</span>
+          {% elif status == 'diff' %}
+          <span class="badge bg-warning text-dark"
+                title="Diferencia: {{ clp((monto_pagar - monto_cobrar)|abs) }}">
+            <i class="bi bi-exclamation-triangle"></i> Diferencia
+          </span>
+          {% else %}
+          <span class="badge bg-danger">
+            <i class="bi bi-x-circle"></i> Falta COBRAR
+          </span>
+          {% endif %}
+        </td>
+        <td class="small text-muted">
+          {{ pagars | length }} pagar{% if cobrar_list %} / {{ cobrar_list | length }} cobrar{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+
+      {# Also check for COBRAR with no matching PAGAR #}
+      {% for eid_acr, deudores in cobrar_map.items() %}
+      {% for eid_deu, cobras in deudores.items() %}
+      {# Skip if we already covered this pair via pagar_map #}
+      {% if eid_deu not in pagar_map or eid_acr not in pagar_map.get(eid_deu, {}) %}
+      {% set monto_cobrar = cobras | sum(attribute='monto_original') %}
+      <tr class="table-danger">
+        <td>
+          {% if eid_deu in emp_map %}
+          <a href="{{ url_for('prestamos.lista', eid=eid_deu) }}" class="text-decoration-none fw-semibold">
+            {{ emp_map[eid_deu].nombre_fantasia or emp_map[eid_deu].razon_social }}
+          </a>
+          {% else %}ID {{ eid_deu }}{% endif %}
+        </td>
+        <td>
+          {% if eid_acr in emp_map %}
+          <a href="{{ url_for('prestamos.lista', eid=eid_acr) }}" class="text-decoration-none fw-semibold">
+            {{ emp_map[eid_acr].nombre_fantasia or emp_map[eid_acr].razon_social }}
+          </a>
+          {% else %}ID {{ eid_acr }}{% endif %}
+        </td>
+        <td class="text-end">
+          <span class="text-danger small"><i class="bi bi-x-circle"></i> Sin PAGAR</span>
+        </td>
+        <td class="text-end">
+          {% for p in cobras %}
+          <div>
+            <span class="badge bg-success" style="font-size:.65rem;">C</span>
+            {% if p.moneda == 'UF' %}UF {{ clp(p.monto_original) }}
+            {% else %}$ {{ clp(p.monto_original) }}{% endif %}
+            <a href="{{ url_for('prestamos.detalle', eid=p.empresa_id, pid=p.id) }}"
+               class="text-muted ms-1" style="font-size:.75rem;">{{ p.nombre[:25] }}</a>
+          </div>
+          {% endfor %}
+        </td>
+        <td class="text-center">
+          <span class="badge bg-danger">
+            <i class="bi bi-x-circle"></i> Falta PAGAR
+          </span>
+        </td>
+        <td class="small text-muted">
+          0 pagar / {{ cobras | length }} cobrar
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+      {% endfor %}
+
+    </tbody>
+  </table>
+</div>
+
+<!-- Legend -->
+<div class="d-flex gap-3 small text-muted flex-wrap">
+  <span><span class="badge bg-success">Ok</span> Ambas partes registradas y montos coinciden (&lt;1% diferencia)</span>
+  <span><span class="badge bg-warning text-dark">Diferencia</span> Montos difieren más de 1%</span>
+  <span><span class="badge bg-danger">Falta</span> Una de las partes no tiene el préstamo espejo</span>
+</div>
+
+{% endif %}
+{% endblock %}
