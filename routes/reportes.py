@@ -252,73 +252,48 @@ def resultado(eid):
 
 @bp.route('/empresa/<int:eid>/reportes/ap-ar')
 def ap_ar(eid):
+    from models import Contraparte
     empresa = Empresa.query.get_or_404(eid)
-    desde, hasta = _rango_fechas()
-    rut_detalle = request.args.get('rut')
-    tipo_detalle = request.args.get('tipo')  # COMPRAS, VENTAS, HONORARIOS
 
-    def _resumen(tipo_libro):
-        return (db.session.query(
-            DocumentoSII.rut_contraparte,
-            func.max(DocumentoSII.razon_social_contraparte).label('razon_social'),
-            func.count(DocumentoSII.id).label('ndocs'),
-            func.sum(DocumentoSII.monto_neto).label('total_neto'),
-            func.sum(DocumentoSII.iva).label('total_iva'),
-            func.sum(DocumentoSII.total).label('total_bruto'),
-            func.sum(case(
-                (DocumentoSII.procesado == False, DocumentoSII.total),
-                else_=0
-            )).label('sin_contabilizar'),
-        )
-        .filter(
-            DocumentoSII.empresa_id == eid,
-            DocumentoSII.tipo_libro == tipo_libro,
-            DocumentoSII.fecha >= desde,
-            DocumentoSII.fecha <= hasta,
-        )
-        .group_by(DocumentoSII.rut_contraparte)
-        .order_by(func.sum(DocumentoSII.total).desc())
-        .all())
+    def _saldo_aux_cp(cuenta_codigo):
+        c = Cuenta.query.filter_by(empresa_id=eid, codigo=cuenta_codigo).first()
+        if not c:
+            return None, 0, []
+        rows = (db.session.query(
+                    LineaAsiento.contraparte_id,
+                    func.sum(LineaAsiento.debe).label('debe'),
+                    func.sum(LineaAsiento.haber).label('haber'),
+                )
+                .join(Asiento)
+                .filter(
+                    Asiento.empresa_id == eid,
+                    Asiento.estado == 'CONFIRMADO',
+                    LineaAsiento.cuenta_id == c.id,
+                    LineaAsiento.contraparte_id.isnot(None),
+                )
+                .group_by(LineaAsiento.contraparte_id)
+                .all())
+        filas = []
+        for r in rows:
+            cp = Contraparte.query.get(r.contraparte_id)
+            if not cp:
+                continue
+            saldo = round((r.haber - r.debe) if c.naturaleza == 'ACREEDORA' else (r.debe - r.haber), 2)
+            if abs(saldo) >= 1:
+                filas.append({'cp': cp, 'saldo': saldo})
+        filas.sort(key=lambda x: abs(x['saldo']), reverse=True)
+        return c.nombre, round(c.saldo()), filas
 
-    proveedores = _resumen('COMPRAS')
-    clientes    = _resumen('VENTAS')
-    honorarios  = _resumen('HONORARIOS')
-
-    # Saldos contables de las cuentas de control
-    def _saldo_cuenta(codigo):
-        c = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo).first()
-        return c.saldo(hasta=hasta) if c else 0.0
-
-    saldo_proveedores = _saldo_cuenta('2.1.01')
-    saldo_clientes    = _saldo_cuenta('1.1.03')
-    saldo_honorarios  = _saldo_cuenta('2.1.04')
-
-    # Detalle por RUT cuando se hace click en una fila
-    docs_detalle = []
-    if rut_detalle and tipo_detalle:
-        docs_detalle = (DocumentoSII.query
-            .filter_by(empresa_id=eid, tipo_libro=tipo_detalle,
-                       rut_contraparte=rut_detalle)
-            .filter(DocumentoSII.fecha >= desde, DocumentoSII.fecha <= hasta)
-            .order_by(DocumentoSII.fecha)
-            .all())
-
-    cp_por_rut = {
-        cp.rut.replace('.', '').replace('-', '').upper(): cp.id
-        for cp in Contraparte.query.filter_by(empresa_id=eid).all()
-        if cp.rut
-    }
+    nom_prov, saldo_proveedores, proveedores = _saldo_aux_cp('2.1.01')
+    nom_cli,  saldo_clientes,    clientes    = _saldo_aux_cp('1.1.03')
+    nom_hon,  saldo_honorarios,  honorarios  = _saldo_aux_cp('2.1.04')
 
     return render_template('reportes/ap_ar.html',
-        empresa=empresa, desde=desde, hasta=hasta,
+        empresa=empresa,
         proveedores=proveedores, clientes=clientes, honorarios=honorarios,
         saldo_proveedores=saldo_proveedores,
         saldo_clientes=saldo_clientes,
         saldo_honorarios=saldo_honorarios,
-        docs_detalle=docs_detalle,
-        rut_detalle=rut_detalle,
-        tipo_detalle=tipo_detalle,
-        cp_por_rut=cp_por_rut,
     )
 
 
@@ -326,7 +301,10 @@ def ap_ar(eid):
 def cxc_cxp(eid):
     empresa = Empresa.query.get_or_404(eid)
 
-    # Todas las lineas de cuentas CxC/CxP (con o sin contraparte)
+    # Clientes/Proveedores van en su propio módulo; aquí solo préstamos y otras auxiliares
+    NO_CXC = ['1.1.01', '1.1.02', '1.1.03', '1.1.04', '1.1.05', '1.1.06', '1.1.08', '1.1.09', '1.1.10', '1.1.14']
+    NO_CXP = ['2.1.01', '2.1.02', '2.1.03', '2.1.07', '2.1.08']
+
     lineas = (LineaAsiento.query
               .join(Asiento)
               .join(Cuenta, LineaAsiento.cuenta_id == Cuenta.id)
@@ -339,6 +317,7 @@ def cxc_cxp(eid):
                       Cuenta.codigo.like('1.1.%'),
                       Cuenta.codigo.like('2.%'),
                   ),
+                  ~Cuenta.codigo.in_(NO_CXC + NO_CXP),
               )
               .all())
 

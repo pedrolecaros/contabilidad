@@ -67,28 +67,39 @@ def index(eid):
     except ValueError:
         desde, hasta = date(hoy.year, 1, 1), hoy
 
-    # ── AP/AR summary: only outstanding (not yet conciliated) documents ──
-    def _resumen_sii(tipo_libro):
-        return (db.session.query(
-            DocumentoSII.rut_contraparte,
-            func.max(DocumentoSII.razon_social_contraparte).label('razon_social'),
-            func.count(DocumentoSII.id).label('ndocs'),
-            func.sum(DocumentoSII.monto_neto).label('total_neto'),
-            func.sum(DocumentoSII.iva).label('total_iva'),
-            func.sum(DocumentoSII.total).label('total_bruto'),
-        )
-        .filter(
-            DocumentoSII.empresa_id == eid,
-            DocumentoSII.tipo_libro == tipo_libro,
-            DocumentoSII.conciliacion_id == None,
-        )
-        .group_by(DocumentoSII.rut_contraparte)
-        .order_by(func.sum(DocumentoSII.total).desc())
-        .all())
+    # ── Saldo contable por contraparte (fuente: lineas_asiento) ──
+    def _saldo_aux_cp(cuenta_codigo):
+        c = Cuenta.query.filter_by(empresa_id=eid, codigo=cuenta_codigo).first()
+        if not c:
+            return None, None, []
+        rows = (db.session.query(
+                    LineaAsiento.contraparte_id,
+                    func.sum(LineaAsiento.debe).label('debe'),
+                    func.sum(LineaAsiento.haber).label('haber'),
+                )
+                .join(Asiento)
+                .filter(
+                    Asiento.empresa_id == eid,
+                    Asiento.estado == 'CONFIRMADO',
+                    LineaAsiento.cuenta_id == c.id,
+                    LineaAsiento.contraparte_id.isnot(None),
+                )
+                .group_by(LineaAsiento.contraparte_id)
+                .all())
+        filas = []
+        for r in rows:
+            cp = Contraparte.query.get(r.contraparte_id)
+            if not cp:
+                continue
+            saldo = round((r.haber - r.debe) if c.naturaleza == 'ACREEDORA' else (r.debe - r.haber), 2)
+            if abs(saldo) >= 1:
+                filas.append({'cp': cp, 'saldo': saldo})
+        filas.sort(key=lambda x: abs(x['saldo']), reverse=True)
+        return c.nombre, round(c.saldo()), filas
 
-    proveedores = _resumen_sii('COMPRAS')
-    honorarios  = _resumen_sii('HONORARIOS')
-    clientes    = _resumen_sii('VENTAS')
+    nom_prov, saldo_cta_prov, proveedores = _saldo_aux_cp('2.1.01')
+    nom_cli,  saldo_cta_cli,  clientes    = _saldo_aux_cp('1.1.03')
+    nom_hon,  saldo_cta_hon,  honorarios  = _saldo_aux_cp('2.1.04')
 
     # ── Contrapartes list ──
     q = Contraparte.query.filter_by(empresa_id=eid)
@@ -120,9 +131,6 @@ def index(eid):
         c = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo).first()
         return (c.nombre, round(c.saldo())) if c else (None, None)
 
-    nom_prov, saldo_cta_prov = _saldo_cta('2.1.01')
-    nom_cli,  saldo_cta_cli  = _saldo_cta('1.1.03')
-    nom_hon,  saldo_cta_hon  = _saldo_cta('2.1.04')
 
     return render_template('contrapartes/index.html',
                            empresa=empresa, contrapartes=contrapartes,

@@ -35,10 +35,9 @@
 
 <!-- Vista toggle + filtro fechas -->
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-  <a href="{{ url_for('contrapartes.index', eid=empresa.id, vista='apar',
-             desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
+  <a href="{{ url_for('contrapartes.index', eid=empresa.id, vista='apar') }}"
      class="btn btn-sm {{ 'btn-dark' if vista=='apar' else 'btn-outline-secondary' }}">
-    <i class="bi bi-receipt me-1"></i>Resumen AP/AR (SII)
+    <i class="bi bi-receipt me-1"></i>Saldos por Contraparte
   </a>
   <a href="{{ url_for('contrapartes.index', eid=empresa.id, vista='lista',
              desde=desde.isoformat(), hasta=hasta.isoformat()) }}"
@@ -46,28 +45,19 @@
     <i class="bi bi-list-ul me-1"></i>Listado de Contrapartes
   </a>
 
-  {% if vista == 'apar' %}
-  <form method="get" class="d-flex gap-1 ms-auto">
-    <input type="hidden" name="vista" value="apar">
-    <input type="date" name="desde" class="form-control form-control-sm" value="{{ desde.isoformat() }}">
-    <span class="pt-1 px-1">—</span>
-    <input type="date" name="hasta" class="form-control form-control-sm" value="{{ hasta.isoformat() }}">
-    <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrar</button>
-  </form>
-  {% endif %}
 </div>
 
 
 {% if vista == 'apar' %}
 {# ══ AP/AR SUMMARY VIEW ══ #}
 
-{% macro tabla_apar(filas, tipo, titulo, icono, color, saldo_cta, nom_cta, label_iva) %}
+{% macro tabla_apar(filas, titulo, icono, color, saldo_cta, nom_cta) %}
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-{{ color }} {% if color == 'warning' %}text-dark{% else %}text-white{% endif %}
               d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-{{ icono }} me-1"></i>{{ titulo }} <small class="opacity-75">({{ filas|length }} RUTs)</small></span>
+    <span><i class="bi bi-{{ icono }} me-1"></i>{{ titulo }} <small class="opacity-75">({{ filas|length }})</small></span>
     {% if saldo_cta is not none %}
-    <span class="small">Saldo cta.: <strong>{{ saldo_cta|clp }}</strong>
+    <span class="small">Saldo total: <strong>{{ saldo_cta|clp }}</strong>
       {% if nom_cta %}<span class="opacity-75 ms-1">({{ nom_cta }})</span>{% endif %}
     </span>
     {% endif %}
@@ -78,43 +68,41 @@
       <thead class="table-secondary">
         <tr>
           <th>RUT</th><th>Nombre</th>
-          <th class="text-center">Docs</th>
-          <th class="text-end">Neto</th>
-          <th class="text-end">{{ label_iva }}</th>
-          <th class="text-end">Total</th>
+          <th class="text-end">Saldo</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for f in filas %}
         <tr>
-          <td class="small font-monospace">{{ f.rut_contraparte }}</td>
-          <td class="small">{{ (f.razon_social or '')[:50] }}</td>
-          <td class="text-center small">{{ f.ndocs }}</td>
-          <td class="text-end small">{{ f.total_neto|clp }}</td>
-          <td class="text-end small">{{ f.total_iva|clp }}</td>
-          <td class="text-end small fw-semibold">{{ f.total_bruto|clp }}</td>
+          <td class="small font-monospace">{{ f.cp.rut }}</td>
+          <td class="small">{{ f.cp.razon_social[:50] }}</td>
+          <td class="text-end small fw-semibold">{{ f.saldo|clp }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('contrapartes.detalle', eid=empresa.id, cid=f.cp.id) }}"
+               class="btn btn-outline-secondary btn-sm py-0"><i class="bi bi-eye"></i></a>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
       <tfoot class="fw-bold table-light">
         <tr>
-          <td colspan="3" class="text-end">TOTAL</td>
-          <td class="text-end">{{ filas|sum(attribute='total_neto')|clp }}</td>
-          <td class="text-end">{{ filas|sum(attribute='total_iva')|clp }}</td>
-          <td class="text-end">{{ filas|sum(attribute='total_bruto')|clp }}</td>
+          <td colspan="2" class="text-end">TOTAL</td>
+          <td class="text-end">{{ filas|sum(attribute='saldo')|clp }}</td>
+          <td></td>
         </tr>
       </tfoot>
     </table>
   </div>
   {% else %}
-  <div class="card-body text-muted small">Sin documentos en el período.</div>
+  <div class="card-body text-muted small">Sin saldo con contraparte identificada.</div>
   {% endif %}
 </div>
 {% endmacro %}
 
-{{ tabla_apar(proveedores, 'COMPRAS',    'Proveedores – Saldo por Pagar', 'arrow-up-circle',   'danger',  saldo_cta_prov, nom_prov, 'IVA CF') }}
-{{ tabla_apar(honorarios,  'HONORARIOS', 'Honorarios – Retención pendiente', 'person-badge',      'warning', saldo_cta_hon,  nom_hon,  'Retención') }}
-{{ tabla_apar(clientes,    'VENTAS',     'Clientes – Saldo por Cobrar',    'arrow-down-circle', 'success', saldo_cta_cli,  nom_cli,  'IVA DF') }}
+{{ tabla_apar(proveedores, 'Proveedores', 'arrow-up-circle',   'danger',  saldo_cta_prov, nom_prov) }}
+{{ tabla_apar(honorarios,  'Honorarios',  'person-badge',      'warning', saldo_cta_hon,  nom_hon) }}
+{{ tabla_apar(clientes,    'Clientes',    'arrow-down-circle', 'success', saldo_cta_cli,  nom_cli) }}
 
 
 {% else %}

@@ -196,12 +196,30 @@ def _rcv_consultar(page):
             continue
 
 
+_RCV_FRASES_VACIAS = [
+    'no existen registros', 'no hay registros', 'sin registros',
+    'no se encontraron registros', 'no existen documentos',
+    'no hay documentos', 'sin documentos', '0 documentos',
+    'sin movimientos', 'no hay movimientos',
+    'no existen datos', 'no hay datos', 'sin datos',
+    'no hay información de registro',
+]
+
+
 def _rcv_descargar_detalles(page, tipo_label: str, periodo_yyyymm: str) -> bytes:
     """Click en 'Descargar Detalles' y retorna el contenido del archivo."""
     _screenshot(page, f'rcv_{tipo_label}_{periodo_yyyymm}_antes_descarga')
 
+    # Verificar período vacío ANTES de intentar botones (evita timeouts de 60s)
+    content = page.content().lower()
+    if any(f in content for f in _RCV_FRASES_VACIAS):
+        raise SIIEmptyPeriodError(
+            f"Sin movimientos de {tipo_label} para el período {periodo_yyyymm[:4]}-{periodo_yyyymm[4:6]}."
+        )
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # El botón se llama "Descargar Detalles" en el RCV Angular
+        # Selectores específicos — evitar a:has-text("Descargar") que puede
+        # coincidir con el tab "Descargas Diferidas" y causar timeout de 60s
         for sel in [
             'button:has-text("Descargar Detalles")',
             'button:has-text("Descargar detalles")',
@@ -209,8 +227,6 @@ def _rcv_descargar_detalles(page, tipo_label: str, periodo_yyyymm: str) -> bytes
             'a:has-text("Descargar detalles")',
             'button[ng-click*="limiteDoc"]',
             'button[ng-click*="descarga"]',
-            'button:has-text("Descargar")',
-            'a:has-text("Descargar")',
         ]:
             try:
                 loc = page.locator(sel)
@@ -227,20 +243,6 @@ def _rcv_descargar_detalles(page, tipo_label: str, periodo_yyyymm: str) -> bytes
             except Exception:
                 continue
 
-        # Verificar si el período simplemente no tiene movimientos
-        content = page.content().lower()
-        frases_vacias = [
-            'no existen registros', 'no hay registros', 'sin registros',
-            'no se encontraron registros', 'no existen documentos',
-            'no hay documentos', 'sin documentos', '0 documentos',
-            'sin movimientos', 'no hay movimientos',
-            'no existen datos', 'no hay datos', 'sin datos',
-            'no hay información de registro', 'no hay informaci',
-        ]
-        if any(f in content for f in frases_vacias):
-            raise SIIEmptyPeriodError(
-                f"Sin movimientos de {tipo_label} para el período {periodo_yyyymm[:4]}-{periodo_yyyymm[4:6]}."
-            )
         raise SIIDownloadError(
             f"No se encontró el botón 'Descargar Detalles' en el RCV ({tipo_label}). "
             f"URL: {page.url} — ver /tmp/sii_rcv_{tipo_label}_{periodo_yyyymm}_antes_descarga.png"
