@@ -38,7 +38,7 @@ def nuevo(eid):
         nombre = request.form.get('nombre', '').strip()
         if not nombre:
             flash('El nombre es obligatorio', 'danger')
-            contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
+            contrapartes = Contraparte.query.order_by(Contraparte.razon_social).all()
             return render_template('prestamos/form.html',
                                    empresa=empresa, prestamo=None,
                                    contrapartes=contrapartes, titulo='Nuevo Préstamo')
@@ -52,7 +52,7 @@ def nuevo(eid):
             fecha_inicio = date.fromisoformat(request.form.get('fecha_inicio', ''))
         except (ValueError, TypeError):
             flash('Fecha de inicio inválida', 'danger')
-            contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
+            contrapartes = Contraparte.query.order_by(Contraparte.razon_social).all()
             return render_template('prestamos/form.html',
                                    empresa=empresa, prestamo=None,
                                    contrapartes=contrapartes, titulo='Nuevo Préstamo')
@@ -87,7 +87,7 @@ def nuevo(eid):
         flash(f'Préstamo "{nombre}" creado', 'success')
         return redirect(url_for('prestamos.detalle', eid=eid, pid=prestamo.id))
 
-    contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
+    contrapartes = Contraparte.query.order_by(Contraparte.razon_social).all()
     return render_template('prestamos/form.html',
                            empresa=empresa, prestamo=None,
                            contrapartes=contrapartes, titulo='Nuevo Préstamo')
@@ -150,7 +150,7 @@ def editar(eid, pid):
         nombre = request.form.get('nombre', '').strip()
         if not nombre:
             flash('El nombre es obligatorio', 'danger')
-            contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
+            contrapartes = Contraparte.query.order_by(Contraparte.razon_social).all()
             return render_template('prestamos/form.html',
                                    empresa=empresa, prestamo=prestamo,
                                    contrapartes=contrapartes, titulo='Editar Préstamo')
@@ -173,7 +173,7 @@ def editar(eid, pid):
             prestamo.fecha_inicio = date.fromisoformat(request.form.get('fecha_inicio', ''))
         except (ValueError, TypeError):
             flash('Fecha de inicio inválida', 'danger')
-            contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
+            contrapartes = Contraparte.query.order_by(Contraparte.razon_social).all()
             return render_template('prestamos/form.html',
                                    empresa=empresa, prestamo=prestamo,
                                    contrapartes=contrapartes, titulo='Editar Préstamo')
@@ -188,7 +188,7 @@ def editar(eid, pid):
         flash('Préstamo actualizado', 'success')
         return redirect(url_for('prestamos.detalle', eid=eid, pid=pid))
 
-    contrapartes = Contraparte.query.filter_by(empresa_id=eid).order_by(Contraparte.razon_social).all()
+    contrapartes = Contraparte.query.order_by(Contraparte.razon_social).all()
     return render_template('prestamos/form.html',
                            empresa=empresa, prestamo=prestamo,
                            contrapartes=contrapartes, titulo='Editar Préstamo')

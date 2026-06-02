@@ -108,6 +108,19 @@
         <option value="{{ c.id }}" data-tipo="{{ c.tipo }}">{{ c.codigo }} – {{ c.nombre }}</option>
         {% endfor %}
       </select>
+      <select id="tplCuentaAuxSel" class="d-none">
+        <option value="">— sin auxiliar —</option>
+        {% if cp_en_empresa %}
+        <optgroup label="En esta empresa">
+          {% for cp in cp_en_empresa %}<option value="{{ cp.id }}">{{ cp.razon_social }}</option>{% endfor %}
+        </optgroup>
+        {% endif %}
+        {% if cp_otros %}
+        <optgroup label="Otros contactos (global)">
+          {% for cp in cp_otros %}<option value="{{ cp.id }}">{{ cp.razon_social }}</option>{% endfor %}
+        </optgroup>
+        {% endif %}
+      </select>
       <input type="hidden" name="tipo" id="hidTipo" value="SII">
 
       <div class="btn-group btn-group-sm" id="btnGroupOuter">
@@ -125,9 +138,9 @@
           <table class="table table-sm table-bordered mb-2">
             <thead class="table-secondary">
               <tr>
-                <th style="width:26%">Cuenta contable</th>
+                <th style="width:30%">Cuenta contable</th>
                 <th style="width:100px">Monto ($)</th>
-                <th style="width:160px">Descripción
+                <th style="width:180px">Descripción
                   <a href="#" class="ms-1 text-muted" style="font-size:.75rem;font-weight:normal"
                      id="toggle-extra-conc"
                      onclick="event.preventDefault();document.querySelectorAll('.col-extra-conc').forEach(el=>el.classList.toggle('d-none'));this.textContent=this.textContent.includes('+')?'– Menos':'+ Más opciones'">
@@ -302,6 +315,7 @@
       <th>Documentos SII</th>
       <th style="width:24px" class="text-center text-muted">↔</th>
       <th>Banco</th>
+      <th style="width:80px" class="text-center">Asiento</th>
       <th style="width:80px" class="text-center">Estado</th>
       <th style="width:60px"></th>
     </tr>
@@ -362,6 +376,23 @@
         {% if cmovs|length > 1 %}
         <div class="small text-muted border-top mt-1 pt-1">Total: <strong>{{ total_banco|clp }}</strong></div>
         {% endif %}
+      {% else %}
+        <span class="text-muted small">—</span>
+      {% endif %}
+    </td>
+
+    <!-- Asiento(s) vinculado(s) -->
+    <td class="text-center small">
+      {% set asis = [] %}
+      {% for d in cdocs if d.asiento_id and d.asiento_id not in asis %}{% set _ = asis.append(d.asiento_id) %}{% endfor %}
+      {% for m in cmovs if m.asiento_id and m.asiento_id not in asis %}{% set _ = asis.append(m.asiento_id) %}{% endfor %}
+      {% if asis %}
+        {% for aid in asis %}
+        <a href="{{ url_for('asientos.editar', eid=empresa.id, aid=aid) }}"
+           class="badge bg-light text-primary border text-decoration-none" style="font-size:.7rem">
+          #{{ aid }}
+        </a>
+        {% endfor %}
       {% else %}
         <span class="text-muted small">—</span>
       {% endif %}
@@ -847,13 +878,33 @@ function actualizarBarra() {
     hidTipo.value = 'MANUAL';
     lblBtn.textContent = 'Contabilizar';
     barra.className = 'alert alert-secondary mb-3 py-2';
+    const prevTotal = _totalBanco || 0;
     const totalBanco = sumCargo + sumAbono;
     label.innerHTML = `<strong>${movsSel.length}</strong> mov  ·  Total banco: <strong>$${fmtCLP(totalBanco)}</strong>`;
     _totalBanco = totalBanco;
-    if (document.getElementById('tbodyLineas').rows.length === 0) {
+    const tbody = document.getElementById('tbodyLineas');
+    if (tbody.rows.length === 0) {
       const descs = movsSel.map(c => (c.dataset.desc || '').trim()).filter(Boolean);
       const descInicial = [...new Set(descs)].join(' / ');
       _addLinea(totalBanco, descInicial);
+    } else {
+      // Si solo hay una línea y su monto coincidía con el total anterior, auto-sincronizar
+      const inputs = tbody.querySelectorAll('.linea-monto');
+      if (inputs.length === 1) {
+        const cur = parseFloat(inputs[0].value) || 0;
+        if (cur === 0 || cur === prevTotal) {
+          inputs[0].value = Math.round(totalBanco);
+        }
+      }
+      // Actualizar descripciones combinadas si todas siguen vacías o coinciden con la primera mov
+      const descs = movsSel.map(c => (c.dataset.desc || '').trim()).filter(Boolean);
+      const descCombo = [...new Set(descs)].join(' / ');
+      tbody.querySelectorAll('input[name="nota"]').forEach((inp, idx) => {
+        if (idx === 0 && (!inp.value || inp.dataset.autoFill === '1')) {
+          inp.value = descCombo;
+          inp.dataset.autoFill = '1';
+        }
+      });
     }
     _actualizarRestante();
   } else {
@@ -972,9 +1023,39 @@ function _addLinea(monto, desc) {
     if (tbody.rows.length > 1) { tr.remove(); _actualizarRestante(); }
   });
 
+  // Aux toggle dentro de la celda de descripción (mismo patrón que crear asiento)
+  const tplAux = document.getElementById('tplCuentaAuxSel');
+  const selAux = tplAux.cloneNode(true);
+  selAux.removeAttribute('id');
+  selAux.name = 'cuenta_aux_ids';
+  selAux.classList.remove('d-none');
+  selAux.classList.add('linea-aux', 'form-select', 'form-select-sm');
+  selAux.style.fontSize = '.75rem';
+  selAux.style.marginTop = '4px';
+  selAux.style.display = 'none';
+
+  const btnAuxToggle = document.createElement('button');
+  btnAuxToggle.type = 'button';
+  btnAuxToggle.className = 'btn btn-link btn-sm p-0 text-muted flex-shrink-0';
+  btnAuxToggle.style.fontSize = '0.7rem';
+  btnAuxToggle.style.lineHeight = '1';
+  btnAuxToggle.title = 'Asignar auxiliar';
+  btnAuxToggle.textContent = 'aux';
+  igNota.appendChild(btnAuxToggle);
+
+  btnAuxToggle.addEventListener('click', () => {
+    const visible = selAux.style.display !== 'none';
+    selAux.style.display = visible ? 'none' : '';
+    if (visible) selAux.value = '';
+  });
+
+  const tdDescWrap = document.createElement('div');
+  tdDescWrap.appendChild(igNota);
+  tdDescWrap.appendChild(selAux);
+
   const td1 = document.createElement('td'); td1.appendChild(sel);
   const td2 = document.createElement('td'); td2.appendChild(inpMonto);
-  const td3 = document.createElement('td'); td3.appendChild(igNota);
+  const td3 = document.createElement('td'); td3.appendChild(tdDescWrap);
   const td4 = document.createElement('td'); td4.appendChild(inpRespaldo);
   td4.className = 'col-extra-conc d-none';
   const td5 = document.createElement('td'); td5.appendChild(btnDel);
@@ -1006,11 +1087,14 @@ document.getElementById('btnAddLinea').addEventListener('click', function() {
   _addLinea(Math.max(0, _totalBanco - suma));
 });
 
-// Validar descripción obligatoria en banco-solo antes de enviar
+// Validar descripción obligatoria SOLO al confirmar (no al borrador)
 document.getElementById('formConc').addEventListener('submit', function(e) {
   const soloMovs = document.querySelectorAll('.chk-doc:checked').length === 0 &&
                    document.querySelectorAll('.chk-mov:checked').length > 0;
   if (!soloMovs) return;
+  // El botón que disparó el submit (e.submitter en navegadores modernos)
+  const accion = (e.submitter && e.submitter.value) || 'confirmar';
+  if (accion === 'borrador') return;  // borrador permite descripción vacía
   const notas = [...document.querySelectorAll('#tbodyLineas input[name="nota"]')];
   const alguna = notas.some(i => i.value.trim() !== '');
   if (!alguna) {

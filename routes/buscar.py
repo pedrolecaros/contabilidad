@@ -64,9 +64,8 @@ def buscar(eid):
             'url': url_for('remuneraciones.historial', eid=eid, emp_id=e.id),
         })
 
-    # Contrapartes — por nombre o RUT
+    # Contrapartes — globales: búsqueda por nombre o RUT
     contrapartes = (Contraparte.query
-                    .filter_by(empresa_id=eid)
                     .filter(or_(
                         Contraparte.razon_social.ilike(q_like),
                         Contraparte.rut.ilike(q_like),

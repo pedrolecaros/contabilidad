@@ -1,7 +1,7 @@
 import calendar
 from datetime import date
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from models import db, Empresa, Asiento, AsientoAudit, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte, Cuenta
+from models import db, Empresa, Asiento, AsientoAudit, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte, Cuenta, LineaAsiento
 from engine import asientos as motor
 from engine.asientos import (confirmar_asiento, generar_asiento_pago_proveedor,
                              generar_asiento_cobro_cliente,
@@ -76,6 +76,22 @@ def index(eid):
                .order_by(Cuenta.codigo)
                .all())
 
+    # Todas las contrapartes activas, marcando cuáles ya tienen actividad en la empresa
+    ids_lineas = {r[0] for r in db.session.query(LineaAsiento.contraparte_id)
+                  .join(Asiento)
+                  .filter(Asiento.empresa_id == eid,
+                          LineaAsiento.contraparte_id != None).distinct().all()}
+    ruts_docs = {r[0] for r in db.session.query(DocumentoSII.rut_contraparte)
+                 .filter(DocumentoSII.empresa_id == eid,
+                         DocumentoSII.rut_contraparte != None).distinct().all()}
+    ids_docs = ({r[0] for r in db.session.query(Contraparte.id)
+                 .filter(Contraparte.rut.in_(ruts_docs)).all()}
+                if ruts_docs else set())
+    en_emp = ids_lineas | ids_docs
+    contrapartes = Contraparte.query.filter_by(activo=True).order_by(Contraparte.razon_social).all()
+    cp_en_empresa = [c for c in contrapartes if c.id in en_emp]
+    cp_otros = [c for c in contrapartes if c.id not in en_emp]
+
     return render_template('conciliacion/index.html',
                            empresa=empresa,
                            desde_mes=desde_mes, hasta_mes=hasta_mes,
@@ -84,6 +100,9 @@ def index(eid):
                            total_movs_sin=total_movs_sin,
                            total_docs_sin=total_docs_sin,
                            cuentas=cuentas,
+                           contrapartes=contrapartes,
+                           cp_en_empresa=cp_en_empresa,
+                           cp_otros=cp_otros,
                            tipos_label=TIPOS_LABEL)
 
 
@@ -104,9 +123,10 @@ def crear(eid):
     mov_ids      = request.form.getlist('mov_ids', type=int)
     desde_mes    = request.form.get('desde', '')
     hasta_mes    = request.form.get('hasta', '')
-    # Multi-line: lista de cuentas + montos (banco-solo compuesto)
+    # Multi-line: lista de cuentas + montos + contrapartes (banco-solo compuesto)
     cuenta_ids   = request.form.getlist('cuenta_ids', type=int)
     cuenta_montos = request.form.getlist('cuenta_montos', type=float)
+    cuenta_aux_ids = request.form.getlist('cuenta_aux_ids')  # str: '' o id
     # Legacy single-account fallback
     cuenta_id_legacy = request.form.get('cuenta_id', type=int)
     if not cuenta_ids and cuenta_id_legacy:
@@ -161,7 +181,7 @@ def crear(eid):
     if docs:
         rut = next((d.rut_contraparte for d in docs if d.rut_contraparte), None)
         if rut:
-            cp = Contraparte.query.filter_by(empresa_id=eid, rut=rut).first()
+            cp = Contraparte.query.filter_by(rut=rut).first()
             if cp:
                 contraparte_id = cp.id
 
@@ -184,24 +204,42 @@ def crear(eid):
     asientos_creados = 0
     errores_asiento = []
 
-    # Banco sin doc SII + cuentas seleccionadas → asiento compuesto
+    # Banco sin doc SII + cuentas seleccionadas → UN asiento consolidado para todos los movs
     if not docs and movs and cuenta_ids:
-        for m in movs:
-            try:
-                asiento = motor.generar_asiento_banco_compuesto(m, cuenta_ids, cuenta_montos)
-                asiento_ok = True
-                if accion_asiento == 'confirmar':
-                    try:
-                        confirmar_asiento(asiento)
-                    except ValueError as e:
-                        errores_asiento.append(f"Mov {m.fecha}: asiento no cuadra — {e}")
-                        asiento_ok = False
-                if asiento_ok:
+        # Pre-validar mezcla cargo/abono ANTES de crear Conciliación
+        total_cargo = sum((m.cargo or 0) for m in movs)
+        total_abono = sum((m.abono or 0) for m in movs)
+        if total_cargo and total_abono:
+            db.session.rollback()
+            flash('Los movimientos seleccionados mezclan cargos y abonos; no se pueden consolidar en un solo asiento.', 'danger')
+            return redirect(url_for('conciliacion.index', eid=eid, desde=desde_mes, hasta=hasta_mes))
+        aux_ids = []
+        for i in range(len(cuenta_ids)):
+            v = cuenta_aux_ids[i] if i < len(cuenta_aux_ids) else ''
+            aux_ids.append(int(v) if v else None)
+        try:
+            asiento = motor.generar_asiento_banco_multi(movs, cuenta_ids, cuenta_montos, aux_ids)
+            asiento_ok = True
+            if accion_asiento == 'confirmar':
+                try:
+                    confirmar_asiento(asiento)
+                except ValueError as e:
+                    errores_asiento.append(f"Asiento consolidado no cuadra — {e}")
+                    asiento_ok = False
+            if asiento_ok:
+                for m in movs:
                     m.procesado = True
                     m.asiento_id = asiento.id
-                    asientos_creados += 1
-            except Exception as e:
-                errores_asiento.append(f"Mov {m.fecha}: {e}")
+                asientos_creados = 1
+            else:
+                # Asiento se generó pero no cuadra al confirmar; rollback completo
+                db.session.rollback()
+                flash(' / '.join(errores_asiento), 'danger')
+                return redirect(url_for('conciliacion.index', eid=eid, desde=desde_mes, hasta=hasta_mes))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'No se pudo crear el asiento: {e}', 'danger')
+            return redirect(url_for('conciliacion.index', eid=eid, desde=desde_mes, hasta=hasta_mes))
 
     # Contabilizar automáticamente los docs SII no procesados
     tipos_doc = set()

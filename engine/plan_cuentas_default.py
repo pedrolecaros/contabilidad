@@ -19,6 +19,7 @@ PLAN_CUENTAS_CHILE = [
     ('1.1.12', 'Préstamos a Terceros por Cobrar',       'ACTIVO',    'DEUDORA',   False, 3),
     ('1.1.13', 'Préstamos a Emp. Relacionadas',         'ACTIVO',    'DEUDORA',   False, 3),
     ('1.1.14', 'Otros Activos Circulantes',             'ACTIVO',    'DEUDORA',   False, 3),
+    ('1.1.15', 'Impuestos por Recuperar',               'ACTIVO',    'DEUDORA',   False, 3),
     ('1.2',    'Activo Fijo',                           'ACTIVO',    'DEUDORA',   True,  2),
     ('1.2.01', 'Terrenos',                              'ACTIVO',    'DEUDORA',   False, 3),
     ('1.2.02', 'Construcciones y Obras',                'ACTIVO',    'DEUDORA',   False, 3),
@@ -77,6 +78,7 @@ PLAN_CUENTAS_CHILE = [
     ('4.2.01', 'Ingresos Financieros',                  'INGRESO',   'ACREEDORA', False, 3),
     ('4.2.02', 'Utilidad en Venta de Activos',          'INGRESO',   'ACREEDORA', False, 3),
     ('4.2.03', 'Otros Ingresos',                        'INGRESO',   'ACREEDORA', False, 3),
+    ('4.2.04', 'Dividendos Percibidos',                 'INGRESO',   'ACREEDORA', False, 3),
 
     # ── GASTOS ────────────────────────────────────────────────────────────────
     ('5',      'GASTOS',                                'GASTO',     'DEUDORA',   True,  1),

@@ -74,6 +74,23 @@ def _migrar(app):
     deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     expires_at DATETIME NOT NULL
 )""",
+        """CREATE TABLE IF NOT EXISTS notas_contables (
+    empresa_id INTEGER PRIMARY KEY REFERENCES empresas(id),
+    contenido TEXT DEFAULT '',
+    actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+)""",
+        """CREATE TABLE IF NOT EXISTS historial (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER REFERENCES empresas(id),
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    accion VARCHAR(20) NOT NULL,
+    tipo_objeto VARCHAR(30) NOT NULL,
+    objeto_id INTEGER,
+    descripcion VARCHAR(500),
+    datos_json TEXT,
+    revertible BOOLEAN DEFAULT 0
+)""",
+        "CREATE INDEX IF NOT EXISTS ix_historial_empresa_fecha ON historial(empresa_id, fecha DESC)",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

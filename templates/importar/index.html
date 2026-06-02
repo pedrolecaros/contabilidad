@@ -227,7 +227,8 @@
       {% for a in archivos %}
       {% set pend = pendientes_fn(a) %}
       {% set cont = contabilizados_fn(a) %}
-      <tr>
+      {% set es_vacio = ('_vacio' in (a.nombre_archivo or '')) or (a.ndocs == 0 and a.tipo != 'BANCO') %}
+      <tr {% if es_vacio %}class="text-muted"{% endif %}>
         <td class="small text-nowrap">{{ a.fecha_importacion|fecha_cl }}</td>
         <td class="small">{{ a.periodo or '—' }}</td>
         <td>
@@ -238,6 +239,9 @@
             {% else %}bg-dark{% endif %}">
             {{ a.tipo }}
           </span>
+          {% if es_vacio %}
+          <span class="badge bg-light text-secondary border" style="font-size:.65rem;">sin movimientos</span>
+          {% endif %}
         </td>
         <td class="small text-muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
             title="{{ a.nombre_archivo }}">{{ a.nombre_archivo }}</td>

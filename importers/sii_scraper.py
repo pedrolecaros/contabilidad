@@ -15,6 +15,12 @@ import tempfile
 import os
 from pathlib import Path
 
+try:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+except ImportError:
+    class PlaywrightTimeoutError(Exception):  # fallback si playwright no está cargado
+        pass
+
 
 URL_RCV      = 'https://www4.sii.cl/consdcvinternetui/'
 URL_BHE_MENU = 'https://loa.sii.cl/cgi_IMT/TMBCOC_MenuConsultasContribRec.cgi'
@@ -210,16 +216,41 @@ def _rcv_descargar_detalles(page, tipo_label: str, periodo_yyyymm: str) -> bytes
     """Click en 'Descargar Detalles' y retorna el contenido del archivo."""
     _screenshot(page, f'rcv_{tipo_label}_{periodo_yyyymm}_antes_descarga')
 
-    # Verificar período vacío ANTES de intentar botones (evita timeouts de 60s)
-    content = page.content().lower()
-    if any(f in content for f in _RCV_FRASES_VACIAS):
+    def _vacio_ahora() -> bool:
+        return any(f in page.content().lower() for f in _RCV_FRASES_VACIAS)
+
+    # 1. Pre-check rápido de período vacío.
+    if _vacio_ahora():
         raise SIIEmptyPeriodError(
             f"Sin movimientos de {tipo_label} para el período {periodo_yyyymm[:4]}-{periodo_yyyymm[4:6]}."
         )
 
+    # 2. Esperar a que aparezca el botón "Descargar Detalles" (hasta 10s).
+    BTN_SELECTORS = (
+        'button:has-text("Descargar Detalles"), '
+        'a:has-text("Descargar Detalles"), '
+        'button[ng-click*="limiteDoc"], '
+        'button[ng-click*="descarga"]'
+    )
+    try:
+        page.wait_for_selector(BTN_SELECTORS, timeout=10000, state='visible')
+    except PlaywrightTimeoutError:
+        # Si no apareció en 10s, verificar si la página declaró vacío.
+        if _vacio_ahora():
+            raise SIIEmptyPeriodError(
+                f"Sin movimientos de {tipo_label} para el período {periodo_yyyymm[:4]}-{periodo_yyyymm[4:6]}."
+            )
+        raise SIIDownloadError(
+            f"No apareció el botón 'Descargar Detalles' en el RCV ({tipo_label}) tras 10s. "
+            f"URL: {page.url} — ver /tmp/sii_rcv_{tipo_label}_{periodo_yyyymm}_antes_descarga.png"
+        )
+
+    # 3. Click + esperar descarga. Si el botón existe pero el click no dispara
+    # descarga en 20s, asumir período vacío (el SII renderiza la tabla resumen
+    # con totales en 0 y el botón habilitado pero sin nada que entregar).
+    DL_TIMEOUT_MS = 20000
+    click_intentado = False
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Selectores específicos — evitar a:has-text("Descargar") que puede
-        # coincidir con el tab "Descargas Diferidas" y causar timeout de 60s
         for sel in [
             'button:has-text("Descargar Detalles")',
             'button:has-text("Descargar detalles")',
@@ -228,23 +259,34 @@ def _rcv_descargar_detalles(page, tipo_label: str, periodo_yyyymm: str) -> bytes
             'button[ng-click*="limiteDoc"]',
             'button[ng-click*="descarga"]',
         ]:
+            loc = page.locator(sel)
+            if loc.count() == 0:
+                continue
             try:
-                loc = page.locator(sel)
-                if loc.count() > 0:
-                    with page.expect_download(timeout=60000) as dl_info:
-                        loc.first.click()
-                    download = dl_info.value
-                    dest = os.path.join(
-                        tmpdir,
-                        download.suggested_filename or f'rcv_{tipo_label}_{periodo_yyyymm}.csv'
-                    )
-                    download.save_as(dest)
-                    return Path(dest).read_bytes()
+                with page.expect_download(timeout=DL_TIMEOUT_MS) as dl_info:
+                    loc.first.click()
+                    click_intentado = True
+                download = dl_info.value
+                dest = os.path.join(
+                    tmpdir,
+                    download.suggested_filename or f'rcv_{tipo_label}_{periodo_yyyymm}.csv'
+                )
+                download.save_as(dest)
+                return Path(dest).read_bytes()
+            except PlaywrightTimeoutError:
+                # El click pasó pero no hubo descarga; probable período vacío.
+                click_intentado = True
+                break
             except Exception:
                 continue
 
+        # Si llegamos acá, el botón existía pero no produjo descarga.
+        if click_intentado or _vacio_ahora():
+            raise SIIEmptyPeriodError(
+                f"Sin movimientos de {tipo_label} para el período {periodo_yyyymm[:4]}-{periodo_yyyymm[4:6]}."
+            )
         raise SIIDownloadError(
-            f"No se encontró el botón 'Descargar Detalles' en el RCV ({tipo_label}). "
+            f"No se pudo descargar el detalle RCV ({tipo_label}). "
             f"URL: {page.url} — ver /tmp/sii_rcv_{tipo_label}_{periodo_yyyymm}_antes_descarga.png"
         )
 
@@ -290,14 +332,20 @@ def _descargar_compras_y_ventas(page, rut: str, periodo_yyyymm: str,
     if hacer_compras:
         if progress_cb:
             progress_cb(pct_compras, 'Descargando Compras…')
-        resultado['compras'] = _rcv_descargar_detalles(page, 'compras', periodo_yyyymm)
+        try:
+            resultado['compras'] = _rcv_descargar_detalles(page, 'compras', periodo_yyyymm)
+        except (SIIDownloadError, SIIEmptyPeriodError) as e:
+            resultado['compras'] = e
 
     # --- VENTAS (click tab visible; NO hacer segundo Consultar) ---
     if hacer_ventas:
         if progress_cb:
             progress_cb(pct_ventas, 'Descargando Ventas…')
         _rcv_click_tab(page, 'VENTA')
-        resultado['ventas'] = _rcv_descargar_detalles(page, 'ventas', periodo_yyyymm)
+        try:
+            resultado['ventas'] = _rcv_descargar_detalles(page, 'ventas', periodo_yyyymm)
+        except (SIIDownloadError, SIIEmptyPeriodError) as e:
+            resultado['ventas'] = e
 
     return resultado
 
@@ -366,9 +414,19 @@ def _descargar_honorarios(page, rut: str, periodo_yyyymm: str) -> bytes:
         )
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        with page.expect_download(timeout=30000) as dl_info:
-            planilla.first.click()
-        download = dl_info.value
+        try:
+            with page.expect_download(timeout=12000) as dl_info:
+                planilla.first.click()
+            download = dl_info.value
+        except PlaywrightTimeoutError:
+            content_after = page.content().lower()
+            if any(f in content_after for f in _BHE_FRASES_VACIAS):
+                raise SIIEmptyPeriodError(
+                    f"Sin boletas de honorarios para el período {periodo_yyyymm[:4]}-{mes_zz}."
+                )
+            raise SIIEmptyPeriodError(
+                f"Sin boletas de honorarios para el período {periodo_yyyymm[:4]}-{mes_zz} (timeout 12s sin descarga)."
+            )
         dest = os.path.join(
             tmpdir,
             download.suggested_filename or f'hon_{periodo_yyyymm}.xls'

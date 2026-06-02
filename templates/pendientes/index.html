@@ -52,10 +52,28 @@
     </button>
   </form>
 </div>
+
+<!-- Batch action bar para selección de docs SII -->
+<div id="batch-doc-bar" class="alert alert-secondary py-2 mb-2 d-none">
+  <form method="post" action="{{ url_for('pendientes.contabilizar_lote', eid=empresa.id) }}"
+        class="d-flex flex-wrap align-items-center gap-2">
+    <span class="small fw-semibold"><span id="batch-doc-count">0</span> seleccionado(s)</span>
+    <div id="batch-doc-checkboxes" class="d-none"></div>
+    <button type="submit" name="confirmar" value="1" class="btn btn-sm btn-success"
+            onclick="return confirm('¿Generar y confirmar los seleccionados?')">
+      <i class="bi bi-check2-all me-1"></i>Confirmar seleccionados
+    </button>
+    <button type="submit" name="confirmar" value="0" class="btn btn-sm btn-outline-primary"
+            onclick="return confirm('¿Generar los seleccionados como borrador?')">
+      <i class="bi bi-journal-plus me-1"></i>Borrador seleccionados
+    </button>
+  </form>
+</div>
 <div class="table-responsive mb-4">
   <table class="table table-sm table-hover">
     <thead class="table-dark">
       <tr>
+        <th><input type="checkbox" id="check-all-doc" class="form-check-input"></th>
         <th data-sort="text">Libro</th>
         <th data-sort="text">Tipo</th>
         <th data-sort="text">Folio</th>
@@ -71,6 +89,7 @@
     <tbody>
       {% for d in docs %}
       <tr>
+        <td class="py-1"><input type="checkbox" class="form-check-input check-doc" value="{{ d.id }}"></td>
         <td><span class="badge
           {% if d.tipo_libro=='COMPRAS' %}bg-primary
           {% elif d.tipo_libro=='VENTAS' %}bg-success
@@ -188,15 +207,24 @@
                   <option value="{{ c.id }}">{{ c.codigo }} – {{ c.nombre }}</option>
                   {% endfor %}
                 </select>
+                <button type="button" class="btn btn-link btn-sm p-0 text-muted btn-aux-toggle"
+                        title="Asignar auxiliar"
+                        style="font-size:0.7rem;line-height:1">aux</button>
                 <button class="btn btn-sm btn-success py-0 px-1"
-                        name="confirmar" value="1"
+                        type="submit" name="confirmar" value="1"
                         title="Generar y confirmar">
                   <i class="bi bi-check2-circle"></i>
                 </button>
                 <button class="btn btn-sm btn-outline-primary py-0 px-1"
+                        type="submit" name="confirmar" value="0"
                         title="Generar en borrador">
                   <i class="bi bi-journal-plus"></i>
                 </button>
+              </div>
+              <div class="aux-wrap d-none mt-1">
+                <select name="contraparte_id" class="form-select form-select-sm ts-aux-sel" style="font-size:.75rem">
+                  <option value="">— sin auxiliar —</option>
+                </select>
               </div>
               <!-- Selector doc (aparece al elegir Proveedores/Clientes/Honorarios) -->
               <div id="docConc-{{ m.id }}" class="d-none mt-1">
@@ -359,6 +387,36 @@ document.querySelectorAll('.ts-banco-cuenta').forEach(function(sel) {
   });
 });
 
+// Aux toggle por movimiento: rellenar select con contactos (optgroup en/otros)
+const CONTRAPARTES_PEND = {{ contrapartes_json | safe if contrapartes_json is defined else '[]' }};
+function _llenarAuxSel(selEl) {
+  if (selEl.dataset.filled) return;
+  const enEmp = CONTRAPARTES_PEND.filter(c => c.en_empresa);
+  const otros = CONTRAPARTES_PEND.filter(c => !c.en_empresa);
+  let html = '<option value="">— sin auxiliar —</option>';
+  if (enEmp.length) {
+    html += '<optgroup label="En esta empresa">';
+    html += enEmp.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    html += '</optgroup>';
+  }
+  if (otros.length) {
+    html += '<optgroup label="Otros contactos (global)">';
+    html += otros.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    html += '</optgroup>';
+  }
+  selEl.innerHTML = html;
+  selEl.dataset.filled = '1';
+}
+document.querySelectorAll('.btn-aux-toggle').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const wrap = this.closest('form').querySelector('.aux-wrap');
+    const sel = wrap.querySelector('select');
+    _llenarAuxSel(sel);
+    const hidden = wrap.classList.toggle('d-none');
+    if (hidden) sel.value = '';
+  });
+});
+
 // Batch bank processing
 const checkAllBank = document.getElementById('check-all-bank');
 if (checkAllBank) {
@@ -368,6 +426,27 @@ if (checkAllBank) {
   });
 }
 document.querySelectorAll('.check-bank').forEach(cb => cb.addEventListener('change', updateBatchBar));
+
+// Batch doc processing
+function updateBatchDocBar() {
+  const sel = [...document.querySelectorAll('.check-doc:checked')];
+  const bar = document.getElementById('batch-doc-bar');
+  const cnt = document.getElementById('batch-doc-count');
+  const cont = document.getElementById('batch-doc-checkboxes');
+  if (!bar) return;
+  if (sel.length === 0) { bar.classList.add('d-none'); return; }
+  bar.classList.remove('d-none');
+  cnt.textContent = sel.length;
+  cont.innerHTML = sel.map(c => `<input type="hidden" name="doc_ids" value="${c.value}">`).join('');
+}
+const checkAllDoc = document.getElementById('check-all-doc');
+if (checkAllDoc) {
+  checkAllDoc.addEventListener('change', function() {
+    document.querySelectorAll('.check-doc').forEach(cb => cb.checked = this.checked);
+    updateBatchDocBar();
+  });
+}
+document.querySelectorAll('.check-doc').forEach(cb => cb.addEventListener('change', updateBatchDocBar));
 
 function updateBatchBar() {
   const checked = document.querySelectorAll('.check-bank:checked');
@@ -492,12 +571,11 @@ document.addEventListener('submit', async function(e) {
       // Reset to summary view
       modalPendShowSummary();
 
-      _pendRow = form.closest('tr');
-      if (_pendRow) _pendRow.style.opacity = '0.4';
+      // Remover la fila inmediatamente del DOM (no esperar al cierre del modal)
+      const procRow = form.closest('tr');
+      if (procRow) procRow.remove();
+      _pendRow = null;
       new bootstrap.Modal(document.getElementById('modalAsientoPend')).show();
-      document.getElementById('modalAsientoPend').addEventListener('hidden.bs.modal', function() {
-        if (_pendRow) { _pendRow.remove(); _pendRow = null; }
-      }, { once: true });
     } else {
       alert(data.error || 'Error al procesar');
     }

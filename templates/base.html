@@ -103,15 +103,18 @@
         <li><a class="nav-link {% if 'conciliacion' in request.endpoint %}active{% endif %}"
                href="{{ url_for('conciliacion.index', eid=empresa.id) }}">
           <i class="bi bi-arrow-left-right me-2"></i>Conciliación</a></li>
-        <li><a class="nav-link {% if request.endpoint=='asientos.nuevo' %}active{% endif %}"
-               href="{{ url_for('asientos.nuevo', eid=empresa.id) }}">
-          <i class="bi bi-plus-circle me-2"></i>Nuevo Asiento</a></li>
         <li><a class="nav-link {% if request.endpoint=='asientos.lista' %}active{% endif %}"
                href="{{ url_for('asientos.lista', eid=empresa.id) }}">
           <i class="bi bi-journal-text me-2"></i>Asientos</a></li>
         <li><a class="nav-link {% if 'validacion' in request.endpoint %}active{% endif %}"
                href="{{ url_for('validacion.index', eid=empresa.id) }}">
           <i class="bi bi-shield-check me-2"></i>Validar Mes</a></li>
+        <li><a class="nav-link {% if request.endpoint == 'notas.empresa' %}active{% endif %}"
+               href="{{ url_for('notas.empresa', eid=empresa.id) }}">
+          <i class="bi bi-sticky me-2"></i>Notas</a></li>
+        <li><a class="nav-link {% if request.endpoint == 'historial.index' %}active{% endif %}"
+               href="{{ url_for('historial.index', eid=empresa.id) }}">
+          <i class="bi bi-clock-history me-2"></i>Historial</a></li>
       </ul>
 
       <div class="nav-section mt-2">Módulos</div>
@@ -122,6 +125,9 @@
         <li><a class="nav-link {% if request.endpoint == 'reportes.cxc_cxp' %}active{% endif %}"
                href="{{ url_for('reportes.cxc_cxp', eid=empresa.id) }}">
           <i class="bi bi-journal-bookmark me-2"></i>CxC / CxP</a></li>
+        <li><a class="nav-link {% if request.endpoint == 'contrapartes.contactos' %}active{% endif %}"
+               href="{{ url_for('contrapartes.contactos', **({'from': empresa.id} if empresa else {})) }}">
+          <i class="bi bi-person-rolodex me-2"></i>Contactos</a></li>
 
       </ul>
 

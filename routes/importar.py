@@ -76,6 +76,15 @@ def _run_sii_job(app, job_id, eid, rut, clave_sii, tipo, periodo):
             ))
             db.session.commit()
 
+            try:
+                from storage import save_import_backup
+                empresa_obj = Empresa.query.get(eid)
+                save_import_backup(contenido, nombre, app.config['UPLOAD_FOLDER'],
+                                   empresa_obj.rut if empresa_obj else '',
+                                   tipo.upper(), periodo_det or periodo, sha[:8])
+            except Exception:
+                pass
+
             _job_set(job_id, status='done', pct=100, message='Completado',
                      result={'ok': True, 'tipo': tipo,
                              'importados': resultado.get('importados', 0),
@@ -355,6 +364,11 @@ def subir(eid, tipo):
 
     sha = _sha256(archivo)
 
+    # Snapshot bytes para backup en disco
+    archivo.stream.seek(0)
+    _backup_bytes = archivo.stream.read()
+    archivo.stream.seek(0)
+
     # Duplicate check
     existente = ArchivoImportado.query.filter_by(empresa_id=eid, sha256=sha).first()
     if existente:
@@ -411,6 +425,15 @@ def subir(eid, tipo):
     )
     db.session.add(registro)
     db.session.commit()
+
+    # Guardar copia en backups_importacion (no bloqueante si falla)
+    try:
+        from storage import save_import_backup
+        save_import_backup(_backup_bytes, archivo.filename,
+                           current_app.config['UPLOAD_FOLDER'],
+                           empresa.rut, tipo_upper, periodo, sha[:8])
+    except Exception as e:
+        current_app.logger.warning(f'No se pudo guardar backup de importación: {e}')
 
     response = {
         'ok': True,
@@ -526,6 +549,14 @@ def _run_sii_batch_job(app, job_id, eid, rut, clave_sii, tipos, periodo):
                         periodo=periodo,
                     ))
                     db.session.commit()
+                    try:
+                        from storage import save_import_backup
+                        empresa_obj = Empresa.query.get(eid)
+                        save_import_backup(contenido, nombre, app.config['UPLOAD_FOLDER'],
+                                           empresa_obj.rut if empresa_obj else '',
+                                           tipo.upper(), periodo, sha[:8])
+                    except Exception:
+                        pass
                     results[tipo] = {'ok': True, 'tipo': tipo,
                                      'importados': resultado.get('importados', 0),
                                      'errores': resultado.get('errores', []),
@@ -740,6 +771,14 @@ def _run_sii_bulk_job(app, job_id, empresas_data, periodo):
                                 periodo=periodo,
                             ))
                             db.session.commit()
+                            try:
+                                from storage import save_import_backup
+                                empresa_obj = Empresa.query.get(eid)
+                                save_import_backup(contenido, nombre_arch, app.config['UPLOAD_FOLDER'],
+                                                   empresa_obj.rut if empresa_obj else '',
+                                                   tipo.upper(), periodo, sha[:8])
+                            except Exception:
+                                pass
                             tipo_results[tipo] = {
                                 'ok': True,
                                 'importados': resultado.get('importados', 0),

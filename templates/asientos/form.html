@@ -234,9 +234,13 @@ function agregarLinea(datos) {
 
   const cpVal = datos && datos.contraparte_id ? datos.contraparte_id : '';
   const cpNom = cpVal ? (contrapartes.find(c => c.id == cpVal) || {}).nombre || '' : '';
-  const cpOptions = contrapartes.map(cp =>
-    `<option value="${cp.id}" ${cpVal==cp.id ? 'selected' : ''}>${cp.nombre}</option>`
-  ).join('');
+  // Agrupar: primero los contactos con actividad en la empresa, luego el resto
+  const cpEnEmp = contrapartes.filter(c => c.en_empresa);
+  const cpOtros = contrapartes.filter(c => !c.en_empresa);
+  const _opt = cp => `<option value="${cp.id}" ${cpVal==cp.id ? 'selected' : ''}>${cp.nombre}</option>`;
+  let cpOptions = '';
+  if (cpEnEmp.length) cpOptions += `<optgroup label="En esta empresa">${cpEnEmp.map(_opt).join('')}</optgroup>`;
+  if (cpOtros.length) cpOptions += `<optgroup label="Otros contactos (global)">${cpOtros.map(_opt).join('')}</optgroup>`;
   // Mostrar selector solo si ya tiene contraparte asignada
   const cpVisible = cpVal ? '' : 'display:none';
 

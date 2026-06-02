@@ -4,7 +4,7 @@ import tempfile
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, send_file, current_app, request, flash, redirect, url_for
-from models import db, Empresa, Asiento, ArchivoImportado, DocumentoSII, MovimientoBanco, Liquidacion, Prestamo
+from models import db, Empresa, Asiento, ArchivoImportado, DocumentoSII, MovimientoBanco, Liquidacion, Prestamo, LineaAsiento, Contraparte, Cuenta
 from sqlalchemy import func
 
 bp = Blueprint('main', __name__)
@@ -327,20 +327,133 @@ def consolidado_financiero():
 
 @bp.route('/consolidado/interempresa')
 def consolidado_interempresa():
-    empresas = Empresa.query.filter_by(activa=True).order_by(Empresa.razon_social).all()
-    ids = [e.id for e in empresas]
+    """Posiciones interempresa derivadas de los auxiliares (contraparte) de cada asiento.
 
-    interempresa = (Prestamo.query
-        .filter(Prestamo.empresa_id.in_(ids),
-                Prestamo.empresa_relacionada_id.in_(ids),
-                Prestamo.activo == True)
-        .order_by(Prestamo.empresa_id, Prestamo.tipo)
-        .all())
+    Cuando una línea de asiento de la empresa A tiene como contraparte a un contacto
+    cuyo RUT coincide con el RUT de otra empresa B del sistema, se considera una
+    posición interempresa. Se acumula DEBE/HABER y se compara con la posición espejo
+    desde B hacia A para detectar descuadres.
+    """
+    empresas = Empresa.query.filter_by(activa=True).order_by(Empresa.razon_social).all()
+    rut_to_empresa = {e.rut: e for e in empresas if e.rut}
+
+    # Líneas con contraparte cuyo RUT corresponde a otra empresa registrada.
+    # Solo cuentas operativas de cobrar/pagar (excluye patrimonio, resultados,
+    # caja/banco, IVA/PPM, activo fijo, e inversiones LP en empresas relacionadas
+    # que son equity stakes, no posiciones interempresa).
+    EXCLUIR = ('1.1.01', '1.1.02', '1.1.05', '1.1.06', '1.1.15')
+    rows = (db.session.query(
+                Asiento.empresa_id.label('empresa_id'),
+                Contraparte.rut.label('rut_b'),
+                func.sum(LineaAsiento.debe).label('debe'),
+                func.sum(LineaAsiento.haber).label('haber'),
+                func.count(LineaAsiento.id).label('n'),
+            )
+            .join(Asiento, LineaAsiento.asiento_id == Asiento.id)
+            .join(Contraparte, LineaAsiento.contraparte_id == Contraparte.id)
+            .join(Cuenta, LineaAsiento.cuenta_id == Cuenta.id)
+            .filter(Asiento.estado == 'CONFIRMADO')
+            .filter(Contraparte.rut.in_(list(rut_to_empresa.keys())))
+            .filter(Cuenta.tipo.in_(['ACTIVO', 'PASIVO']))
+            .filter(~Cuenta.codigo.like('1.2.%'))   # activo fijo
+            .filter(~Cuenta.codigo.like('1.3.%'))   # inversiones LP (equity)
+            .filter(~Cuenta.codigo.in_(EXCLUIR))
+            .group_by(Asiento.empresa_id, Contraparte.rut)
+            .all())
+
+    # Map (a_id, b_id) → {debe, haber, saldo, n}.
+    # saldo > 0 → A tiene cuenta por COBRAR neta a B (cargó más de lo abonado).
+    # saldo < 0 → A tiene cuenta por PAGAR neta a B.
+    legs = {}
+    for r in rows:
+        b = rut_to_empresa.get(r.rut_b)
+        if not b or b.id == r.empresa_id:
+            continue
+        legs[(r.empresa_id, b.id)] = {
+            'debe': float(r.debe or 0),
+            'haber': float(r.haber or 0),
+            'saldo': float((r.debe or 0) - (r.haber or 0)),
+            'n': int(r.n or 0),
+        }
+
+    # Construir pares únicos {A, B}
+    emp_by_id = {e.id: e for e in empresas}
+    seen = set()
+    pares = []
+    for (a_id, b_id), leg in legs.items():
+        key = tuple(sorted([a_id, b_id]))
+        if key in seen:
+            continue
+        seen.add(key)
+        ka_id, kb_id = key
+        ka = emp_by_id.get(ka_id)
+        kb = emp_by_id.get(kb_id)
+        leg_ab = legs.get((ka_id, kb_id))
+        leg_ba = legs.get((kb_id, ka_id))
+        saldo_ab = leg_ab['saldo'] if leg_ab else 0.0
+        saldo_ba = leg_ba['saldo'] if leg_ba else 0.0
+        # Reciprocidad esperada: lo que A tiene como CxC con B debería igualar lo que B tiene como CxP con A.
+        # Es decir: saldo_ab (A→B) + saldo_ba (B→A) ≈ 0 si las dos contabilidades son consistentes.
+        # Si no hay leg espejo, descuadre = magnitud del leg presente.
+        diff = saldo_ab + saldo_ba
+        if leg_ab is None or leg_ba is None:
+            status = 'missing'
+        elif abs(diff) < 1.0:
+            status = 'ok'
+        else:
+            status = 'diff'
+        pares.append({
+            'a': ka, 'b': kb,
+            'leg_ab': leg_ab, 'leg_ba': leg_ba,
+            'saldo_ab': saldo_ab, 'saldo_ba': saldo_ba,
+            'diff': diff, 'status': status,
+        })
+
+    # Ordenar por |saldo| desc
+    pares.sort(key=lambda p: -max(abs(p['saldo_ab']), abs(p['saldo_ba'])))
+
+    # ── Sección 2: contactos relevantes (no-empresa) con presencia en ≥2 empresas ──
+    rows_cp = (db.session.query(
+                    Contraparte.id.label('cp_id'),
+                    Contraparte.razon_social.label('nombre'),
+                    Contraparte.rut.label('rut'),
+                    Asiento.empresa_id.label('empresa_id'),
+                    func.sum(LineaAsiento.debe).label('debe'),
+                    func.sum(LineaAsiento.haber).label('haber'),
+                    func.count(LineaAsiento.id).label('n'),
+                )
+                .join(LineaAsiento, LineaAsiento.contraparte_id == Contraparte.id)
+                .join(Asiento, LineaAsiento.asiento_id == Asiento.id)
+                .join(Cuenta, LineaAsiento.cuenta_id == Cuenta.id)
+                .filter(Asiento.estado == 'CONFIRMADO')
+                .filter(Cuenta.tipo.in_(['ACTIVO', 'PASIVO']))
+                .group_by(Contraparte.id, Asiento.empresa_id)
+                .all())
+
+    rut_emp_set = set(rut_to_empresa.keys())
+    contactos_acc = {}
+    for r in rows_cp:
+        if r.rut and r.rut in rut_emp_set:
+            continue  # ya está en sección empresa-empresa
+        c = contactos_acc.setdefault(r.cp_id, {
+            'cp_id': r.cp_id, 'nombre': r.nombre, 'rut': r.rut,
+            'por_empresa': {}, 'total_saldo': 0.0,
+        })
+        saldo = float((r.debe or 0) - (r.haber or 0))
+        c['por_empresa'][r.empresa_id] = {
+            'debe': float(r.debe or 0),
+            'haber': float(r.haber or 0),
+            'saldo': saldo,
+            'n': int(r.n or 0),
+        }
+        c['total_saldo'] += saldo
+
+    contactos_multi = [c for c in contactos_acc.values() if len(c['por_empresa']) >= 2]
+    contactos_multi.sort(key=lambda c: -abs(c['total_saldo']))
 
     return render_template('consolidado_interempresa.html',
-        empresas=empresas,
-        interempresa=interempresa,
-    )
+                           empresas=empresas, pares=pares,
+                           contactos_multi=contactos_multi)
 
 
 def _get_db_path():

@@ -128,10 +128,11 @@ class AsientoAudit(db.Model):
 class Contraparte(db.Model):
     __tablename__ = 'contrapartes'
     id = db.Column(db.Integer, primary_key=True)
-    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    # empresa_id = empresa donde se creó (legacy / informativo). Las contrapartes son globales.
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=True)
     rut = db.Column(db.String(12), nullable=False)
     razon_social = db.Column(db.String(200), nullable=False)
-    # PROVEEDOR, CLIENTE, AMBOS, HONORARIOS
+    # PROVEEDOR, CLIENTE, AMBOS, HONORARIOS, RELACIONADA, OTRO
     tipo = db.Column(db.String(20), nullable=False, default='PROVEEDOR')
     email = db.Column(db.String(200))
     telefono = db.Column(db.String(50))
@@ -390,6 +391,36 @@ class Papelera(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
 
     empresa = db.relationship('Empresa', backref=db.backref('papelera_items', lazy='dynamic'))
+
+
+class Historial(db.Model):
+    """Bitácora de acciones por empresa: cada operación importante deja una línea
+    con snapshot JSON del objeto (útil para auditar y, cuando aplica, revertir)."""
+    __tablename__ = 'historial'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=True)
+    fecha = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    accion = db.Column(db.String(20), nullable=False)
+    # CREAR | EDITAR | ELIMINAR | CONFIRMAR | ANULAR | IMPORTAR | CONCILIAR | REVERTIR | OTRO
+    tipo_objeto = db.Column(db.String(30), nullable=False)
+    # ASIENTO | LINEA_ASIENTO | CONCILIACION | DOCUMENTO_SII | MOVIMIENTO_BANCO |
+    # ARCHIVO_IMPORTADO | CONTRAPARTE | CUENTA | PRESTAMO | LIQUIDACION | NOTA | OTRO
+    objeto_id = db.Column(db.Integer)
+    descripcion = db.Column(db.String(500))
+    datos_json = db.Column(db.Text)  # snapshot del objeto (pre o post)
+    revertible = db.Column(db.Boolean, default=False)
+
+    empresa = db.relationship('Empresa', backref=db.backref('historial', lazy='dynamic',
+                                                             order_by='Historial.fecha.desc()'))
+
+
+class NotaContable(db.Model):
+    __tablename__ = 'notas_contables'
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), primary_key=True)
+    contenido = db.Column(db.Text, default='')
+    actualizado_en = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    empresa = db.relationship('Empresa', backref=db.backref('nota', uselist=False))
 
 
 class DocumentoEmpleado(db.Model):

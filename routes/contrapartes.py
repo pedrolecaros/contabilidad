@@ -7,6 +7,144 @@ from engine.saldos import saldo_por_contraparte
 
 bp = Blueprint('contrapartes', __name__)
 
+
+def _contactos_de_empresa_ids(eid):
+    """IDs de contrapartes con actividad (líneas o docs SII) en una empresa."""
+    ids_lineas = {r[0] for r in db.session.query(LineaAsiento.contraparte_id)
+                  .join(Asiento)
+                  .filter(Asiento.empresa_id == eid,
+                          LineaAsiento.contraparte_id != None).distinct().all()}
+    ruts_docs = {r[0] for r in db.session.query(DocumentoSII.rut_contraparte)
+                 .filter(DocumentoSII.empresa_id == eid,
+                         DocumentoSII.rut_contraparte != None).distinct().all()}
+    ids_docs = {r[0] for r in db.session.query(Contraparte.id)
+                .filter(Contraparte.rut.in_(ruts_docs)).all()} if ruts_docs else set()
+    return ids_lineas | ids_docs
+
+
+@bp.route('/contactos')
+def contactos():
+    """Vista de contactos. Si entra desde una empresa, filtra a los usados ahí.
+    En el consolidado (sin `from`), muestra todos."""
+    buscar = request.args.get('q', '').strip()
+    from_eid = request.args.get('from', type=int)
+    empresa = Empresa.query.get(from_eid) if from_eid else None
+
+    q = Contraparte.query
+    if empresa:
+        ids = _contactos_de_empresa_ids(empresa.id)
+        q = q.filter(Contraparte.id.in_(ids)) if ids else q.filter(False)
+    if buscar:
+        like = f'%{buscar}%'
+        q = q.filter(db.or_(Contraparte.rut.ilike(like),
+                            Contraparte.razon_social.ilike(like)))
+    contactos = q.order_by(Contraparte.razon_social).all()
+
+    # Conteo de movimientos por contraparte (limitado a la empresa si aplica)
+    from sqlalchemy import func as _func
+    mc_q = db.session.query(LineaAsiento.contraparte_id, _func.count(LineaAsiento.id))
+    if empresa:
+        mc_q = mc_q.join(Asiento).filter(Asiento.empresa_id == empresa.id)
+    cnt = dict(mc_q.filter(LineaAsiento.contraparte_id != None)
+               .group_by(LineaAsiento.contraparte_id).all())
+
+    return render_template('contrapartes/contactos.html',
+                           contactos=contactos, buscar=buscar,
+                           empresa=empresa, from_empresa=empresa,
+                           mov_count=cnt)
+
+
+@bp.route('/contactos/<int:cid>/editar', methods=['GET', 'POST'])
+def contacto_editar(cid):
+    cp = Contraparte.query.get_or_404(cid)
+    from_eid = request.args.get('from', type=int) or request.form.get('from', type=int)
+    from_empresa = Empresa.query.get(from_eid) if from_eid else None
+    if request.method == 'POST':
+        cp.rut = request.form.get('rut', '').strip()
+        if cp.rut and not _validar_rut_dv(cp.rut):
+            flash(f'Advertencia: RUT {cp.rut} tiene dígito verificador inválido', 'warning')
+        cp.razon_social = request.form.get('razon_social', '').strip()
+        cp.tipo = request.form.get('tipo', cp.tipo or 'OTRO')
+        cp.email = request.form.get('email', '').strip() or None
+        cp.telefono = request.form.get('telefono', '').strip() or None
+        cp.notas = request.form.get('notas', '').strip() or None
+        cp.activo = bool(request.form.get('activo'))
+        db.session.commit()
+        flash('Contacto actualizado', 'success')
+        return redirect(url_for('contrapartes.contactos',
+                                **({'from': from_eid} if from_eid else {})))
+    return render_template('contrapartes/contacto_form.html',
+                           cp=cp, from_empresa=from_empresa, empresa=from_empresa)
+
+
+@bp.route('/contactos/<int:cid>')
+def contacto_detalle(cid):
+    """Detalle global de un contacto: asientos y documentos donde aparece (en todas las empresas)."""
+    cp = Contraparte.query.get_or_404(cid)
+    from_eid = request.args.get('from', type=int)
+    from_empresa = Empresa.query.get(from_eid) if from_eid else None
+    empresa = from_empresa  # para que base.html renderice sidebar
+
+    # Movimientos (líneas de asiento). Si entra desde una empresa, filtrar a esa.
+    movs_q = (LineaAsiento.query
+              .join(Asiento)
+              .filter(LineaAsiento.contraparte_id == cp.id,
+                      Asiento.estado == 'CONFIRMADO'))
+    if from_empresa:
+        movs_q = movs_q.filter(Asiento.empresa_id == from_empresa.id)
+    movs = movs_q.order_by(Asiento.fecha.desc(), Asiento.numero).all()
+
+    # Agrupar por empresa para ver presencia
+    from collections import defaultdict
+    por_empresa = defaultdict(lambda: {'empresa': None, 'lineas': [], 'debe': 0.0, 'haber': 0.0})
+    for l in movs:
+        eid = l.asiento.empresa_id
+        por_empresa[eid]['empresa'] = l.asiento.empresa
+        por_empresa[eid]['lineas'].append(l)
+        por_empresa[eid]['debe']  += l.debe or 0
+        por_empresa[eid]['haber'] += l.haber or 0
+    grupos = sorted(por_empresa.values(),
+                    key=lambda g: g['empresa'].razon_social if g['empresa'] else '')
+
+    # Documentos SII relacionados (por RUT). Filtrar a la empresa si entra desde una.
+    docs = []
+    if cp.rut:
+        docs_q = DocumentoSII.query.filter_by(rut_contraparte=cp.rut)
+        if from_empresa:
+            docs_q = docs_q.filter(DocumentoSII.empresa_id == from_empresa.id)
+        docs = docs_q.order_by(DocumentoSII.fecha.desc()).limit(50).all()
+
+    return render_template('contrapartes/contacto_detalle.html',
+                           cp=cp, grupos=grupos, total_movs=len(movs),
+                           docs=docs, from_empresa=from_empresa, empresa=empresa)
+
+
+@bp.route('/contactos/nuevo', methods=['GET', 'POST'])
+def contacto_nuevo():
+    from_eid = request.args.get('from', type=int) or request.form.get('from', type=int)
+    from_empresa = Empresa.query.get(from_eid) if from_eid else None
+    if request.method == 'POST':
+        razon = request.form.get('razon_social', '').strip()
+        if not razon:
+            flash('Razón social / nombre es obligatorio', 'danger')
+        else:
+            cp = Contraparte(
+                rut=request.form.get('rut', '').strip(),
+                razon_social=razon,
+                tipo=request.form.get('tipo', 'OTRO'),
+                email=request.form.get('email', '').strip() or None,
+                telefono=request.form.get('telefono', '').strip() or None,
+                notas=request.form.get('notas', '').strip() or None,
+                activo=bool(request.form.get('activo')),
+            )
+            db.session.add(cp)
+            db.session.commit()
+            flash(f'Contacto "{razon}" creado', 'success')
+            return redirect(url_for('contrapartes.contactos',
+                                    **({'from': from_eid} if from_eid else {})))
+    return render_template('contrapartes/contacto_form.html', cp=None,
+                           from_empresa=from_empresa, empresa=from_empresa)
+
 TIPO_LIBRO_MAP = {
     'PROVEEDOR':   ['COMPRAS'],
     'CLIENTE':     ['VENTAS'],
@@ -46,8 +184,8 @@ def index(eid):
     nom_cli,  saldo_cta_cli,  clientes    = saldo_por_contraparte(eid, '1.1.03')
     nom_hon,  saldo_cta_hon,  honorarios  = saldo_por_contraparte(eid, '2.1.04')
 
-    # ── Contrapartes list ──
-    q = Contraparte.query.filter_by(empresa_id=eid)
+    # ── Contrapartes list (globales: no filtran por empresa) ──
+    q = Contraparte.query
     if tipo_filtro:
         q = q.filter_by(tipo=tipo_filtro)
     if buscar:
@@ -101,7 +239,6 @@ def nueva(eid):
             if not _validar_rut_dv(rut):
                 flash(f'Advertencia: RUT {rut} tiene dígito verificador inválido', 'warning')
             c = Contraparte(
-                empresa_id=eid,
                 rut=rut,
                 razon_social=razon_social,
                 tipo=tipo,
@@ -124,9 +261,7 @@ def nueva(eid):
 def editar(eid, cid):
     empresa = Empresa.query.get_or_404(eid)
     cp = Contraparte.query.get_or_404(cid)
-    if cp.empresa_id != eid:
-        flash('No autorizado', 'danger')
-        return redirect(url_for('contrapartes.index', eid=eid))
+    # Contrapartes globales: cualquier empresa puede editarlas
 
     if request.method == 'POST':
         cp.rut = request.form.get('rut', '').strip()
@@ -151,9 +286,6 @@ def editar(eid, cid):
 @bp.route('/empresa/<int:eid>/contrapartes/<int:cid>/eliminar', methods=['POST'])
 def eliminar(eid, cid):
     cp = Contraparte.query.get_or_404(cid)
-    if cp.empresa_id != eid:
-        flash('No autorizado', 'danger')
-        return redirect(url_for('contrapartes.index', eid=eid))
     db.session.delete(cp)
     db.session.commit()
     flash('Contraparte eliminada', 'warning')
@@ -165,9 +297,7 @@ def eliminar(eid, cid):
 def detalle(eid, cid):
     empresa = Empresa.query.get_or_404(eid)
     cp = Contraparte.query.get_or_404(cid)
-    if cp.empresa_id != eid:
-        flash('No autorizado', 'danger')
-        return redirect(url_for('contrapartes.index', eid=eid))
+    # Contrapartes globales: cualquier empresa accede al detalle (saldos filtran por eid)
 
     hoy = date.today()
     desde_mes = request.args.get('desde', f'{hoy.year}-01')
@@ -289,7 +419,7 @@ def detalle(eid, cid):
 def importar_desde_docs(eid):
     """Crea contrapartes para todos los RUTs únicos en DocumentoSII que aún no existen."""
     empresa = Empresa.query.get_or_404(eid)
-    existentes = {c.rut for c in Contraparte.query.filter_by(empresa_id=eid).all()}
+    existentes = {c.rut for c in Contraparte.query.all() if c.rut}
 
     rows = (db.session.query(
                 DocumentoSII.rut_contraparte,
@@ -322,7 +452,6 @@ def importar_desde_docs(eid):
         else:
             tipo = 'PROVEEDOR'
         db.session.add(Contraparte(
-            empresa_id=eid,
             rut=rut,
             razon_social=info['razon'][:200],
             tipo=tipo,

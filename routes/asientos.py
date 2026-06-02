@@ -13,8 +13,28 @@ def _cuentas_json(cuentas):
 
 
 def _contrapartes_json(eid):
-    cp = Contraparte.query.filter_by(empresa_id=eid, activo=True).order_by(Contraparte.razon_social).all()
-    return json.dumps([{'id': c.id, 'nombre': c.razon_social, 'rut': c.rut} for c in cp])
+    """Todas las contrapartes activas, marcando cuáles ya tienen actividad
+    en la empresa (campo `en_empresa`). El frontend las agrupa visualmente."""
+    ids_lineas = {r[0] for r in db.session.query(LineaAsiento.contraparte_id)
+                  .join(Asiento)
+                  .filter(Asiento.empresa_id == eid,
+                          LineaAsiento.contraparte_id != None).distinct().all()}
+    ruts_docs = {r[0] for r in db.session.query(DocumentoSII.rut_contraparte)
+                 .filter(DocumentoSII.empresa_id == eid,
+                         DocumentoSII.rut_contraparte != None).distinct().all()}
+    ids_docs = ({r[0] for r in db.session.query(Contraparte.id)
+                 .filter(Contraparte.rut.in_(ruts_docs)).all()}
+                if ruts_docs else set())
+    en_empresa_ids = ids_lineas | ids_docs
+
+    cp = (Contraparte.query
+          .filter(Contraparte.activo == True)
+          .order_by(Contraparte.razon_social).all())
+    return json.dumps([
+        {'id': c.id, 'nombre': c.razon_social, 'rut': c.rut,
+         'en_empresa': c.id in en_empresa_ids}
+        for c in cp
+    ])
 
 
 def _prestamo_dict(p):
@@ -116,7 +136,20 @@ def lista(eid):
     descripcion = request.args.get('descripcion', '').strip()
     desde_str   = request.args.get('desde', '')
     hasta_str   = request.args.get('hasta', '')
+    mes_str     = request.args.get('mes', '').strip()  # 'YYYY-MM'
     cuenta_id   = request.args.get('cuenta_id', type=int)
+
+    # Mes vigente: si se pasa `mes=YYYY-MM`, sobreescribe desde/hasta al primer/último día.
+    if mes_str and len(mes_str) == 7:
+        try:
+            anio, mes = int(mes_str[:4]), int(mes_str[5:7])
+            primer = date(anio, mes, 1)
+            import calendar as _cal
+            ultimo = date(anio, mes, _cal.monthrange(anio, mes)[1])
+            desde_str = primer.isoformat()
+            hasta_str = ultimo.isoformat()
+        except ValueError:
+            pass
 
     q = Asiento.query.filter_by(empresa_id=eid)
     if origen:
@@ -175,6 +208,7 @@ def lista(eid):
     return render_template('asientos/lista.html', empresa=empresa, asientos=asientos,
                            origen=origen, estado=estado,
                            descripcion=descripcion, desde_str=desde_str, hasta_str=hasta_str,
+                           mes_str=mes_str,
                            cuenta_id=cuenta_id, cuentas_filtro=cuentas_filtro,
                            lineas_x_asiento=lineas_x_asiento,
                            conc_x_asiento=conc_x_asiento,
@@ -524,6 +558,8 @@ def confirmar(eid, aid):
     try:
         confirmar_asiento(asiento)
         registrar_auditoria(asiento, 'CONFIRMAR')
+        from services.historial import log_asiento
+        log_asiento('CONFIRMAR', asiento, revertible=True)
         db.session.commit()
         flash(f'Asiento N°{asiento.numero} confirmado', 'success')
     except ValueError as e:
@@ -536,6 +572,8 @@ def anular(eid, aid):
     asiento = Asiento.query.get_or_404(aid)
     anular_asiento(asiento)
     registrar_auditoria(asiento, 'ANULAR')
+    from services.historial import log_asiento
+    log_asiento('ANULAR', asiento, revertible=True)
     db.session.commit()
     flash(f'Asiento N°{asiento.numero} anulado', 'warning')
     return redirect(url_for('asientos.detalle', eid=eid, aid=aid))

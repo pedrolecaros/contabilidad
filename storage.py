@@ -36,6 +36,28 @@ def save_bytes(data: bytes, filename: str, upload_folder: str, subfolder: str) -
     return f"local:{subfolder}/{filename}"
 
 
+def save_import_backup(data: bytes, original_filename: str, upload_folder: str,
+                       rut: str, tipo: str, periodo: str | None,
+                       sha8: str | None = None) -> str:
+    """Guarda copia del archivo importado (libro SII o cartola bancaria) en
+    upload_folder/backups_importacion/<rut>/<tipo>/<periodo>/<sha8>_<filename>.
+
+    Retorna ruta relativa (sin prefijo 'local:') del archivo guardado.
+    """
+    rut_limpio = (rut or '').replace('.', '').replace('-', '') or 'sin_rut'
+    periodo_part = periodo or 'sin_periodo'
+    subfolder = os.path.join('backups_importacion', rut_limpio, tipo.upper(), periodo_part)
+    dest_dir = os.path.join(upload_folder, subfolder)
+    os.makedirs(dest_dir, exist_ok=True)
+    safe = secure_filename(original_filename) or 'archivo'
+    prefix = (sha8 + '_') if sha8 else ''
+    final = f'{prefix}{safe}'
+    path = os.path.join(dest_dir, final)
+    with open(path, 'wb') as f:
+        f.write(data)
+    return os.path.join(subfolder, final)
+
+
 def attachment_url(storage_key):
     """Convert a storage key to a browser-accessible URL."""
     if not storage_key:

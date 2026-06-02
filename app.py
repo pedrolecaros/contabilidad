@@ -13,7 +13,7 @@ if os.path.exists(_env_file):
             if _line and not _line.startswith('#') and '=' in _line:
                 _k, _v = _line.split('=', 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
-from routes import main, empresas, asientos, cuentas, importar, pendientes, reportes, validacion, conciliacion, contrapartes, remuneraciones, prestamos, dashboard, buscar, tributario, papelera
+from routes import main, empresas, asientos, cuentas, importar, pendientes, reportes, validacion, conciliacion, contrapartes, remuneraciones, prestamos, dashboard, buscar, tributario, papelera, notas, historial
 
 
 def _auto_fetch_uf(app):
@@ -48,6 +48,8 @@ def create_app(config_override=None):
     app.register_blueprint(buscar.bp)
     app.register_blueprint(tributario.bp)
     app.register_blueprint(papelera.bp)
+    app.register_blueprint(notas.bp)
+    app.register_blueprint(historial.bp)
 
     # Filtros Jinja2 para formato chileno
     @app.template_filter('clp')

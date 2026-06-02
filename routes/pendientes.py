@@ -2,7 +2,7 @@ import json
 import calendar
 from datetime import date as date_
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from models import db, Empresa, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion
+from models import db, Empresa, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion, Asiento, LineaAsiento
 from engine import asientos as motor
 from engine.asientos import confirmar_asiento
 from engine.plan_cuentas_default import CUENTAS_SISTEMA as _C
@@ -94,13 +94,34 @@ def index(eid):
     cuentas_map = {str(c.id): c.codigo for c in cuentas}
     cuentas_nat = {str(c.id): c.naturaleza for c in cuentas}  # DEUDORA | ACREEDORA
 
+    # Contactos para el aux toggle: todos los globales, marcados los que ya tienen
+    # actividad en esta empresa.
+    from models import Contraparte
+    ids_lineas_cp = {r[0] for r in db.session.query(LineaAsiento.contraparte_id)
+                     .join(Asiento)
+                     .filter(Asiento.empresa_id == eid,
+                             LineaAsiento.contraparte_id != None).distinct().all()}
+    ruts_docs_cp = {r[0] for r in db.session.query(DocumentoSII.rut_contraparte)
+                    .filter(DocumentoSII.empresa_id == eid,
+                            DocumentoSII.rut_contraparte != None).distinct().all()}
+    ids_cp_docs = ({r[0] for r in db.session.query(Contraparte.id)
+                    .filter(Contraparte.rut.in_(ruts_docs_cp)).all()}
+                   if ruts_docs_cp else set())
+    en_emp_cp = ids_lineas_cp | ids_cp_docs
+    cps_all = Contraparte.query.filter_by(activo=True).order_by(Contraparte.razon_social).all()
+    contrapartes_json = json.dumps([
+        {'id': c.id, 'nombre': c.razon_social, 'en_empresa': c.id in en_emp_cp}
+        for c in cps_all
+    ], ensure_ascii=False)
+
     return render_template('pendientes/index.html', empresa=empresa,
                            docs=docs, movs=movs, cuentas=cuentas,
                            desde_mes=desde_mes, hasta_mes=hasta_mes,
                            docs_por_tipo_json=json.dumps(docs_por_tipo),
                            cuentas_map_json=json.dumps(cuentas_map),
                            cuentas_nat_json=json.dumps(cuentas_nat),
-                           cuenta_codigo_tipo_json=json.dumps(CUENTA_CODIGO_TIPO))
+                           cuenta_codigo_tipo_json=json.dumps(CUENTA_CODIGO_TIPO),
+                           contrapartes_json=contrapartes_json)
 
 
 def _is_ajax():
@@ -172,6 +193,7 @@ def contabilizar_banco(eid, mid):
         return _err('Este movimiento ya fue procesado.', eid)
     mov = MovimientoBanco.query.get_or_404(mid)
     cuenta_id = request.form.get('cuenta_id', type=int)
+    contraparte_id = request.form.get('contraparte_id', type=int)
     confirmar = request.form.get('confirmar') == '1'
     doc_conciliar_id = request.form.get('doc_conciliar_id', type=int)
     if not cuenta_id:
@@ -179,7 +201,7 @@ def contabilizar_banco(eid, mid):
         db.session.commit()
         return _err('Seleccione una cuenta contraparte.', eid)
     try:
-        asiento = motor.generar_asiento_banco(mov, cuenta_id)
+        asiento = motor.generar_asiento_banco(mov, cuenta_id, contraparte_id)
         if confirmar:
             try:
                 confirmar_asiento(asiento)
@@ -317,13 +339,17 @@ def contabilizar_banco_lote(eid):
 
 @bp.route('/empresa/<int:eid>/pendientes/contabilizar-lote', methods=['POST'])
 def contabilizar_lote(eid):
-    """Contabiliza los documentos SII pendientes visibles (respeta rango desde/hasta)."""
+    """Contabiliza documentos SII pendientes. Si vienen `doc_ids[]` solo procesa esos,
+    de lo contrario procesa todos los visibles del rango desde/hasta."""
     desde_mes = request.form.get('desde', '')
     hasta_mes = request.form.get('hasta', '')
+    doc_ids = request.form.getlist('doc_ids', type=int)
     q = (DocumentoSII.query
          .filter_by(empresa_id=eid, procesado=False)
          .filter(DocumentoSII.conciliacion_id == None))
-    if desde_mes and hasta_mes:
+    if doc_ids:
+        q = q.filter(DocumentoSII.id.in_(doc_ids))
+    elif desde_mes and hasta_mes:
         try:
             d_ini = _mes_a_fecha_inicio(desde_mes)
             d_fin = _mes_a_fecha_fin(hasta_mes)

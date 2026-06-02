@@ -53,6 +53,11 @@
       </select>
     </div>
     <div class="col-auto">
+      <input type="month" name="mes" class="form-control form-control-sm"
+             value="{{ mes_str }}" title="Mes vigente (rellena desde/hasta automáticamente)"
+             style="width:140px">
+    </div>
+    <div class="col-auto">
       <input type="date" name="desde" class="form-control form-control-sm"
              value="{{ desde_str }}" placeholder="Desde" title="Fecha desde">
     </div>
@@ -74,7 +79,7 @@
       <button type="submit" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-funnel me-1"></i>Filtrar
       </button>
-      {% if origen or estado or desde_str or hasta_str or cuenta_id %}
+      {% if origen or estado or desde_str or hasta_str or mes_str or cuenta_id %}
       <a href="{{ url_for('asientos.lista', eid=empresa.id) }}"
          class="btn btn-sm btn-outline-danger ms-1" title="Limpiar filtros">
         <i class="bi bi-x"></i>

@@ -202,7 +202,8 @@ def generar_asiento_honorario(doc: DocumentoSII) -> Asiento:
     return asiento
 
 
-def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int) -> Asiento:
+def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int,
+                          contraparte_id: int | None = None) -> Asiento:
     """
     Movimiento bancario con cuenta contraparte asignada por el usuario.
     Cargo  (salida): DEBE contraparte / HABER banco
@@ -230,6 +231,7 @@ def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int) -> A
     if mov.cargo > 0:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_contra.id,
+                         contraparte_id=contraparte_id,
                          debe=mov.cargo, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
                          debe=0, haber=mov.cargo, descripcion=desc, orden=2),
@@ -239,6 +241,7 @@ def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int) -> A
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
                          debe=mov.abono, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_contra.id,
+                         contraparte_id=contraparte_id,
                          debe=0, haber=mov.abono, descripcion=desc, orden=2),
         ]
 
@@ -246,13 +249,90 @@ def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int) -> A
     return asiento
 
 
+def generar_asiento_banco_multi(movs: list,
+                                cuenta_ids: list,
+                                montos: list,
+                                aux_ids: list | None = None) -> Asiento:
+    """Consolida varios movimientos bancarios del mismo lado (todos cargo o todos abono)
+    en UN solo asiento. Las cuentas contraparte aparecen una vez con sus montos totales.
+    Cada movimiento queda vinculado al mismo asiento.
+
+    Use case: dos transferencias a la misma persona (préstamo) → un asiento único
+    con 1.1.12 Préstamo a Tercero (aux: persona) HABER banco total.
+    """
+    if not movs:
+        raise ValueError("Se requiere al menos un movimiento")
+    emp_id = movs[0].empresa_id
+    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
+    if not c_banco:
+        raise ValueError(f"Cuenta banco ({_C['BANCO']}) no encontrada")
+
+    if not cuenta_ids:
+        raise ValueError("Se requiere al menos una cuenta contraparte")
+    if aux_ids is None or len(aux_ids) != len(cuenta_ids):
+        aux_ids = [None] * len(cuenta_ids)
+
+    total_cargo = sum((m.cargo or 0) for m in movs)
+    total_abono = sum((m.abono or 0) for m in movs)
+    if total_cargo and total_abono:
+        raise ValueError("Los movimientos seleccionados mezclan cargos y abonos; no se pueden consolidar.")
+    monto_total = total_cargo + total_abono
+
+    if not montos or len(montos) != len(cuenta_ids):
+        montos = [round(monto_total / len(cuenta_ids))] * len(cuenta_ids)
+
+    cuentas_contra = []
+    for cid in cuenta_ids:
+        c = Cuenta.query.get(cid)
+        if not c:
+            raise ValueError(f"Cuenta id={cid} no encontrada")
+        cuentas_contra.append(c)
+
+    fechas = [m.fecha for m in movs if m.fecha]
+    descs = [(m.descripcion or '')[:60] for m in movs[:3]]
+    desc = ' / '.join(d for d in descs if d)
+    if len(movs) > 3:
+        desc = (desc + f' (+{len(movs)-3} más)')[:120]
+    asiento = Asiento(
+        empresa_id=emp_id,
+        fecha=max(fechas) if fechas else None,
+        numero=_proximo_numero(emp_id),
+        descripcion=desc[:120] or 'Consolidado banco',
+        origen='BANCO',
+        estado='BORRADOR',
+    )
+    db.session.add(asiento)
+    db.session.flush()
+
+    lineas = []
+    if total_cargo > 0:
+        for i, (c, monto, aux) in enumerate(zip(cuentas_contra, montos, aux_ids)):
+            lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c.id,
+                                       contraparte_id=aux,
+                                       debe=monto, haber=0, orden=i + 1))
+        lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
+                                   debe=0, haber=monto_total, orden=len(cuenta_ids) + 1))
+    else:
+        lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
+                                   debe=monto_total, haber=0, orden=1))
+        for i, (c, monto, aux) in enumerate(zip(cuentas_contra, montos, aux_ids)):
+            lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c.id,
+                                       contraparte_id=aux,
+                                       debe=0, haber=monto, orden=i + 2))
+    db.session.add_all(lineas)
+    return asiento
+
+
 def generar_asiento_banco_compuesto(mov: MovimientoBanco,
                                     cuenta_ids: list,
-                                    montos: list) -> Asiento:
+                                    montos: list,
+                                    aux_ids: list | None = None) -> Asiento:
     """
     Movimiento bancario con múltiples cuentas contraparte (ej. F29: retención + IVA + PPM).
     Cargo  (salida): DEBE cada cuenta por su monto / HABER banco total
     Abono  (entrada): DEBE banco total / HABER cada cuenta por su monto
+
+    aux_ids: lista paralela a cuenta_ids con contraparte_id (auxiliar) por línea, o None.
     """
     emp_id = mov.empresa_id
     c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
@@ -264,6 +344,8 @@ def generar_asiento_banco_compuesto(mov: MovimientoBanco,
     if not montos or len(montos) != len(cuenta_ids):
         total = (mov.cargo or 0) + (mov.abono or 0)
         montos = [round(total / len(cuenta_ids))] * len(cuenta_ids)
+    if aux_ids is None or len(aux_ids) != len(cuenta_ids):
+        aux_ids = [None] * len(cuenta_ids)
 
     cuentas_contra = []
     for cid in cuenta_ids:
@@ -286,16 +368,18 @@ def generar_asiento_banco_compuesto(mov: MovimientoBanco,
 
     lineas = []
     if (mov.cargo or 0) > 0:
-        for i, (c, monto) in enumerate(zip(cuentas_contra, montos)):
+        for i, (c, monto, aux) in enumerate(zip(cuentas_contra, montos, aux_ids)):
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c.id,
+                                       contraparte_id=aux,
                                        debe=monto, haber=0, orden=i + 1))
         lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
                                    debe=0, haber=total, orden=len(cuenta_ids) + 1))
     else:
         lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
                                    debe=total, haber=0, orden=1))
-        for i, (c, monto) in enumerate(zip(cuentas_contra, montos)):
+        for i, (c, monto, aux) in enumerate(zip(cuentas_contra, montos, aux_ids)):
             lineas.append(LineaAsiento(asiento_id=asiento.id, cuenta_id=c.id,
+                                       contraparte_id=aux,
                                        debe=0, haber=monto, orden=i + 2))
     db.session.add_all(lineas)
     return asiento
