@@ -916,7 +916,11 @@ function actualizarBarra() {
 
     let sumDocSalida = 0, sumDocEntrada = 0;
     docsSel.forEach(c => {
-      const t = parseFloat(c.dataset.total || 0);
+      // Para HONORARIOS comparar contra el líquido pagado (no el bruto que incluye
+      // retención 10.75%) ya que el banco solo paga el líquido.
+      const t = (c.dataset.libro === 'HONORARIOS')
+        ? parseFloat(c.dataset.liquido || c.dataset.total || 0)
+        : parseFloat(c.dataset.total || 0);
       if (c.dataset.libro === 'VENTAS') sumDocEntrada += t;
       else sumDocSalida += t;
     });

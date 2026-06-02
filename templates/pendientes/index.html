@@ -575,7 +575,10 @@ document.addEventListener('submit', async function(e) {
       const procRow = form.closest('tr');
       if (procRow) procRow.remove();
       _pendRow = null;
-      new bootstrap.Modal(document.getElementById('modalAsientoPend')).show();
+      // Mostrar modal por 2.5s y auto-cerrar (evita popups molestos)
+      const modal = new bootstrap.Modal(document.getElementById('modalAsientoPend'));
+      modal.show();
+      setTimeout(() => { try { modal.hide(); } catch(e){} }, 2500);
     } else {
       alert(data.error || 'Error al procesar');
     }

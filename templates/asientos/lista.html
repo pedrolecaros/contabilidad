@@ -168,8 +168,7 @@
         <td style="min-width:280px;border-left:2px solid #dee2e6">
           {% for l in lineas %}
           <div class="d-flex align-items-baseline gap-1" style="font-size:.76rem;line-height:1.5">
-            <span class="font-monospace text-muted" style="min-width:42px;flex-shrink:0">{{ l.cuenta.codigo }}</span>
-            <span class="text-truncate" style="min-width:110px;max-width:140px" title="{{ l.cuenta.nombre }}">{{ l.cuenta.nombre[:22] }}</span>
+            <span class="text-truncate" style="min-width:160px;max-width:200px" title="{{ l.cuenta.codigo }} {{ l.cuenta.nombre }}">{{ l.cuenta.nombre }}</span>
             <span class="ms-auto font-monospace text-end" style="min-width:72px;color:#198754">
               {% if l.debe %}{{ l.debe|clp }}{% endif %}
             </span>
@@ -276,6 +275,7 @@
             </a>
             <form method="post" action="{{ url_for('asientos.anular', eid=empresa.id, aid=a.id) }}"
                   class="d-inline">
+              <input type="hidden" name="next_url" value="{{ request.full_path }}">
               <button class="btn btn-xs btn-sm btn-outline-danger py-0 px-1"
                       title="Anular este asiento confirmado"
                       onclick="return confirm('¿Anular asiento N°{{ a.numero }}?')">

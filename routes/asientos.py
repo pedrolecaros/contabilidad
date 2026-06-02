@@ -576,6 +576,10 @@ def anular(eid, aid):
     log_asiento('ANULAR', asiento, revertible=True)
     db.session.commit()
     flash(f'Asiento N°{asiento.numero} anulado', 'warning')
+    # Volver a la lista preservando filtros (next_url viene del form)
+    back = request.form.get('next_url', '').strip()
+    if back and back.startswith('/'):
+        return redirect(back)
     return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
 
@@ -588,6 +592,9 @@ def recuperar(eid, aid):
     asiento.estado = 'BORRADOR'
     db.session.commit()
     flash(f'Asiento N°{asiento.numero} recuperado como borrador', 'success')
+    back = request.form.get('next_url', '').strip()
+    if back and back.startswith('/'):
+        return redirect(back)
     return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
 

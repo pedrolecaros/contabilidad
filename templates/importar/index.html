@@ -733,12 +733,19 @@ function mostrarResultadoBatch(results, errorGlobal, tipos) {
 
   function detectarTipo(nombre) {
     nombre = nombre.toLowerCase();
-    if (nombre.includes('compra') || nombre.includes('rcv')) return 'compras';
-    if (nombre.includes('venta') || nombre.includes('dte') || nombre.includes('rcv_v')) return 'ventas';
-    if (nombre.includes('honor') || nombre.includes('rh')) return 'honorarios';
+    var ext = (nombre.split('.').pop() || '').toLowerCase();
+    if (nombre.includes('compra') || nombre.startsWith('rcv_c') || nombre.includes('sii_compras')) return 'compras';
+    if (nombre.includes('venta') || nombre.includes('dte_v') || nombre.startsWith('rcv_v') || nombre.includes('sii_ventas')) return 'ventas';
+    if (nombre.includes('honor') || nombre.includes('boleta') || nombre.includes('_rh') || nombre.includes('sii_honor')) return 'honorarios';
+    // Bancos por nombre (incluye variantes): Banco de Chile, BCI, Santander, etc.
     if (nombre.includes('banco') || nombre.includes('cartola') || nombre.includes('bci') ||
-        nombre.includes('santander') || nombre.includes('chile') || nombre.includes('scotiabank') ||
-        nombre.includes('itau') || nombre.includes('estado')) return 'banco';
+        nombre.includes('santander') || nombre.includes('chile') || nombre.includes('bch') ||
+        nombre.includes('scotiabank') || nombre.includes('itau') || nombre.includes('estado') ||
+        nombre.includes('bice') || nombre.includes('falabella') || nombre.includes('security') ||
+        nombre.includes('movimientos') || nombre.includes('detalle')) return 'banco';
+    // Fallback: archivos .xls / .xlsx sin keyword los tratamos como cartola banco
+    // (los libros SII suelen venir como .csv; honorarios sí es .xls pero ya matcheado arriba).
+    if (ext === 'xls' || ext === 'xlsx') return 'banco';
     return null;
   }
 

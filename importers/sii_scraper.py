@@ -384,12 +384,12 @@ def _descargar_honorarios(page, rut: str, periodo_yyyymm: str) -> bytes:
 
     _screenshot(page, f'bhe_{periodo_yyyymm}_informe')
 
-    # Detectar período vacío ANTES de intentar la descarga (evita cuelgue de 30s)
+    # Frases estrictas que SOLO aparecen cuando realmente no hay boletas.
+    # (Evitamos genéricas como "sin datos" que pueden aparecer en celdas
+    # vacías de la tabla aunque sí existan boletas — false positive
+    # reportado en Los Chilcos.)
     _BHE_FRASES_VACIAS = [
         'no existen boletas', 'sin boletas', 'no hay boletas',
-        'no existen registros', 'sin registros', 'no hay registros',
-        'sin datos', 'no hay datos', 'no existen datos',
-        'no hay información', 'totales* :', '0 documentos',
     ]
     content_early = page.content().lower()
     # "sin datos" aparece en la celda de la tabla; Totales en 0 también indica vacío

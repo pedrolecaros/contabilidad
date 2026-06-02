@@ -56,8 +56,9 @@ def _migrar(app):
         "ALTER TABLE liquidaciones ADD COLUMN apv REAL DEFAULT 0.0",
         "ALTER TABLE empresas ADD COLUMN regimen VARCHAR(10) DEFAULT 'GENERAL'",
         'ALTER TABLE empresas ADD COLUMN logo_url VARCHAR(500)',
-        # Integrity: one bank movement can only link to one asiento
-        'CREATE UNIQUE INDEX IF NOT EXISTS uix_movimientos_banco_asiento ON movimientos_banco(asiento_id) WHERE asiento_id IS NOT NULL',
+        # (Eliminado) Antes había un UNIQUE INDEX sobre movimientos_banco.asiento_id
+        # que impedía consolidar varios movs en un solo asiento; ahora se permite.
+        'DROP INDEX IF EXISTS uix_movimientos_banco_asiento',
         "ALTER TABLE asientos ADD COLUMN prestamo_sentido VARCHAR(5) DEFAULT '-'",
         "ALTER TABLE empleados ADD COLUMN apellido_paterno VARCHAR(100)",
         "ALTER TABLE empleados ADD COLUMN apellido_materno VARCHAR(100)",

@@ -119,12 +119,9 @@
 
       <div class="nav-section mt-2">Módulos</div>
       <ul class="nav flex-column">
-        <li><a class="nav-link {% if 'contrapartes' in request.endpoint or request.endpoint == 'reportes.ap_ar' %}active{% endif %}"
-               href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}">
-          <i class="bi bi-people me-2"></i>Proveedores / Clientes</a></li>
-        <li><a class="nav-link {% if request.endpoint == 'reportes.cxc_cxp' %}active{% endif %}"
+        <li><a class="nav-link {% if request.endpoint in ('reportes.cxc_cxp','reportes.ap_ar') or 'contrapartes' in request.endpoint %}active{% endif %}"
                href="{{ url_for('reportes.cxc_cxp', eid=empresa.id) }}">
-          <i class="bi bi-journal-bookmark me-2"></i>CxC / CxP</a></li>
+          <i class="bi bi-journal-bookmark me-2"></i>CxC / CxP — Prov / Cli</a></li>
         <li><a class="nav-link {% if request.endpoint == 'contrapartes.contactos' %}active{% endif %}"
                href="{{ url_for('contrapartes.contactos', **({'from': empresa.id} if empresa else {})) }}">
           <i class="bi bi-person-rolodex me-2"></i>Contactos</a></li>

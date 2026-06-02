@@ -18,6 +18,19 @@
   <small class="text-muted">Saldos desde el libro contable</small>
 </div>
 
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('reportes.cxc_cxp', eid=empresa.id) }}">
+      <i class="bi bi-journal-bookmark me-1"></i>Por cuenta (contable)
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('reportes.ap_ar', eid=empresa.id) }}">
+      <i class="bi bi-people me-1"></i>Por contraparte (SII)
+    </a>
+  </li>
+</ul>
+
 {% macro tabla_cx(lista, tot, color, label_tot) %}
   {% if lista %}
   <div class="table-responsive">
