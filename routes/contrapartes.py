@@ -86,6 +86,7 @@ def index(eid):
                 )
                 .group_by(LineaAsiento.contraparte_id)
                 .all())
+
         filas = []
         for r in rows:
             cp = Contraparte.query.get(r.contraparte_id)

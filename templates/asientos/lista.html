@@ -122,7 +122,9 @@
         </th>
         <th class="sortable" data-col="5" data-type="text" style="cursor:pointer;white-space:nowrap">Estado <span class="sort-icon text-muted">⇅</span></th>
         <th class="sortable" data-col="6" data-type="text" style="cursor:pointer;white-space:nowrap">Conciliación <span class="sort-icon text-muted">⇅</span></th>
-        <th class="text-center" title="Respaldo documental"><i class="bi bi-paperclip"></i></th>
+        <th class="sortable text-center" data-col="8" data-type="num" style="cursor:pointer" title="Respaldo documental">
+          <i class="bi bi-paperclip"></i> <span class="sort-icon text-muted">⇅</span>
+        </th>
         <th class="text-center">Acciones</th>
       </tr>
     </thead>
@@ -211,7 +213,10 @@
         </td>
 
         <!-- Respaldo -->
-        <td class="text-center">
+        {% set _sin_respaldo = (not a.respaldo_url
+                                and a.origen not in ('LIBRO_COMPRAS','LIBRO_VENTAS','HONORARIOS')
+                                and a.estado == 'CONFIRMADO') %}
+        <td class="text-center" data-sort="{{ 1 if _sin_respaldo else 0 }}">
           {% if a.respaldo_url %}
             <a href="{{ attachment_url(a.respaldo_url) }}" target="_blank"
                class="text-success" title="Ver respaldo">
@@ -398,6 +403,11 @@ function setOneAndConfirm(event, id, numero) {
   let sortCol = null, sortDir = 1;
 
   function valorOrden(row, colIdx, tipo) {
+    const cell = row.cells[colIdx];
+    if (cell && cell.dataset && cell.dataset.sort !== undefined) {
+      const n = parseFloat(cell.dataset.sort);
+      return isNaN(n) ? cell.dataset.sort : n;
+    }
     const t = tdText(row, colIdx);
     if (tipo === 'num')  return parseFloat(t.replace(/[^\d.-]/g, '')) || 0;
     if (tipo === 'date') {
