@@ -15,7 +15,6 @@ class Empresa(db.Model):
 
     clave_sii = db.Column(db.String(200))
     participacion_ecox = db.Column(db.Float)          # % participación Ecox (ej: 50.0)
-    tipo_participacion  = db.Column(db.String(10))    # DIRECTA / INDIRECTA
     contribuyente_iva = db.Column(db.Boolean, default=True)  # False → IVA compras es gasto
     tasa_ppm = db.Column(db.Float, default=1.0)              # % PPM (ej: 1.0 = 1%)
     regimen = db.Column(db.String(10), default='GENERAL')    # PYME | GENERAL
@@ -336,6 +335,13 @@ class Prestamo(db.Model):
     empresa = db.relationship('Empresa', foreign_keys=[empresa_id],
                               backref=db.backref('prestamos', lazy='dynamic'))
     empresa_relacionada = db.relationship('Empresa', foreign_keys=[empresa_relacionada_id])
+
+    def saldo_actual(self):
+        saldo = float(self.monto_original or 0)
+        for a in self.asientos_vinculados.filter_by(estado='CONFIRMADO').all():
+            monto = max(a.total_debe or 0, a.total_haber or 0)
+            saldo += monto if (a.prestamo_sentido or '-') == '+' else -monto
+        return saldo
 
 
 class ReglaClasificacion(db.Model):

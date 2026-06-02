@@ -19,9 +19,6 @@
       <td class="text-muted small">{{ (e.giro or '')[:50] }}</td>
       <td class="text-nowrap small">
         {% if e.participacion_ecox is not none %}
-          <span class="badge {% if e.tipo_participacion == 'DIRECTA' %}bg-primary{% else %}bg-secondary{% endif %}">
-            {{ e.tipo_participacion or '' }}
-          </span>
           {{ e.participacion_ecox|int if e.participacion_ecox == e.participacion_ecox|int else e.participacion_ecox }}%
         {% else %}
           <span class="text-muted">—</span>

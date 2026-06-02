@@ -18,26 +18,21 @@ def _contrapartes_json(eid):
 
 
 def _prestamo_dict(p):
-    saldo = float(p.monto_original or 0)
-    for a in p.asientos_vinculados.filter_by(estado='CONFIRMADO').all():
-        monto = max(a.total_debe or 0, a.total_haber or 0)
-        sentido = a.prestamo_sentido or '-'
-        if sentido == '+':
-            saldo += monto
-        else:
-            saldo -= monto
     return {
         'id': p.id,
         'nombre': p.nombre,
         'tipo': p.tipo,
         'moneda': p.moneda,
         'acreedor_deudor': p.acreedor_deudor or '',
-        'saldo_actual': saldo,
+        'saldo_actual': p.saldo_actual(),
     }
 
 
-_PRESTAMO_CODIGOS = {'2.1.10': 'PAGAR', '2.1.11': 'PAGAR', '2.1.12': 'PAGAR',
-                     '1.1.10': 'COBRAR', '1.1.11': 'COBRAR', '1.1.12': 'COBRAR'}
+from engine.plan_cuentas_default import PRESTAMOS_PAGAR_CODIGOS, PRESTAMOS_COBRAR_CODIGOS
+_PRESTAMO_CODIGOS = (
+    {c: 'PAGAR' for c in PRESTAMOS_PAGAR_CODIGOS}
+    | {c: 'COBRAR' for c in PRESTAMOS_COBRAR_CODIGOS}
+)
 
 
 def _save_prestamo_link(asiento, prestamo_id_str):

@@ -104,3 +104,30 @@ PLAN_CUENTAS_CHILE = [
     ('5.3.01', 'Pérdida en Venta de Activos',           'GASTO',     'DEUDORA',   False, 3),
     ('5.3.02', 'Otros Gastos No Operacionales',         'GASTO',     'DEUDORA',   False, 3),
 ]
+
+
+# Códigos de cuentas usados por la lógica de negocio (generación de asientos,
+# clasificación, dashboards). Centraliza referencias hardcodeadas.
+CUENTAS_SISTEMA = {
+    'CAJA':             '1.1.01',
+    'BANCO':            '1.1.02',
+    'CLIENTES':         '1.1.03',
+    'DOC_COBRAR':       '1.1.04',
+    'IVA_CF':           '1.1.05',
+    'PROVEEDORES':      '2.1.01',
+    'DOC_PAGAR':        '2.1.02',
+    'IVA_DF':           '2.1.03',
+    'RET_HONORARIOS':   '2.1.04',
+    'VENTAS_AFECTAS':   '4.1.01',
+    'VENTAS_EXENTAS':   '4.1.02',
+    'HONORARIOS':       '5.2.02',
+    'GASTO_GENERAL':    '5.2.17',
+}
+
+# Cuentas líquidas (caja + banco) para cálculo de saldo en dashboard.
+CODIGOS_LIQUIDEZ = ('1.1.01', '1.1.02')
+
+# Cuentas de préstamos (financiero) por tipo.
+PRESTAMOS_PAGAR_CODIGOS  = ('2.1.10', '2.1.11', '2.1.12')
+PRESTAMOS_COBRAR_CODIGOS = ('1.1.10', '1.1.11', '1.1.12')
+

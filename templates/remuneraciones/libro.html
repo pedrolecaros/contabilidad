@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Libro de Remuneraciones – {{ empresa.razon_social }}{% endblock %}
 
-{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+{% macro num(v) %}{{ v | clp }}{% endmacro %}
 
 {% block breadcrumb %}
 <nav aria-label="breadcrumb">

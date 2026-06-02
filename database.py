@@ -15,7 +15,8 @@ def _migrar(app):
         'ALTER TABLE movimientos_banco ADD COLUMN respaldo_url VARCHAR(500)',
         'ALTER TABLE asientos ADD COLUMN respaldo_url VARCHAR(500)',
         'ALTER TABLE empresas ADD COLUMN participacion_ecox REAL',
-        "ALTER TABLE empresas ADD COLUMN tipo_participacion VARCHAR(10)",
+        # tipo_participacion: columna obsoleta — se mantiene en DBs existentes
+        # por compatibilidad, pero ya no se usa en el modelo.
         "ALTER TABLE liquidaciones ADD COLUMN estado VARCHAR(15) DEFAULT 'BORRADOR'",
         "CREATE TABLE IF NOT EXISTS variables_mensuales (id INTEGER PRIMARY KEY, periodo VARCHAR(7) UNIQUE, uf REAL, utm REAL, tope_imponible REAL, tope_gratificacion REAL, imm REAL, fecha_actualizacion DATETIME)",
         "ALTER TABLE empleados ADD COLUMN tipo_sueldo VARCHAR(10) DEFAULT 'BRUTO'",

@@ -21,18 +21,9 @@ def index(eid):
     asientos_borrador = Asiento.query.filter_by(empresa_id=eid, estado='BORRADOR').count()
 
     # Saldos CxC / CxP
-    from sqlalchemy import func as _func
     prestamos_empresa = Prestamo.query.filter_by(empresa_id=eid, activo=True).all()
-
-    def _saldo_prestamo(p):
-        saldo = float(p.monto_original or 0)
-        for a in p.asientos_vinculados.filter_by(estado='CONFIRMADO').all():
-            monto = max(a.total_debe or 0, a.total_haber or 0)
-            saldo += monto if (a.prestamo_sentido or '-') == '+' else -monto
-        return saldo
-
-    total_por_pagar  = sum(_saldo_prestamo(p) for p in prestamos_empresa if p.tipo == 'PAGAR')
-    total_por_cobrar = sum(_saldo_prestamo(p) for p in prestamos_empresa if p.tipo == 'COBRAR')
+    total_por_pagar  = sum(p.saldo_actual() for p in prestamos_empresa if p.tipo == 'PAGAR')
+    total_por_cobrar = sum(p.saldo_actual() for p in prestamos_empresa if p.tipo == 'COBRAR')
 
     # Último período con liquidaciones emitidas
     ultima_liq = (db.session.query(Liquidacion.periodo)
@@ -57,8 +48,7 @@ def index(eid):
     ).filter_by(empresa_id=eid).scalar() or 0)
 
     # Cuentas de activo líquido con saldo acreedor (anómalo para cuentas DEUDORA)
-    # Códigos típicos: 1.1.01 Caja, 1.1.02 Banco
-    _CODIGOS_BANCO = {'1.1.01', '1.1.02'}
+    from engine.plan_cuentas_default import CODIGOS_LIQUIDEZ as _CODIGOS_BANCO
     cuentas_banco = (Cuenta.query
                      .filter_by(empresa_id=eid, es_titulo=False, activa=True)
                      .filter(Cuenta.codigo.in_(_CODIGOS_BANCO))

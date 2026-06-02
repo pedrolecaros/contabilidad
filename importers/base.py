@@ -86,3 +86,79 @@ def primera_col(df, *candidatos):
         if c in df.columns:
             return c
     return None
+
+
+def _leer_csv_sii(contenido):
+    """Lee CSV típico del SII (separador ';', encoding latin-1/utf-8)."""
+    for enc in ENCODINGS:
+        try:
+            df = pd.read_csv(io.BytesIO(contenido), sep=';', encoding=enc,
+                             dtype=str, skipinitialspace=True, index_col=False)
+            if len(df.columns) > 3:
+                return df
+        except Exception:
+            continue
+    raise ValueError("No se pudo leer el CSV del SII")
+
+
+def importar_libro_sii(file_storage, empresa_id, tipo_libro, alias):
+    """Importa libro SII de Compras o Ventas.
+
+    `alias` es un dict con tuplas de nombres alternativos para columnas:
+    {'tipo': (...), 'rut': (...), 'rs': (...), 'folio': (...),
+     'fecha': (...), 'exento': (...), 'neto': (...), 'iva': (...), 'total': (...)}
+    """
+    from models import db, DocumentoSII
+
+    contenido = file_storage.read()
+    df = _leer_csv_sii(contenido)
+    df = normalizar_columnas(df)
+
+    cols = {k: primera_col(df, *names) for k, names in alias.items()}
+
+    importados = 0
+    errores = []
+
+    for i, row in df.iterrows():
+        try:
+            tipo  = str(row[cols['tipo']]).strip()  if cols.get('tipo')  else ''
+            folio = str(row[cols['folio']]).strip() if cols.get('folio') else ''
+            rut   = str(row[cols['rut']]).strip()   if cols.get('rut')   else ''
+            rs    = str(row[cols['rs']]).strip()    if cols.get('rs')    else ''
+
+            if rut in ('', 'nan') or folio in ('', 'nan'):
+                continue
+
+            fecha  = parsear_fecha(row[cols['fecha']])  if cols.get('fecha')  else None
+            exento = parsear_monto(row[cols['exento']]) if cols.get('exento') else 0.0
+            neto   = parsear_monto(row[cols['neto']])   if cols.get('neto')   else 0.0
+            iva    = parsear_monto(row[cols['iva']])    if cols.get('iva')    else 0.0
+            total  = parsear_monto(row[cols['total']])  if cols.get('total')  else 0.0
+
+            if DocumentoSII.query.filter_by(
+                empresa_id=empresa_id, tipo_libro=tipo_libro,
+                tipo_dte=tipo, folio=folio, rut_contraparte=rut
+            ).first():
+                continue
+
+            doc = DocumentoSII(
+                empresa_id=empresa_id,
+                tipo_libro=tipo_libro,
+                tipo_dte=tipo,
+                folio=folio,
+                fecha=fecha,
+                rut_contraparte=rut,
+                razon_social_contraparte=rs,
+                monto_exento=exento,
+                monto_neto=neto,
+                iva=iva,
+                total=total,
+                archivo_origen=file_storage.filename,
+            )
+            db.session.add(doc)
+            importados += 1
+        except Exception as e:
+            errores.append(f"Fila {i+2}: {e}")
+
+    db.session.commit()
+    return {'importados': importados, 'errores': errores}

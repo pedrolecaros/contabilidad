@@ -5,14 +5,15 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from models import db, Empresa, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion
 from engine import asientos as motor
 from engine.asientos import confirmar_asiento
+from engine.plan_cuentas_default import CUENTAS_SISTEMA as _C
 
 bp = Blueprint('pendientes', __name__)
 
 # Cuentas que disparan selector de documento al contabilizar banco
 CUENTA_CODIGO_TIPO = {
-    '2.1.01': ['COMPRAS', 'HONORARIOS'],  # Proveedores
-    '1.1.03': ['VENTAS'],                  # Clientes
-    '2.1.04': ['HONORARIOS'],              # Retenciones honorarios
+    _C['PROVEEDORES']:    ['COMPRAS', 'HONORARIOS'],
+    _C['CLIENTES']:       ['VENTAS'],
+    _C['RET_HONORARIOS']: ['HONORARIOS'],
 }
 
 

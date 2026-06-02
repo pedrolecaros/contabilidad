@@ -7,6 +7,7 @@ from models import db, Empresa, Cuenta, LineaAsiento, Asiento, DocumentoSII, Con
 from sqlalchemy import func, case
 from collections import defaultdict
 from engine.contabilidad import sumas_balance as _sumas_balance, clasificar_cuenta_efe as _clasificar_cuenta_efe
+from engine.saldos import saldo_por_contraparte
 
 bp = Blueprint('reportes', __name__)
 
@@ -252,41 +253,10 @@ def resultado(eid):
 
 @bp.route('/empresa/<int:eid>/reportes/ap-ar')
 def ap_ar(eid):
-    from models import Contraparte
     empresa = Empresa.query.get_or_404(eid)
-
-    def _saldo_aux_cp(cuenta_codigo):
-        c = Cuenta.query.filter_by(empresa_id=eid, codigo=cuenta_codigo).first()
-        if not c:
-            return None, 0, []
-        rows = (db.session.query(
-                    LineaAsiento.contraparte_id,
-                    func.sum(LineaAsiento.debe).label('debe'),
-                    func.sum(LineaAsiento.haber).label('haber'),
-                )
-                .join(Asiento)
-                .filter(
-                    Asiento.empresa_id == eid,
-                    Asiento.estado == 'CONFIRMADO',
-                    LineaAsiento.cuenta_id == c.id,
-                    LineaAsiento.contraparte_id.isnot(None),
-                )
-                .group_by(LineaAsiento.contraparte_id)
-                .all())
-        filas = []
-        for r in rows:
-            cp = Contraparte.query.get(r.contraparte_id)
-            if not cp:
-                continue
-            saldo = round((r.haber - r.debe) if c.naturaleza == 'ACREEDORA' else (r.debe - r.haber), 2)
-            if abs(saldo) >= 1:
-                filas.append({'cp': cp, 'saldo': saldo})
-        filas.sort(key=lambda x: abs(x['saldo']), reverse=True)
-        return c.nombre, round(c.saldo()), filas
-
-    nom_prov, saldo_proveedores, proveedores = _saldo_aux_cp('2.1.01')
-    nom_cli,  saldo_clientes,    clientes    = _saldo_aux_cp('1.1.03')
-    nom_hon,  saldo_honorarios,  honorarios  = _saldo_aux_cp('2.1.04')
+    nom_prov, saldo_proveedores, proveedores = saldo_por_contraparte(eid, '2.1.01')
+    nom_cli,  saldo_clientes,    clientes    = saldo_por_contraparte(eid, '1.1.03')
+    nom_hon,  saldo_honorarios,  honorarios  = saldo_por_contraparte(eid, '2.1.04')
 
     return render_template('reportes/ap_ar.html',
         empresa=empresa,

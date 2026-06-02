@@ -15,18 +15,7 @@ def lista(eid):
                  .order_by(Prestamo.activo.desc(), Prestamo.fecha_inicio.desc())
                  .all())
 
-    # Compute saldo_actual for each prestamo
-    saldos = {}
-    for p in prestamos:
-        saldo = float(p.monto_original or 0)
-        for a in p.asientos_vinculados.filter_by(estado='CONFIRMADO').all():
-            monto = max(a.total_debe or 0, a.total_haber or 0)
-            sentido = a.prestamo_sentido or '-'
-            if sentido == '+':
-                saldo += monto
-            else:
-                saldo -= monto
-        saldos[p.id] = saldo
+    saldos = {p.id: p.saldo_actual() for p in prestamos}
 
     total_pagar = sum(saldos[p.id] for p in prestamos if p.activo and p.tipo == 'PAGAR')
     total_cobrar = sum(saldos[p.id] for p in prestamos if p.activo and p.tipo == 'COBRAR')

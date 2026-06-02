@@ -3,6 +3,7 @@ from datetime import date
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 from models import db, Empresa, Contraparte, DocumentoSII, Conciliacion, MovimientoBanco, Cuenta, LineaAsiento, Asiento
 from sqlalchemy import func
+from engine.saldos import saldo_por_contraparte
 
 bp = Blueprint('contrapartes', __name__)
 
@@ -15,34 +16,7 @@ TIPO_LIBRO_MAP = {
 }
 
 
-def _validar_rut_dv(rut: str) -> bool:
-    """Valida el dígito verificador de un RUT chileno usando módulo 11."""
-    try:
-        rut_clean = rut.strip().upper().replace('.', '').replace(' ', '')
-        if not rut_clean:
-            return True
-        if '-' in rut_clean:
-            body, dv = rut_clean.rsplit('-', 1)
-        else:
-            body, dv = rut_clean[:-1], rut_clean[-1]
-        body = body.lstrip('0') or '0'
-        if not body.isdigit():
-            return False
-        digits = [int(c) for c in body]
-        factors = [2, 3, 4, 5, 6, 7]
-        total = 0
-        for i, d in enumerate(reversed(digits)):
-            total += d * factors[i % 6]
-        remainder = 11 - (total % 11)
-        if remainder == 11:
-            expected = '0'
-        elif remainder == 10:
-            expected = 'K'
-        else:
-            expected = str(remainder)
-        return dv == expected
-    except Exception:
-        return True
+from utils.rut import validar_rut_dv as _validar_rut_dv
 
 
 def _periodo(mes_str):
@@ -67,40 +41,10 @@ def index(eid):
     except ValueError:
         desde, hasta = date(hoy.year, 1, 1), hoy
 
-    # ── Saldo contable por contraparte (fuente: lineas_asiento) ──
-    def _saldo_aux_cp(cuenta_codigo):
-        c = Cuenta.query.filter_by(empresa_id=eid, codigo=cuenta_codigo).first()
-        if not c:
-            return None, None, []
-        rows = (db.session.query(
-                    LineaAsiento.contraparte_id,
-                    func.sum(LineaAsiento.debe).label('debe'),
-                    func.sum(LineaAsiento.haber).label('haber'),
-                )
-                .join(Asiento)
-                .filter(
-                    Asiento.empresa_id == eid,
-                    Asiento.estado == 'CONFIRMADO',
-                    LineaAsiento.cuenta_id == c.id,
-                    LineaAsiento.contraparte_id.isnot(None),
-                )
-                .group_by(LineaAsiento.contraparte_id)
-                .all())
-
-        filas = []
-        for r in rows:
-            cp = Contraparte.query.get(r.contraparte_id)
-            if not cp:
-                continue
-            saldo = round((r.haber - r.debe) if c.naturaleza == 'ACREEDORA' else (r.debe - r.haber), 2)
-            if abs(saldo) >= 1:
-                filas.append({'cp': cp, 'saldo': saldo})
-        filas.sort(key=lambda x: abs(x['saldo']), reverse=True)
-        return c.nombre, round(c.saldo()), filas
-
-    nom_prov, saldo_cta_prov, proveedores = _saldo_aux_cp('2.1.01')
-    nom_cli,  saldo_cta_cli,  clientes    = _saldo_aux_cp('1.1.03')
-    nom_hon,  saldo_cta_hon,  honorarios  = _saldo_aux_cp('2.1.04')
+    # ── Saldo contable por contraparte ──
+    nom_prov, saldo_cta_prov, proveedores = saldo_por_contraparte(eid, '2.1.01')
+    nom_cli,  saldo_cta_cli,  clientes    = saldo_por_contraparte(eid, '1.1.03')
+    nom_hon,  saldo_cta_hon,  honorarios  = saldo_por_contraparte(eid, '2.1.04')
 
     # ── Contrapartes list ──
     q = Contraparte.query.filter_by(empresa_id=eid)

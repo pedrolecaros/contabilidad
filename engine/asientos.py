@@ -3,6 +3,7 @@ Motor de journalización automática.
 Genera asientos en partida doble a partir de documentos SII o movimientos bancarios.
 """
 from models import db, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion
+from engine.plan_cuentas_default import CUENTAS_SISTEMA as _C
 
 
 TASA_IVA = 0.19
@@ -44,12 +45,12 @@ def generar_asiento_compra(doc: DocumentoSII) -> Asiento:
     emp_id = doc.empresa_id
     es_nc = str(doc.tipo_dte) in TIPOS_NC
 
-    c_gasto = _buscar_cuenta(emp_id, '5.2.17')
-    c_iva_cf = _buscar_cuenta(emp_id, '1.1.05')
-    c_prov = _buscar_cuenta(emp_id, '2.1.01')
+    c_gasto = _buscar_cuenta(emp_id, _C['GASTO_GENERAL'])
+    c_iva_cf = _buscar_cuenta(emp_id, _C['IVA_CF'])
+    c_prov = _buscar_cuenta(emp_id, _C['PROVEEDORES'])
 
     if not all([c_gasto, c_iva_cf, c_prov]):
-        raise ValueError("Faltan cuentas del plan de cuentas (5.2.17, 1.1.05, 2.1.01)")
+        raise ValueError(f"Faltan cuentas del plan de cuentas ({_C['GASTO_GENERAL']}, {_C['IVA_CF']}, {_C['PROVEEDORES']})")
 
     iva   = abs(doc.iva)    # solo IVA recuperable
     total = abs(doc.total)
@@ -110,12 +111,12 @@ def generar_asiento_venta(doc: DocumentoSII) -> Asiento:
     es_nc = str(doc.tipo_dte) in TIPOS_NC
     es_exenta = doc.iva == 0 and doc.monto_exento > 0
 
-    c_clientes = _buscar_cuenta(emp_id, '1.1.03')
-    c_ventas = _buscar_cuenta(emp_id, '4.1.02' if es_exenta else '4.1.01')
-    c_iva_df = _buscar_cuenta(emp_id, '2.1.03')
+    c_clientes = _buscar_cuenta(emp_id, _C['CLIENTES'])
+    c_ventas = _buscar_cuenta(emp_id, _C['VENTAS_EXENTAS'] if es_exenta else _C['VENTAS_AFECTAS'])
+    c_iva_df = _buscar_cuenta(emp_id, _C['IVA_DF'])
 
     if not all([c_clientes, c_ventas, c_iva_df]):
-        raise ValueError("Faltan cuentas del plan de cuentas (1.1.03, 4.1.01/02, 2.1.03)")
+        raise ValueError(f"Faltan cuentas del plan de cuentas ({_C['CLIENTES']}, {_C['VENTAS_AFECTAS']}/{_C['VENTAS_EXENTAS']}, {_C['IVA_DF']})")
 
     neto = abs(doc.monto_neto) + abs(doc.monto_exento)
     iva = abs(doc.iva)
@@ -167,12 +168,12 @@ def generar_asiento_honorario(doc: DocumentoSII) -> Asiento:
     _validar_doc(doc)
     emp_id = doc.empresa_id
 
-    c_honor = _buscar_cuenta(emp_id, '5.2.02')
-    c_prov = _buscar_cuenta(emp_id, '2.1.01')
-    c_reten = _buscar_cuenta(emp_id, '2.1.04')
+    c_honor = _buscar_cuenta(emp_id, _C['HONORARIOS'])
+    c_prov = _buscar_cuenta(emp_id, _C['PROVEEDORES'])
+    c_reten = _buscar_cuenta(emp_id, _C['RET_HONORARIOS'])
 
     if not all([c_honor, c_prov, c_reten]):
-        raise ValueError("Faltan cuentas del plan de cuentas (5.2.02, 2.1.01, 2.1.04)")
+        raise ValueError(f"Faltan cuentas del plan de cuentas ({_C['HONORARIOS']}, {_C['PROVEEDORES']}, {_C['RET_HONORARIOS']})")
 
     bruto = abs(doc.total or doc.monto_neto)
     retencion = round(bruto * TASA_RETENCION_HONORARIOS)
@@ -208,11 +209,11 @@ def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int) -> A
     Abono  (entrada): DEBE banco / HABER contraparte
     """
     emp_id = mov.empresa_id
-    c_banco = _buscar_cuenta(emp_id, '1.1.02')
+    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
     c_contra = Cuenta.query.get(cuenta_contraparte_id)
 
     if not c_banco or not c_contra:
-        raise ValueError("Cuenta banco (1.1.02) o cuenta contraparte no encontrada")
+        raise ValueError(f"Cuenta banco ({_C['BANCO']}) o cuenta contraparte no encontrada")
 
     asiento = Asiento(
         empresa_id=emp_id,
@@ -254,9 +255,9 @@ def generar_asiento_banco_compuesto(mov: MovimientoBanco,
     Abono  (entrada): DEBE banco total / HABER cada cuenta por su monto
     """
     emp_id = mov.empresa_id
-    c_banco = _buscar_cuenta(emp_id, '1.1.02')
+    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
     if not c_banco:
-        raise ValueError("Cuenta banco (1.1.02) no encontrada")
+        raise ValueError(f"Cuenta banco ({_C['BANCO']}) no encontrada")
 
     if not cuenta_ids:
         raise ValueError("Se requiere al menos una cuenta contraparte")
@@ -300,24 +301,27 @@ def generar_asiento_banco_compuesto(mov: MovimientoBanco,
     return asiento
 
 
-def generar_asiento_pago_proveedor(mov: MovimientoBanco) -> Asiento:
-    """
-    Pago a proveedor vinculado a doc SII (compra/honorario):
-      DEBE  Proveedores (2.1.01)   monto del cargo bancario
-      HABER Banco       (1.1.02)   monto del cargo bancario
+def _generar_asiento_banco_vs_cuenta(mov: MovimientoBanco,
+                                     codigo_cuenta: str,
+                                     descripcion_prefijo: str) -> Asiento:
+    """Asiento cierre de cargo/abono bancario contra una cuenta del plan.
+
+    Cargo (salida): DEBE cuenta / HABER banco
+    Abono (entrada): DEBE banco / HABER cuenta
     """
     emp_id = mov.empresa_id
-    c_banco = _buscar_cuenta(emp_id, '1.1.02')
-    c_prov  = _buscar_cuenta(emp_id, '2.1.01')
-    if not c_banco or not c_prov:
-        raise ValueError("Faltan cuentas 1.1.02 o 2.1.01 en el plan de cuentas")
+    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
+    c_contra = _buscar_cuenta(emp_id, codigo_cuenta)
+    if not c_banco or not c_contra:
+        raise ValueError(f"Faltan cuentas {_C['BANCO']} o {codigo_cuenta} en el plan de cuentas")
 
-    monto = mov.cargo if (mov.cargo or 0) > 0 else (mov.abono or 0)
+    es_cargo = (mov.cargo or 0) > 0
+    monto = mov.cargo if es_cargo else (mov.abono or 0)
     asiento = Asiento(
         empresa_id=emp_id,
         fecha=mov.fecha,
         numero=_proximo_numero(emp_id),
-        descripcion=f"Pago proveedor: {(mov.descripcion or '')[:60]}",
+        descripcion=f"{descripcion_prefijo}: {(mov.descripcion or '')[:60]}",
         origen='BANCO',
         estado='BORRADOR',
     )
@@ -325,9 +329,9 @@ def generar_asiento_pago_proveedor(mov: MovimientoBanco) -> Asiento:
     db.session.flush()
 
     desc = (mov.descripcion or '')[:80]
-    if (mov.cargo or 0) > 0:
+    if es_cargo:
         lineas = [
-            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
+            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_contra.id,
                          debe=monto, haber=0, descripcion=desc, orden=1),
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
                          debe=0, haber=monto, descripcion=desc, orden=2),
@@ -336,54 +340,21 @@ def generar_asiento_pago_proveedor(mov: MovimientoBanco) -> Asiento:
         lineas = [
             LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
                          debe=monto, haber=0, descripcion=desc, orden=1),
-            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
+            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_contra.id,
                          debe=0, haber=monto, descripcion=desc, orden=2),
         ]
     db.session.add_all(lineas)
     return asiento
+
+
+def generar_asiento_pago_proveedor(mov: MovimientoBanco) -> Asiento:
+    """Pago a proveedor vinculado a doc SII (compra/honorario)."""
+    return _generar_asiento_banco_vs_cuenta(mov, _C['PROVEEDORES'], 'Pago proveedor')
 
 
 def generar_asiento_cobro_cliente(mov: MovimientoBanco) -> Asiento:
-    """
-    Cobro de cliente vinculado a doc SII (venta):
-      DEBE  Banco     (1.1.02)   monto del abono bancario
-      HABER Clientes  (1.1.03)   monto del abono bancario
-    """
-    emp_id = mov.empresa_id
-    c_banco = _buscar_cuenta(emp_id, '1.1.02')
-    c_cli   = _buscar_cuenta(emp_id, '1.1.03')
-    if not c_banco or not c_cli:
-        raise ValueError("Faltan cuentas 1.1.02 o 1.1.03 en el plan de cuentas")
-
-    monto = mov.abono if (mov.abono or 0) > 0 else (mov.cargo or 0)
-    asiento = Asiento(
-        empresa_id=emp_id,
-        fecha=mov.fecha,
-        numero=_proximo_numero(emp_id),
-        descripcion=f"Cobro cliente: {(mov.descripcion or '')[:60]}",
-        origen='BANCO',
-        estado='BORRADOR',
-    )
-    db.session.add(asiento)
-    db.session.flush()
-
-    desc = (mov.descripcion or '')[:80]
-    if (mov.abono or 0) > 0:
-        lineas = [
-            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=monto, haber=0, descripcion=desc, orden=1),
-            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_cli.id,
-                         debe=0, haber=monto, descripcion=desc, orden=2),
-        ]
-    else:
-        lineas = [
-            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_cli.id,
-                         debe=monto, haber=0, descripcion=desc, orden=1),
-            LineaAsiento(asiento_id=asiento.id, cuenta_id=c_banco.id,
-                         debe=0, haber=monto, descripcion=desc, orden=2),
-        ]
-    db.session.add_all(lineas)
-    return asiento
+    """Cobro de cliente vinculado a doc SII (venta)."""
+    return _generar_asiento_banco_vs_cuenta(mov, _C['CLIENTES'], 'Cobro cliente')
 
 
 

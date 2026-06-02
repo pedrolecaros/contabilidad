@@ -11,7 +11,7 @@
 </nav>
 {% endblock %}
 {% block content %}
-{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+{% macro num(v) %}{{ v | clp }}{% endmacro %}
 {% set no_imponibles   = (liq.total_haberes | float) - (liq.renta_imponible | float) %}
 {% set extra_isapre    = [(liq.total_descuentos | float) - (liq.afp | float) - (liq.salud | float) - (liq.cesantia_trab | float) - (liq.impuesto_renta | float) - (liq.apv | float), 0] | max %}
 {% set afp_previred    = (liq.afp | float) + (liq.afp_emp | float) + (liq.sis | float) + (liq.ev_emp | float) + (liq.mutual | float) %}

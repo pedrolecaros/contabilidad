@@ -838,54 +838,6 @@ class TestEmpresaForm(unittest.TestCase):
             data.update(extra)
         return self.client.post('/empresas/nueva', data=data, follow_redirects=True)
 
-    def test_e01_crear_sin_tipo_participacion(self):
-        """Empresa se crea sin tipo_participacion (queda None)."""
-        r = self._post_empresa('12.345.678-9', 'Sin Tipo SpA')
-        self.assertEqual(r.status_code, 200)
-        with self.app_obj.app_context():
-            from models import Empresa
-            e = Empresa.query.filter_by(razon_social='Sin Tipo SpA').first()
-            self.assertIsNotNone(e)
-            self.assertIsNone(e.tipo_participacion)
-
-    def test_e02_tipo_ignorado_aunque_enviado(self):
-        """Aunque se envíe tipo_participacion en POST, NO se guarda."""
-        r = self._post_empresa('11.222.333-4', 'Con Tipo SpA',
-                               extra={'tipo_participacion': 'DIRECTA'})
-        self.assertEqual(r.status_code, 200)
-        with self.app_obj.app_context():
-            from models import Empresa
-            e = Empresa.query.filter_by(razon_social='Con Tipo SpA').first()
-            self.assertIsNotNone(e)
-            self.assertIsNone(e.tipo_participacion)
-
-    def test_e03_form_sin_campo_tipo(self):
-        """GET /empresas/nueva no contiene 'DIRECTA', 'INDIRECTA' ni tipo_participacion."""
-        r = self.client.get('/empresas/nueva')
-        self.assertEqual(r.status_code, 200)
-        self.assertNotIn(b'DIRECTA', r.data)
-        self.assertNotIn(b'INDIRECTA', r.data)
-        self.assertNotIn(b'tipo_participacion', r.data)
-
-    def test_e04_editar_no_modifica_tipo(self):
-        """Editar empresa no toca tipo_participacion."""
-        self._post_empresa('55.666.777-8', 'Empresa Edit SpA')
-        with self.app_obj.app_context():
-            from models import Empresa, db
-            e = Empresa.query.filter_by(razon_social='Empresa Edit SpA').first()
-            eid = e.id
-        r = self.client.post(f'/empresa/{eid}/editar', data={
-            'rut': '55.666.777-8', 'razon_social': 'Empresa Edit SpA Mod',
-            'contribuyente_iva': 'on', 'tasa_ppm': '1.5',
-            'tipo_participacion': 'INDIRECTA',
-        }, follow_redirects=True)
-        self.assertEqual(r.status_code, 200)
-        with self.app_obj.app_context():
-            from models import Empresa
-            e = Empresa.query.get(eid)
-            self.assertIsNone(e.tipo_participacion)
-
-
 class TestAsientoDescripciones(unittest.TestCase):
     """Item 12: Descripción detallada en libro mayor/diario para cuentas CxC/CxP."""
 

@@ -70,7 +70,7 @@
 </div>
 
 {# ── Macro for number formatting ── #}
-{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+{% macro num(v) %}{{ v | clp }}{% endmacro %}
 
 {# ── Company header ── #}
 <div class="empresa-header">

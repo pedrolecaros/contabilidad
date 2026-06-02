@@ -41,7 +41,7 @@
   <span style="font-size:11pt">Período: {{ liq.periodo }}</span>
 </div>
 
-{% macro num(v) %}{{ '{:,.0f}'.format(v | float).replace(',','.') }}{% endmacro %}
+{% macro num(v) %}{{ v | clp }}{% endmacro %}
 {% set no_imponibles = (liq.total_haberes | float) - (liq.renta_imponible | float) %}
 
 <!-- Datos empleado -->

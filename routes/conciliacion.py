@@ -189,14 +189,17 @@ def crear(eid):
         for m in movs:
             try:
                 asiento = motor.generar_asiento_banco_compuesto(m, cuenta_ids, cuenta_montos)
+                asiento_ok = True
                 if accion_asiento == 'confirmar':
                     try:
                         confirmar_asiento(asiento)
-                    except ValueError:
-                        pass
-                m.procesado = True
-                m.asiento_id = asiento.id
-                asientos_creados += 1
+                    except ValueError as e:
+                        errores_asiento.append(f"Mov {m.fecha}: asiento no cuadra — {e}")
+                        asiento_ok = False
+                if asiento_ok:
+                    m.procesado = True
+                    m.asiento_id = asiento.id
+                    asientos_creados += 1
             except Exception as e:
                 errores_asiento.append(f"Mov {m.fecha}: {e}")
 
@@ -215,15 +218,18 @@ def crear(eid):
                 asiento = motor.generar_asiento_honorario(d)
             else:
                 continue
+            asiento_ok = True
             if accion_asiento == 'confirmar':
                 try:
                     confirmar_asiento(asiento)
-                except ValueError:
-                    pass
-            d.procesado = True
-            d.asiento_id = asiento.id
-            asientos_creados += 1
-            tipos_doc.add(d.tipo_libro)
+                except ValueError as e:
+                    errores_asiento.append(f"Folio {d.folio}: asiento no cuadra — {e}")
+                    asiento_ok = False
+            if asiento_ok:
+                d.procesado = True
+                d.asiento_id = asiento.id
+                asientos_creados += 1
+                tipos_doc.add(d.tipo_libro)
         except Exception as e:
             errores_asiento.append(f"Folio {d.folio}: {e}")
 
@@ -239,14 +245,17 @@ def crear(eid):
                     asiento = generar_asiento_cobro_cliente(m)
                 else:
                     asiento = generar_asiento_pago_proveedor(m)
+                asiento_ok = True
                 if accion_asiento == 'confirmar':
                     try:
                         confirmar_asiento(asiento)
-                    except ValueError:
-                        pass
-                m.procesado = True
-                m.asiento_id = asiento.id
-                asientos_creados += 1
+                    except ValueError as e:
+                        errores_asiento.append(f"Mov banco {m.fecha}: asiento no cuadra — {e}")
+                        asiento_ok = False
+                if asiento_ok:
+                    m.procesado = True
+                    m.asiento_id = asiento.id
+                    asientos_creados += 1
             except Exception as e:
                 errores_asiento.append(f"Mov banco {m.fecha}: {e}")
 

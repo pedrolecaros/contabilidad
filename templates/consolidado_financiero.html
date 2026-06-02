@@ -412,7 +412,6 @@
                 <tr>
                   <th>Empresa</th>
                   <th class="text-center">Participación</th>
-                  <th class="text-center">Tipo</th>
                   <th class="text-end">Activos (100%)</th>
                   <th class="text-end">Activos (Ecox)</th>
                   <th class="text-end">Resultado (100%)</th>
@@ -434,13 +433,6 @@
                   </td>
                   <td class="text-center">
                     <span class="badge bg-info text-dark">{{ e.participacion_ecox|int }}%</span>
-                  </td>
-                  <td class="text-center">
-                    {% if e.tipo_participacion == 'DIRECTA' %}
-                      <span class="badge bg-primary">DIRECTA</span>
-                    {% else %}
-                      <span class="badge bg-secondary">INDIRECTA</span>
-                    {% endif %}
                   </td>
                   <td class="text-end">${{ clp(activo_100) }}</td>
                   <td class="text-end text-primary fw-semibold">${{ clp(activo_ecox) }}</td>
