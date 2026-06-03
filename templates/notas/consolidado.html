@@ -12,7 +12,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-collection me-2"></i>Notas contables – Todas las empresas</h5>
+  <h5 class="mb-0"><i class="bi bi-collection me-2"></i>Notas contables</h5>
 </div>
 
 <ul class="nav nav-tabs mb-3">
@@ -30,30 +30,34 @@
   </li>
 </ul>
 
-<p class="text-muted small">
-  Edita las notas de cualquier empresa directamente aquí, o haz clic en el nombre para ir a su vista individual.
-</p>
-
-{% for item in items %}
-<div class="card shadow-sm mb-3" id="empresa-{{ item.empresa.id }}">
-  <div class="card-header d-flex justify-content-between align-items-center py-2">
+{# Nota general — arriba, expandida, render markdown #}
+<div class="card shadow-sm mb-4 border-primary" id="nota-general">
+  <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2">
     <div>
-      <a href="{{ url_for('notas.empresa', eid=item.empresa.id) }}" class="text-decoration-none fw-semibold">
-        {{ item.empresa.razon_social }}
+      <i class="bi bi-star-fill me-2"></i>
+      <a href="{{ url_for('notas.general') }}" class="text-white text-decoration-none fw-semibold">
+        Nota general
       </a>
-      <span class="text-muted small ms-2 font-monospace">{{ item.empresa.rut }}</span>
+      <span class="ms-2 small opacity-75">— transversal a todas las empresas</span>
     </div>
-    {% if item.actualizado_en %}
-    <span class="text-muted small">
-      <i class="bi bi-clock me-1"></i>{{ item.actualizado_en.strftime('%d/%m/%Y %H:%M') }}
-    </span>
-    {% endif %}
+    <div class="d-flex align-items-center gap-2">
+      {% if nota_global.actualizado_en %}
+      <span class="small opacity-75">
+        <i class="bi bi-clock me-1"></i>{{ nota_global.actualizado_en.strftime('%d/%m/%Y %H:%M') }}
+      </span>
+      {% endif %}
+      <button class="btn btn-sm btn-light" type="button" data-toggle-edit="general">
+        <i class="bi bi-pencil me-1"></i><span class="lbl">Editar</span>
+      </button>
+    </div>
   </div>
   <div class="card-body">
-    <form method="post" action="{{ url_for('notas.guardar_inline', eid=item.empresa.id) }}">
-      <textarea name="contenido" class="form-control font-monospace mb-2" rows="8"
-                placeholder="Sin notas. Escribe aquí instrucciones de contabilización, comentarios, etc.">{{ item.contenido }}</textarea>
+    <div class="md-render markdown-body" data-md-source="general">{{ nota_global.contenido }}</div>
+    <form method="post" action="{{ url_for('notas.guardar_general_inline') }}" class="md-edit d-none" data-md-edit="general">
+      <textarea name="contenido" class="form-control font-monospace mb-2" rows="14"
+                placeholder="Instrucciones generales, prompts, metodología cross-empresa…">{{ nota_global.contenido }}</textarea>
       <div class="text-end">
+        <button class="btn btn-sm btn-secondary me-1" type="button" data-toggle-edit-cancel="general">Cancelar</button>
         <button class="btn btn-sm btn-primary" type="submit">
           <i class="bi bi-save me-1"></i>Guardar
         </button>
@@ -61,5 +65,144 @@
     </form>
   </div>
 </div>
+
+{# Notas por empresa — colapsadas en accordion #}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h6 class="mb-0 text-muted"><i class="bi bi-building me-1"></i>Notas por empresa</h6>
+  <div class="small">
+    <button class="btn btn-link btn-sm p-0 me-2" type="button" id="expandir-todas">Expandir todas</button>
+    <button class="btn btn-link btn-sm p-0" type="button" id="colapsar-todas">Colapsar todas</button>
+  </div>
+</div>
+
+<div class="accordion" id="acc-notas">
+{% for item in items %}
+  <div class="accordion-item" id="empresa-{{ item.empresa.id }}">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed py-2" type="button"
+              data-bs-toggle="collapse" data-bs-target="#col-{{ item.empresa.id }}">
+        <span class="fw-semibold">{{ item.empresa.razon_social }}</span>
+        <span class="text-muted small ms-2 font-monospace">{{ item.empresa.rut }}</span>
+        {% if item.contenido %}
+          <span class="badge bg-success-subtle text-success-emphasis ms-2">
+            <i class="bi bi-check-circle me-1"></i>con notas
+          </span>
+        {% endif %}
+        {% if item.actualizado_en %}
+        <span class="text-muted small ms-auto me-3">
+          <i class="bi bi-clock me-1"></i>{{ item.actualizado_en.strftime('%d/%m/%Y %H:%M') }}
+        </span>
+        {% endif %}
+      </button>
+    </h2>
+    <div id="col-{{ item.empresa.id }}" class="accordion-collapse collapse" data-bs-parent="#acc-notas">
+      <div class="accordion-body">
+        <div class="mb-2 d-flex justify-content-between">
+          <a href="{{ url_for('notas.empresa', eid=item.empresa.id) }}" class="small text-decoration-none">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Abrir vista individual
+          </a>
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-toggle-edit="emp-{{ item.empresa.id }}">
+            <i class="bi bi-pencil me-1"></i><span class="lbl">Editar</span>
+          </button>
+        </div>
+        <div class="md-render markdown-body" data-md-source="emp-{{ item.empresa.id }}">{{ item.contenido }}</div>
+        <form method="post" action="{{ url_for('notas.guardar_inline', eid=item.empresa.id) }}"
+              class="md-edit d-none" data-md-edit="emp-{{ item.empresa.id }}">
+          <textarea name="contenido" class="form-control font-monospace mb-2" rows="8"
+                    placeholder="Sin notas. Escribe instrucciones de contabilización, comentarios, etc.">{{ item.contenido }}</textarea>
+          <div class="text-end">
+            <button class="btn btn-sm btn-secondary me-1" type="button" data-toggle-edit-cancel="emp-{{ item.empresa.id }}">Cancelar</button>
+            <button class="btn btn-sm btn-primary" type="submit">
+              <i class="bi bi-save me-1"></i>Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 {% endfor %}
+</div>
+
+<style>
+.markdown-body { font-size: .92rem; line-height: 1.55; }
+.markdown-body h1 { font-size: 1.4rem; margin-top: 1rem; }
+.markdown-body h2 { font-size: 1.2rem; margin-top: .8rem; border-bottom: 1px solid #eee; padding-bottom: .2rem; }
+.markdown-body h3 { font-size: 1.05rem; margin-top: .7rem; }
+.markdown-body code { background: #f5f5f5; padding: 1px 4px; border-radius: 3px; font-size: .85em; }
+.markdown-body pre { background: #f5f5f5; padding: .5rem; border-radius: 4px; overflow-x: auto; }
+.markdown-body table { width: 100%; margin: .5rem 0; font-size: .88rem; }
+.markdown-body th, .markdown-body td { padding: .3rem .5rem; border: 1px solid #ddd; }
+.markdown-body th { background: #f8f9fa; }
+.markdown-body ul, .markdown-body ol { padding-left: 1.5rem; }
+.markdown-body blockquote { border-left: 3px solid #ccc; padding-left: .75rem; color: #666; margin: .5rem 0; }
+.markdown-body hr { border-top: 1px solid #ddd; }
+.markdown-body p:empty { display: none; }
+.markdown-body:empty::before {
+  content: 'Sin notas. Hacé clic en Editar para escribir.';
+  color: #999;
+  font-style: italic;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script>
+(function(){
+  // Renderizar markdown
+  document.querySelectorAll('.md-render').forEach(function(el){
+    var src = el.textContent;
+    if (src.trim()) {
+      el.innerHTML = marked.parse(src);
+    } else {
+      el.innerHTML = '';
+    }
+  });
+
+  // Toggle editar
+  document.querySelectorAll('[data-toggle-edit]').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.preventDefault();
+      var key = btn.dataset.toggleEdit;
+      var render = document.querySelector('[data-md-source="' + key + '"]');
+      var form = document.querySelector('[data-md-edit="' + key + '"]');
+      if (!render || !form) return;
+      var editing = !form.classList.contains('d-none');
+      if (editing) {
+        form.classList.add('d-none');
+        render.classList.remove('d-none');
+        btn.querySelector('.lbl').textContent = 'Editar';
+      } else {
+        form.classList.remove('d-none');
+        render.classList.add('d-none');
+        btn.querySelector('.lbl').textContent = 'Ver';
+      }
+    });
+  });
+
+  // Cancelar editar
+  document.querySelectorAll('[data-toggle-edit-cancel]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.dataset.toggleEditCancel;
+      var render = document.querySelector('[data-md-source="' + key + '"]');
+      var form = document.querySelector('[data-md-edit="' + key + '"]');
+      var toggle = document.querySelector('[data-toggle-edit="' + key + '"]');
+      if (!render || !form) return;
+      form.classList.add('d-none');
+      render.classList.remove('d-none');
+      if (toggle) toggle.querySelector('.lbl').textContent = 'Editar';
+    });
+  });
+
+  // Expandir/colapsar todas
+  document.getElementById('expandir-todas').addEventListener('click', function(){
+    document.querySelectorAll('#acc-notas .accordion-collapse').forEach(function(el){
+      new bootstrap.Collapse(el, {toggle: false}).show();
+    });
+  });
+  document.getElementById('colapsar-todas').addEventListener('click', function(){
+    document.querySelectorAll('#acc-notas .accordion-collapse').forEach(function(el){
+      new bootstrap.Collapse(el, {toggle: false}).hide();
+    });
+  });
+})();
+</script>
 {% endblock %}

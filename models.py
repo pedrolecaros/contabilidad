@@ -477,6 +477,14 @@ class NotaContable(db.Model):
     empresa = db.relationship('Empresa', backref=db.backref('nota', uselist=False))
 
 
+class NotaGlobal(db.Model):
+    """Nota general (singleton, una sola fila id=1). Instrucciones globales que cruzan empresas."""
+    __tablename__ = 'nota_global'
+    id = db.Column(db.Integer, primary_key=True)
+    contenido = db.Column(db.Text, default='')
+    actualizado_en = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class DocumentoEmpleado(db.Model):
     __tablename__ = 'documentos_empleado'
     id = db.Column(db.Integer, primary_key=True)
