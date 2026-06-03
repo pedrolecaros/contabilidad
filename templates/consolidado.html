@@ -87,7 +87,8 @@
       <span class="text-muted">Libros:</span>
       <span><span class="badge bg-success" style="font-size:.7rem">C✓</span> cargado y ok</span>
       <span><span class="badge text-dark" style="font-size:.7rem;background:#fd7e14">C<sup>2</sup></span> con pendientes</span>
-      <span><span class="badge bg-secondary" style="font-size:.7rem">C°</span> cargado sin registros</span>
+      <span><span class="badge text-success-emphasis border border-success-subtle"
+                   style="background:rgba(25,135,84,.15); font-size:.7rem">C&#10003;</span> cargado sin registros (listo)</span>
       <span><span class="badge bg-light text-muted border" style="font-size:.7rem">C</span> no cargado</span>
     </div>
 
@@ -135,6 +136,8 @@
               {% set _bg = 'background:rgba(255,193,7,.08);' %}
             {% elif c['estado'] == 'borrador' %}
               {% set _bg = 'background:rgba(13,202,240,.08);' %}
+            {% elif c['estado'] == 'vacio' %}
+              {% set _bg = 'background:rgba(25,135,84,.035);' %}
             {% else %}
               {% set _bg = '' %}
             {% endif %}
@@ -165,9 +168,10 @@
                     </span>
                   {% elif lib['loaded'] and lib['n_docs'] == 0 %}
                     {# Downloaded but SII had no records for this period #}
-                    <span class="badge bg-white text-muted border" style="font-size:.65rem;"
-                          title="{{ tipo }}: descargado, sin registros en el período">
-                      {{ short }}
+                    <span class="badge text-success-emphasis border border-success-subtle"
+                          style="background:rgba(25,135,84,.15); font-size:.65rem;"
+                          title="{{ tipo }}: descargado, sin registros en el período (listo)">
+                      {{ short }}&#10003;
                     </span>
                   {% else %}
                     {# Not downloaded — show nothing #}

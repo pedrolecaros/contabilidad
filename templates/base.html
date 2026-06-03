@@ -73,8 +73,10 @@
            style="font-size:.78rem;">
           <i class="bi bi-arrow-left"></i>Empresas
         </a>
-        <i class="bi bi-building me-1"></i>{{ empresa.nombre_fantasia or empresa.razon_social }}
-        <div class="text-muted" style="font-size:.75rem;font-weight:400">{{ empresa.rut }}</div>
+        <div><i class="bi bi-building me-1"></i>{{ empresa.nombre_fantasia or empresa.razon_social }}</div>
+        <div class="font-monospace mt-1" style="font-size:.8rem;font-weight:400;color:#adb5bd">
+          {{ empresa.rut }}
+        </div>
       </div>
       <hr class="text-secondary my-1">
 
