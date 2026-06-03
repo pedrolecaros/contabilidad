@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}Respaldos locales – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">Respaldos locales</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h5 class="mb-0"><i class="bi bi-image me-2"></i>Respaldos locales — {{ periodo }}</h5>
+  <form method="get" class="d-flex gap-2 align-items-center">
+    <label class="small text-muted mb-0">Mes</label>
+    <select name="periodo" class="form-select form-select-sm" style="width:160px" onchange="this.form.submit()">
+      {% for m in meses_disp %}
+      <option value="{{ m }}" {% if m == periodo %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<p class="text-muted small">
+  Carpeta: <code>{{ dir_path or '(no configurada)' }}</code><br>
+  Asigná cada foto a un asiento del mes. Al guardar, la imagen se copia al storage como respaldo del asiento.
+</p>
+
+{% if fotos_no_asignadas %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header bg-warning text-dark">
+    <i class="bi bi-image me-1"></i>Fotos sin asignar ({{ fotos_no_asignadas|length }})
+  </div>
+  <div class="row g-3 p-3">
+    {% for f in fotos_no_asignadas %}
+    <div class="col-md-6 col-lg-4">
+      <div class="card h-100">
+        <a href="{{ url_for('respaldos_locales.preview', eid=empresa.id, periodo=periodo, nombre=f.nombre) }}" target="_blank">
+          <img src="{{ url_for('respaldos_locales.preview', eid=empresa.id, periodo=periodo, nombre=f.nombre) }}"
+               class="card-img-top" style="height:200px;object-fit:cover;cursor:pointer"
+               loading="lazy" title="Abrir grande">
+        </a>
+        <div class="card-body p-2">
+          <div class="small text-muted text-truncate mb-2" title="{{ f.nombre }}">{{ f.nombre }}</div>
+          <form method="post" action="{{ url_for('respaldos_locales.asignar', eid=empresa.id) }}">
+            <input type="hidden" name="periodo" value="{{ periodo }}">
+            <input type="hidden" name="nombre" value="{{ f.nombre }}">
+            <select name="asiento_id" class="form-select form-select-sm mb-1" required>
+              <option value="">-- elegí asiento --</option>
+              {% for a in asientos %}
+              <option value="{{ a.id }}">
+                #{{ a.numero }} {{ a.fecha.strftime('%d/%m') }} — {{ (a.descripcion or '')[:60] }}
+              </option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary w-100">
+              <i class="bi bi-link-45deg me-1"></i>Asignar
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="alert alert-success">
+  <i class="bi bi-check-circle me-1"></i>Todas las fotos del mes están asignadas a un asiento.
+</div>
+{% endif %}
+
+{% if fotos_asignadas %}
+<div class="card shadow-sm">
+  <div class="card-header bg-success text-white">
+    <i class="bi bi-check2-circle me-1"></i>Fotos ya asignadas ({{ fotos_asignadas|length }})
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Foto</th><th>Asiento</th><th>Fecha</th><th>Descripción</th></tr></thead>
+      <tbody>
+        {% for f in fotos_asignadas %}
+        <tr>
+          <td class="small">
+            <a href="{{ url_for('respaldos_locales.preview', eid=empresa.id, periodo=periodo, nombre=f.nombre) }}" target="_blank">
+              {{ f.nombre }}
+            </a>
+          </td>
+          <td>#{{ f.asiento.numero }}</td>
+          <td class="small">{{ f.asiento.fecha.strftime('%d/%m/%Y') }}</td>
+          <td class="small">{{ (f.asiento.descripcion or '')[:80] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
