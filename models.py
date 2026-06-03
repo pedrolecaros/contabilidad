@@ -42,6 +42,7 @@ class Cuenta(db.Model):
     cuenta_padre_id = db.Column(db.Integer, db.ForeignKey('cuentas.id'), nullable=True)
     activa = db.Column(db.Boolean, default=True)
     es_titulo = db.Column(db.Boolean, default=False)
+    requiere_aux = db.Column(db.Boolean, default=False, nullable=False)
 
     hijos = db.relationship('Cuenta', backref=db.backref('padre', remote_side=[id]))
     lineas = db.relationship('LineaAsiento', backref='cuenta', lazy='dynamic')
@@ -201,6 +202,36 @@ class MovimientoBanco(db.Model):
     asiento = db.relationship('Asiento', foreign_keys=[asiento_id])
     conciliacion_id = db.Column(db.Integer, db.ForeignKey('conciliaciones.id'), nullable=True)
     conciliacion = db.relationship('Conciliacion', backref=db.backref('movimientos', lazy='select'))
+
+
+class DeclaracionF29(db.Model):
+    """F29 mensual descargado del portal SII. Guarda los códigos clave parseados
+    (PPM, retenciones, IVA débito/crédito, total a pagar) para conciliar contra
+    los pasivos tributarios."""
+    __tablename__ = 'declaraciones_f29'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    periodo = db.Column(db.String(7), nullable=False)  # YYYY-MM
+    folio = db.Column(db.String(30))
+    fecha_descarga = db.Column(db.DateTime, default=datetime.now)
+    # Códigos típicos parseados (campos rápidos para query)
+    codigo_62  = db.Column(db.Float, default=0.0)  # PPM Neto Determinado
+    codigo_48  = db.Column(db.Float, default=0.0)  # Retención Imp. Único Trabajadores (art 74 N°1)
+    codigo_39  = db.Column(db.Float, default=0.0)  # Retención honorarios 10% (Ley antigua)
+    codigo_151 = db.Column(db.Float, default=0.0)  # Retención honorarios Ley 21.133
+    codigo_89  = db.Column(db.Float, default=0.0)  # Imp. determ. IVA (débito - crédito)
+    codigo_538 = db.Column(db.Float, default=0.0)  # IVA Débito Fiscal
+    codigo_537 = db.Column(db.Float, default=0.0)  # IVA Crédito Fiscal
+    codigo_547 = db.Column(db.Float, default=0.0)  # Total Determinado (formulario)
+    codigo_91  = db.Column(db.Float, default=0.0)  # Total a pagar
+    codigo_92  = db.Column(db.Float, default=0.0)  # Reajustes / IPC
+    # Todos los códigos parseados como JSON (para inspección/futuros)
+    codigos_json = db.Column(db.Text, default='{}')
+    respaldo_url = db.Column(db.String(500))  # HTML/PDF guardado en storage
+
+    empresa = db.relationship('Empresa', backref=db.backref('declaraciones_f29', lazy='dynamic'))
+
+    __table_args__ = (db.UniqueConstraint('empresa_id', 'periodo', name='uix_f29_emp_periodo'),)
 
 
 class Empleado(db.Model):

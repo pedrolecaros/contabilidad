@@ -51,6 +51,14 @@
                    {{ 'checked' if cuenta and cuenta.es_titulo }}>
             <label class="form-check-label" for="esTitulo">Es cuenta título (agrupadora)</label>
           </div>
+          <div class="mb-3 form-check">
+            <input type="checkbox" name="requiere_aux" class="form-check-input" id="requiereAux"
+                   {{ 'checked' if cuenta and cuenta.requiere_aux }}>
+            <label class="form-check-label" for="requiereAux">
+              Requiere auxiliar (contraparte) en cada línea
+              <small class="text-muted d-block">CxC / CxP / Préstamos / Anticipos</small>
+            </label>
+          </div>
           {% if cuenta %}
           <div class="mb-3 form-check">
             <input type="checkbox" name="activa" class="form-check-input" id="activa"

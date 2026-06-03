@@ -54,8 +54,9 @@
     </div>
     <div class="col-auto">
       <input type="month" name="mes" class="form-control form-control-sm"
-             value="{{ mes_str }}" title="Mes vigente (rellena desde/hasta automáticamente)"
-             style="width:140px">
+             value="{{ mes_str }}" title="Mes vigente — selección auto-aplica el filtro"
+             style="width:140px"
+             onchange="this.form.submit()">
     </div>
     <div class="col-auto">
       <input type="date" name="desde" class="form-control form-control-sm"

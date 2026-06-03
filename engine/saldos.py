@@ -2,8 +2,9 @@ from sqlalchemy import func
 from models import db, Asiento, LineaAsiento, Cuenta, Contraparte
 
 
-def saldo_por_contraparte(empresa_id, cuenta_codigo):
-    """Saldo agregado por contraparte para una cuenta del plan.
+def saldo_por_contraparte(empresa_id, cuenta_codigo, desde=None, hasta=None):
+    """Saldo agregado por contraparte para una cuenta del plan, opcionalmente
+    acotado entre fechas `desde` y `hasta` (inclusive).
 
     Returns (nombre_cuenta, saldo_total, [{'cp': Contraparte, 'saldo': float}, ...])
     o (None, None, []) si la cuenta no existe.
@@ -12,7 +13,7 @@ def saldo_por_contraparte(empresa_id, cuenta_codigo):
     if not c:
         return None, None, []
 
-    rows = (db.session.query(
+    q = (db.session.query(
                 LineaAsiento.contraparte_id,
                 func.sum(LineaAsiento.debe).label('debe'),
                 func.sum(LineaAsiento.haber).label('haber'),
@@ -23,9 +24,12 @@ def saldo_por_contraparte(empresa_id, cuenta_codigo):
                 Asiento.estado == 'CONFIRMADO',
                 LineaAsiento.cuenta_id == c.id,
                 LineaAsiento.contraparte_id.isnot(None),
-            )
-            .group_by(LineaAsiento.contraparte_id)
-            .all())
+            ))
+    if desde:
+        q = q.filter(Asiento.fecha >= desde)
+    if hasta:
+        q = q.filter(Asiento.fecha <= hasta)
+    rows = q.group_by(LineaAsiento.contraparte_id).all()
 
     filas = []
     for r in rows:
@@ -36,4 +40,4 @@ def saldo_por_contraparte(empresa_id, cuenta_codigo):
         if abs(saldo) >= 1:
             filas.append({'cp': cp, 'saldo': saldo})
     filas.sort(key=lambda x: abs(x['saldo']), reverse=True)
-    return c.nombre, round(c.saldo()), filas
+    return c.nombre, round(c.saldo(desde=desde, hasta=hasta)), filas

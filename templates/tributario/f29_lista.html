@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block title %}F29 – {{ empresa.razon_social }}{% endblock %}
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
+    <li class="breadcrumb-item active">F29 mensuales</li>
+  </ol>
+</nav>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Formulario 29 — Declaraciones mensuales</h5>
+  <form method="post" action="{{ url_for('tributario.f29_subir', eid=empresa.id) }}"
+        enctype="multipart/form-data" class="d-flex gap-2" id="frmSubirPDF">
+    <input type="file" name="archivos" accept=".pdf" multiple class="form-control form-control-sm" required style="width:280px">
+    <button type="submit" class="btn btn-sm btn-primary" id="btnSubirPDF">
+      <i class="bi bi-upload me-1"></i>Subir PDF(s)
+    </button>
+  </form>
+</div>
+
+<!-- Drop zone visual -->
+<div id="dropZoneF29" class="border border-2 border-dashed rounded p-4 text-center text-muted mb-3"
+     style="border-style:dashed!important;cursor:pointer;">
+  <i class="bi bi-cloud-upload fs-2 d-block mb-2"></i>
+  Arrastrá acá uno o varios PDFs del F29 (uno por mes) o usá el botón "Subir PDF(s)".
+  <div class="small mt-1">El parser detecta período y folio automáticamente.</div>
+</div>
+
+<p class="text-muted small">
+  Descarga el F29 enviado al SII y parsea los códigos clave (89 PPM, 39/151 retenciones, 538/547 IVA, 91 total a pagar)
+  para que puedas conciliar contra los pasivos tributarios (2.1.04, 2.1.08).
+</p>
+
+{% if declaraciones %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Período</th>
+          <th>Folio</th>
+          <th class="text-end">PPM (62)</th>
+          <th class="text-end">Ret. trab. (48)</th>
+          <th class="text-end">Ret. hon. (39/151)</th>
+          <th class="text-end">IVA Déb (538)</th>
+          <th class="text-end">IVA Cré (537)</th>
+          <th class="text-end">Total (91)</th>
+          <th class="text-muted small">Descargado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in declaraciones %}
+        {% set retencion_hon = (f.codigo_39 or 0) + (f.codigo_151 or 0) %}
+        <tr>
+          <td class="font-monospace">{{ f.periodo }}</td>
+          <td class="small text-muted">{{ f.folio or '—' }}</td>
+          <td class="text-end small">{{ f.codigo_62|clp }}</td>
+          <td class="text-end small">{{ f.codigo_48|clp }}</td>
+          <td class="text-end small">{{ retencion_hon|clp }}</td>
+          <td class="text-end small">{{ f.codigo_538|clp }}</td>
+          <td class="text-end small">{{ f.codigo_537|clp }}</td>
+          <td class="text-end small fw-semibold">{{ f.codigo_91|clp }}</td>
+          <td class="small text-muted">{{ f.fecha_descarga|fecha_cl if f.fecha_descarga else '' }}</td>
+          <td class="text-nowrap">
+            {% if f.respaldo_url %}
+            <a href="{{ f.respaldo_url|adjunto_url }}" target="_blank"
+               class="btn btn-sm btn-link p-0 me-2" title="Ver PDF original">
+              <i class="bi bi-file-earmark-pdf"></i>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('tributario.f29_detalle', eid=empresa.id, periodo=f.periodo) }}"
+               class="btn btn-sm btn-link p-0" title="Detalle parseado">
+              <i class="bi bi-table"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body text-muted text-center py-5">
+    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+    Sin F29 descargados. Usá "Descargar SII" o "Subir PDF".
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+  var frm = document.getElementById('frmSubirPDF');
+  var btn = document.getElementById('btnSubirPDF');
+  var fileInput = frm.querySelector('input[type="file"]');
+  var dropZone = document.getElementById('dropZoneF29');
+
+  frm.addEventListener('submit', function() {
+    btn.disabled = true;
+    var n = fileInput.files.length;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando ' + n + ' PDF' + (n>1?'s':'') + '…';
+  });
+
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+  ['dragenter', 'dragover'].forEach(function(ev) {
+    dropZone.addEventListener(ev, function(e) {
+      e.preventDefault();
+      dropZone.classList.add('border-primary', 'bg-light');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function(ev) {
+    dropZone.addEventListener(ev, function(e) {
+      e.preventDefault();
+      dropZone.classList.remove('border-primary', 'bg-light');
+    });
+  });
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var files = Array.from(e.dataTransfer.files).filter(function(f) {
+      return f.name.toLowerCase().endsWith('.pdf');
+    });
+    if (!files.length) return;
+    var dt = new DataTransfer();
+    files.forEach(function(f) { dt.items.add(f); });
+    fileInput.files = dt.files;
+    frm.requestSubmit();
+  });
+})();
+</script>
+
+{% endblock %}

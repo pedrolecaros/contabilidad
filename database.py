@@ -1,5 +1,5 @@
 from models import db, Cuenta
-from engine.plan_cuentas_default import PLAN_CUENTAS_CHILE
+from engine.plan_cuentas_default import PLAN_CUENTAS_CHILE, CODIGOS_REQUIERE_AUX
 
 
 def _migrar(app):
@@ -92,6 +92,27 @@ def _migrar(app):
     revertible BOOLEAN DEFAULT 0
 )""",
         "CREATE INDEX IF NOT EXISTS ix_historial_empresa_fecha ON historial(empresa_id, fecha DESC)",
+        "ALTER TABLE cuentas ADD COLUMN requiere_aux BOOLEAN DEFAULT 0 NOT NULL",
+        """CREATE TABLE IF NOT EXISTS declaraciones_f29 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    periodo VARCHAR(7) NOT NULL,
+    folio VARCHAR(30),
+    fecha_descarga DATETIME DEFAULT CURRENT_TIMESTAMP,
+    codigo_89 REAL DEFAULT 0,
+    codigo_39 REAL DEFAULT 0,
+    codigo_151 REAL DEFAULT 0,
+    codigo_538 REAL DEFAULT 0,
+    codigo_547 REAL DEFAULT 0,
+    codigo_91 REAL DEFAULT 0,
+    codigo_92 REAL DEFAULT 0,
+    codigos_json TEXT DEFAULT '{}',
+    respaldo_url VARCHAR(500)
+)""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uix_f29_emp_periodo ON declaraciones_f29(empresa_id, periodo)",
+        "ALTER TABLE declaraciones_f29 ADD COLUMN codigo_62 REAL DEFAULT 0",
+        "ALTER TABLE declaraciones_f29 ADD COLUMN codigo_48 REAL DEFAULT 0",
+        "ALTER TABLE declaraciones_f29 ADD COLUMN codigo_537 REAL DEFAULT 0",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:
@@ -100,6 +121,32 @@ def _migrar(app):
                 con.commit()
             except Exception:
                 pass  # columna ya existe
+
+        # Backfill: marcar cuentas que requieren aux según códigos del plan.
+        try:
+            from engine.plan_cuentas_default import CODIGOS_REQUIERE_AUX
+            placeholders = ','.join(f"'{c}'" for c in CODIGOS_REQUIERE_AUX)
+            con.execute(text(
+                f"UPDATE cuentas SET requiere_aux = 1 "
+                f"WHERE codigo IN ({placeholders}) AND requiere_aux = 0"
+            ))
+            con.commit()
+        except Exception:
+            pass
+
+        # Backfill: insertar cuenta 2.1.14 Tarjeta de Crédito en empresas existentes
+        # que ya tienen plan pero no esta cuenta.
+        try:
+            con.execute(text("""
+                INSERT INTO cuentas (empresa_id, codigo, nombre, tipo, naturaleza, nivel, activa, es_titulo, requiere_aux)
+                SELECT e.id, '2.1.14', 'Tarjeta de Crédito', 'PASIVO', 'ACREEDORA', 3, 1, 0, 0
+                FROM empresas e
+                WHERE EXISTS (SELECT 1 FROM cuentas c WHERE c.empresa_id = e.id)
+                  AND NOT EXISTS (SELECT 1 FROM cuentas c WHERE c.empresa_id = e.id AND c.codigo = '2.1.14')
+            """))
+            con.commit()
+        except Exception:
+            pass
 
 
 def init_db(app):
@@ -124,6 +171,7 @@ def sembrar_plan_cuentas(empresa_id):
             naturaleza=naturaleza,
             es_titulo=es_titulo,
             nivel=nivel,
+            requiere_aux=codigo in CODIGOS_REQUIERE_AUX,
         )
         db.session.add(cuenta)
     db.session.commit()
@@ -153,6 +201,7 @@ def copiar_plan_cuentas(empresa_origen_id, empresa_destino_id):
             naturaleza=c.naturaleza,
             es_titulo=c.es_titulo,
             nivel=c.nivel,
+            requiere_aux=c.requiere_aux,
         )
         if c.cuenta_padre_id and c.cuenta_padre_id in id_map:
             nueva.cuenta_padre_id = id_map[c.cuenta_padre_id].id

@@ -79,6 +79,36 @@ def _parse_monto(v):
         return 0.0
 
 
+class AuxRequeridoError(ValueError):
+    """Se intentó guardar una línea sobre una cuenta que requiere auxiliar sin contraparte."""
+
+
+def _validar_aux_requerido(form):
+    """Valida que toda línea sobre una cuenta con requiere_aux=True traiga contraparte_id.
+    Levanta AuxRequeridoError con la lista de cuentas afectadas."""
+    cuenta_ids      = form.getlist('cuenta_id[]')
+    debes           = form.getlist('debe[]')
+    haberes         = form.getlist('haber[]')
+    contraparte_ids = form.getlist('contraparte_id[]')
+    faltantes = []
+    for orden, cid in enumerate(cuenta_ids):
+        if not cid:
+            continue
+        if _parse_monto(debes[orden] if orden < len(debes) else '0') == 0 and \
+           _parse_monto(haberes[orden] if orden < len(haberes) else '0') == 0:
+            continue
+        cpid_raw = contraparte_ids[orden] if orden < len(contraparte_ids) else ''
+        if cpid_raw:
+            continue
+        cuenta = Cuenta.query.get(int(cid))
+        if cuenta and cuenta.requiere_aux:
+            faltantes.append(f'{cuenta.codigo} {cuenta.nombre}')
+    if faltantes:
+        raise AuxRequeridoError(
+            'Faltó asignar auxiliar en líneas de: ' + ', '.join(sorted(set(faltantes)))
+        )
+
+
 def _guardar_lineas(asiento_id, form):
     LineaAsiento.query.filter_by(asiento_id=asiento_id).delete()
     cuenta_ids      = form.getlist('cuenta_id[]')
@@ -139,6 +169,14 @@ def lista(eid):
     mes_str     = request.args.get('mes', '').strip()  # 'YYYY-MM'
     cuenta_id   = request.args.get('cuenta_id', type=int)
 
+    # Default: mes anterior al actual si no hay ningún filtro de fecha
+    if not mes_str and not desde_str and not hasta_str:
+        hoy = date.today()
+        if hoy.month == 1:
+            mes_str = f'{hoy.year - 1}-12'
+        else:
+            mes_str = f'{hoy.year}-{hoy.month - 1:02d}'
+
     # Mes vigente: si se pasa `mes=YYYY-MM`, sobreescribe desde/hasta al primer/último día.
     if mes_str and len(mes_str) == 7:
         try:
@@ -175,7 +213,10 @@ def lista(eid):
         sub = db.session.query(LineaAsiento.asiento_id).filter_by(cuenta_id=cuenta_id).subquery()
         q = q.filter(Asiento.id.in_(sub))
 
-    asientos = q.order_by(Asiento.fecha.desc(), Asiento.numero.desc()).paginate(page=page, per_page=50)
+    # Sin paginación cuando hay filtro de mes — el usuario quiere ver todo el mes.
+    # Mantengo paginación grande (200) como fallback para no romper queries que traen todo el año.
+    per_page = 1000 if mes_str else 200
+    asientos = q.order_by(Asiento.fecha.desc(), Asiento.numero.desc()).paginate(page=page, per_page=per_page)
 
     from collections import defaultdict
     ids = [a.id for a in asientos.items]
@@ -257,6 +298,15 @@ def nuevo(eid):
             return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
                                    cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]')
 
+        try:
+            _validar_aux_requerido(request.form)
+        except AuxRequeridoError as e:
+            flash(str(e), 'danger')
+            return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
+                                   cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]',
+                                   contrapartes_json=_contrapartes_json(eid),
+                                   prestamos_json=json.dumps([]))
+
         ultimo = Asiento.query.filter_by(empresa_id=eid).order_by(Asiento.numero.desc()).first()
         numero = (ultimo.numero or 0) + 1 if ultimo else 1
 
@@ -285,7 +335,7 @@ def nuevo(eid):
             db.session.commit()
             flash(f'Asiento N°{numero} guardado como borrador', 'info')
         elif asiento.cuadrado:
-            asiento.estado = 'CONFIRMADO'
+            confirmar_asiento(asiento)
             registrar_auditoria(asiento, 'CREAR', f'Asiento N°{numero} creado y confirmado')
             db.session.commit()
             flash(f'Asiento N°{numero} creado y confirmado', 'success')
@@ -322,6 +372,12 @@ def editar(eid, aid):
         except ValueError:
             flash('Fecha inválida', 'danger')
             return redirect(url_for('asientos.editar', eid=eid, aid=aid))
+        try:
+            _validar_aux_requerido(request.form)
+        except AuxRequeridoError as e:
+            flash(str(e), 'danger')
+            return redirect(url_for('asientos.editar', eid=eid, aid=aid))
+
         accion = request.form.get('accion', 'confirmar')
         asiento.descripcion = request.form['descripcion'].strip()
         from storage import save_attachment
@@ -344,7 +400,7 @@ def editar(eid, aid):
             db.session.commit()
             flash(f'Asiento N°{asiento.numero} guardado como borrador', 'info')
         elif asiento.cuadrado:
-            asiento.estado = 'CONFIRMADO'
+            confirmar_asiento(asiento)
             registrar_auditoria(asiento, 'EDITAR', f'Asiento N°{asiento.numero} editado y confirmado')
             db.session.commit()
             flash(f'Asiento N°{asiento.numero} actualizado y confirmado', 'success')

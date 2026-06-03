@@ -121,7 +121,7 @@
       <ul class="nav flex-column">
         <li><a class="nav-link {% if request.endpoint in ('reportes.cxc_cxp','reportes.ap_ar') or 'contrapartes' in request.endpoint %}active{% endif %}"
                href="{{ url_for('reportes.cxc_cxp', eid=empresa.id) }}">
-          <i class="bi bi-journal-bookmark me-2"></i>CxC / CxP — Prov / Cli</a></li>
+          <i class="bi bi-journal-bookmark me-2"></i>CxC / CxP</a></li>
         <li><a class="nav-link {% if request.endpoint == 'contrapartes.contactos' %}active{% endif %}"
                href="{{ url_for('contrapartes.contactos', **({'from': empresa.id} if empresa else {})) }}">
           <i class="bi bi-person-rolodex me-2"></i>Contactos</a></li>
@@ -147,6 +147,9 @@
         <li><a class="nav-link {% if request.endpoint=='tributario.rli' %}active{% endif %}"
                href="{{ url_for('tributario.rli', eid=empresa.id) }}">
           <i class="bi bi-bar-chart-line me-2"></i>Renta Líquida Imp.</a></li>
+        <li><a class="nav-link {% if request.endpoint and request.endpoint.startswith('tributario.f29') %}active{% endif %}"
+               href="{{ url_for('tributario.f29_lista', eid=empresa.id) }}">
+          <i class="bi bi-file-earmark-text me-2"></i>F29 mensual</a></li>
 
       </ul>
 

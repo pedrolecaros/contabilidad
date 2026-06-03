@@ -49,6 +49,8 @@ def index(eid):
     c_banco = Cuenta.query.filter_by(empresa_id=eid, codigo='1.1.02').first()
     saldo_banco_sistema = c_banco.saldo(hasta=hasta) if c_banco else 0.0
 
+    # Solo cuentas no-TC para el cuadre con cartola del banco corriente
+    from engine.plan_cuentas_default import es_movimiento_tc
     movs_periodo = (MovimientoBanco.query
                     .filter_by(empresa_id=eid)
                     .filter(MovimientoBanco.fecha >= desde, MovimientoBanco.fecha <= hasta)
@@ -56,6 +58,31 @@ def index(eid):
     movs_total_periodo   = len(movs_periodo)
     movs_procesados      = sum(1 for m in movs_periodo if m.procesado)
     movs_sin_procesar    = movs_total_periodo - movs_procesados
+
+    # Saldo según cartola: último movimiento con saldo informado, dentro del mes,
+    # de cuentas que NO son tarjeta de crédito.
+    movs_con_saldo = (MovimientoBanco.query
+                      .filter_by(empresa_id=eid)
+                      .filter(MovimientoBanco.fecha <= hasta,
+                              MovimientoBanco.saldo != None)
+                      .order_by(MovimientoBanco.fecha.desc(),
+                                MovimientoBanco.id.desc())
+                      .all())
+    saldo_banco_cartola = None
+    cartola_fecha = None
+    for m in movs_con_saldo:
+        if es_movimiento_tc(m.banco):
+            continue
+        saldo_banco_cartola = m.saldo
+        cartola_fecha = m.fecha
+        break
+
+    if saldo_banco_cartola is not None:
+        cuadre_banco_diff = round(saldo_banco_sistema - saldo_banco_cartola, 0)
+        cuadre_banco_ok = abs(cuadre_banco_diff) < 1
+    else:
+        cuadre_banco_diff = None
+        cuadre_banco_ok = None
 
     # ── Totales del período ─────────────────────────────────────────────────
     ingresos = sum(
@@ -92,6 +119,10 @@ def index(eid):
         docs_pendientes=docs_pendientes,
         movs_pendientes=movs_pendientes,
         saldo_banco_sistema=saldo_banco_sistema,
+        saldo_banco_cartola=saldo_banco_cartola,
+        cartola_fecha=cartola_fecha,
+        cuadre_banco_diff=cuadre_banco_diff,
+        cuadre_banco_ok=cuadre_banco_ok,
         movs_total_periodo=movs_total_periodo,
         movs_procesados=movs_procesados,
         movs_sin_procesar=movs_sin_procesar,

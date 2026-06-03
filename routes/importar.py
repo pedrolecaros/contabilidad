@@ -95,7 +95,7 @@ def _run_sii_job(app, job_id, eid, rut, clave_sii, tipo, periodo):
         _job_set(job_id, status='error', pct=100, message=str(e),
                  result={'ok': False, 'tipo': tipo, 'error': str(e)})
 
-ALLOWED = {'csv', 'xls', 'xlsx'}
+ALLOWED = {'csv', 'xls', 'xlsx', 'pdf'}
 
 
 def _ext_ok(filename):
@@ -111,7 +111,7 @@ def _sha256(file_storage):
 
 def _periodo_docs(empresa_id, tipo, after_dt):
     """Derives YYYY-MM from most recent docs imported after after_dt."""
-    if tipo == 'BANCO':
+    if tipo in ('BANCO', 'TARJETA'):
         mov = (MovimientoBanco.query
                .filter_by(empresa_id=empresa_id)
                .order_by(MovimientoBanco.id.desc())
@@ -255,12 +255,12 @@ def index(eid):
         .group_by(MovimientoBanco.archivo_origen).all()
     )
     def _pendientes(a):
-        if a.tipo == 'BANCO':
+        if a.tipo in ('BANCO', 'TARJETA'):
             return mov_pend.get(a.nombre_archivo, 0)
         return doc_pend.get(a.nombre_archivo, 0)
 
     def _contabilizados(a):
-        if a.tipo == 'BANCO':
+        if a.tipo in ('BANCO', 'TARJETA'):
             return mov_cont.get(a.nombre_archivo, 0)
         return doc_cont.get(a.nombre_archivo, 0)
 
@@ -276,7 +276,7 @@ def detalle_archivo(eid, aid):
     from flask import jsonify
     archivo = ArchivoImportado.query.filter_by(id=aid, empresa_id=eid).first_or_404()
     filas = []
-    if archivo.tipo == 'BANCO':
+    if archivo.tipo in ('BANCO', 'TARJETA'):
         movs = (MovimientoBanco.query
                 .filter_by(empresa_id=eid, archivo_origen=archivo.nombre_archivo)
                 .order_by(MovimientoBanco.fecha).all())
@@ -314,7 +314,7 @@ def revertir(eid, aid):
     """Elimina los documentos/movimientos pendientes (no procesados) de un archivo importado."""
     archivo = ArchivoImportado.query.filter_by(id=aid, empresa_id=eid).first_or_404()
 
-    if archivo.tipo == 'BANCO':
+    if archivo.tipo in ('BANCO', 'TARJETA'):
         pendientes = MovimientoBanco.query.filter_by(
             empresa_id=eid, archivo_origen=archivo.nombre_archivo, procesado=False).all()
         procesados = MovimientoBanco.query.filter_by(
@@ -400,6 +400,12 @@ def subir(eid, tipo):
             cuenta_bancaria = request.form.get('cuenta_bancaria', '').strip()
             resultado = cartola.importar(archivo, eid, banco, cuenta_bancaria)
             tipo_upper = 'BANCO'
+        elif tipo == 'tarjeta':
+            from importers import tarjeta_credito as tc_mod
+            banco = request.form.get('banco', '').strip() or 'Banco de Chile (TC)'
+            cuenta_bancaria = request.form.get('cuenta_bancaria', '').strip()
+            resultado = tc_mod.importar(archivo, eid, banco, cuenta_bancaria)
+            tipo_upper = 'TARJETA'
         else:
             flash('Tipo de importación desconocido', 'danger')
             return redirect(url_for('importar.index', eid=eid))

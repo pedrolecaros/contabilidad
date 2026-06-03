@@ -254,9 +254,17 @@ def resultado(eid):
 @bp.route('/empresa/<int:eid>/reportes/ap-ar')
 def ap_ar(eid):
     empresa = Empresa.query.get_or_404(eid)
-    nom_prov, saldo_proveedores, proveedores = saldo_por_contraparte(eid, '2.1.01')
-    nom_cli,  saldo_clientes,    clientes    = saldo_por_contraparte(eid, '1.1.03')
-    nom_hon,  saldo_honorarios,  honorarios  = saldo_por_contraparte(eid, '2.1.04')
+    from datetime import date as _date
+    def _parse(s):
+        try:
+            return _date.fromisoformat(s) if s else None
+        except ValueError:
+            return None
+    desde = _parse(request.args.get('desde', '').strip())
+    hasta = _parse(request.args.get('hasta', '').strip())
+    nom_prov, saldo_proveedores, proveedores = saldo_por_contraparte(eid, '2.1.01', desde, hasta)
+    nom_cli,  saldo_clientes,    clientes    = saldo_por_contraparte(eid, '1.1.03', desde, hasta)
+    nom_hon,  saldo_honorarios,  honorarios  = saldo_por_contraparte(eid, '2.1.04', desde, hasta)
 
     return render_template('reportes/ap_ar.html',
         empresa=empresa,
@@ -264,18 +272,28 @@ def ap_ar(eid):
         saldo_proveedores=saldo_proveedores,
         saldo_clientes=saldo_clientes,
         saldo_honorarios=saldo_honorarios,
+        desde=desde.isoformat() if desde else '',
+        hasta=hasta.isoformat() if hasta else '',
     )
 
 
 @bp.route('/empresa/<int:eid>/reportes/cxc-cxp')
 def cxc_cxp(eid):
     empresa = Empresa.query.get_or_404(eid)
+    from datetime import date as _date
+    def _parse(s):
+        try:
+            return _date.fromisoformat(s) if s else None
+        except ValueError:
+            return None
+    desde = _parse(request.args.get('desde', '').strip())
+    hasta = _parse(request.args.get('hasta', '').strip())
 
     # Clientes/Proveedores van en su propio módulo; aquí solo préstamos y otras auxiliares
     NO_CXC = ['1.1.01', '1.1.02', '1.1.03', '1.1.04', '1.1.05', '1.1.06', '1.1.08', '1.1.09', '1.1.10', '1.1.14']
     NO_CXP = ['2.1.01', '2.1.02', '2.1.03', '2.1.07', '2.1.08']
 
-    lineas = (LineaAsiento.query
+    q = (LineaAsiento.query
               .join(Asiento)
               .join(Cuenta, LineaAsiento.cuenta_id == Cuenta.id)
               .filter(
@@ -288,8 +306,12 @@ def cxc_cxp(eid):
                       Cuenta.codigo.like('2.%'),
                   ),
                   ~Cuenta.codigo.in_(NO_CXC + NO_CXP),
-              )
-              .all())
+              ))
+    if desde:
+        q = q.filter(Asiento.fecha >= desde)
+    if hasta:
+        q = q.filter(Asiento.fecha <= hasta)
+    lineas = q.all()
 
     # Acumula por (cuenta_id, contraparte_id) — None = sin aux
     totales_cuenta = defaultdict(lambda: {'debe': 0.0, 'haber': 0.0, 'cuenta': None})
@@ -351,7 +373,9 @@ def cxc_cxp(eid):
     return render_template('reportes/cxc_cxp.html',
         empresa=empresa,
         cxc=cxc, cxp=cxp,
-        tot_cxc=tot_cxc, tot_cxp=tot_cxp)
+        tot_cxc=tot_cxc, tot_cxp=tot_cxp,
+        desde=desde.isoformat() if desde else '',
+        hasta=hasta.isoformat() if hasta else '')
 
 
 @bp.route('/empresa/<int:eid>/reportes/balance-gaap')

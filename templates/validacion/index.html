@@ -153,11 +153,33 @@
         </li>
         {% endif %}
         <li class="list-group-item d-flex justify-content-between py-2 small">
-          <span>Saldo contable {{ 'Banco'|upper }} al {{ hasta|fecha_cl }}</span>
+          <span>Saldo contable BANCO al {{ hasta|fecha_cl }}</span>
           <span class="fw-semibold {% if saldo_banco_sistema >= 0 %}text-success{% else %}text-danger{% endif %}">
             {{ saldo_banco_sistema|clp }}
           </span>
         </li>
+        {% if saldo_banco_cartola is not none %}
+        <li class="list-group-item d-flex justify-content-between py-2 small">
+          <span>Saldo cartola bancaria al {{ cartola_fecha|fecha_cl }}</span>
+          <span class="fw-semibold">{{ saldo_banco_cartola|clp }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between py-2 small fw-bold
+                   {% if cuadre_banco_ok %}text-success bg-success bg-opacity-10
+                   {% else %}text-danger bg-danger bg-opacity-10{% endif %}">
+          <span>
+            {% if cuadre_banco_ok %}
+              <i class="bi bi-check-circle me-1"></i>Cuadre OK
+            {% else %}
+              <i class="bi bi-exclamation-triangle me-1"></i>Diferencia banco vs cartola
+            {% endif %}
+          </span>
+          <span>{{ cuadre_banco_diff|clp }}</span>
+        </li>
+        {% else %}
+        <li class="list-group-item py-2 small text-muted">
+          <i class="bi bi-info-circle me-1"></i>No hay cartola con saldo informado en el período — no se puede validar cuadre.
+        </li>
+        {% endif %}
         <li class="list-group-item py-2">
           <a href="{{ url_for('conciliacion.index', eid=empresa.id) }}" class="btn btn-outline-info btn-sm">Ir a Conciliación →</a>
         </li>

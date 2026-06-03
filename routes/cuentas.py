@@ -29,6 +29,7 @@ def nueva(eid):
                 tipo=request.form['tipo'],
                 naturaleza=request.form['naturaleza'],
                 es_titulo='es_titulo' in request.form,
+                requiere_aux='requiere_aux' in request.form,
             )
             db.session.add(cuenta)
             db.session.commit()
@@ -48,6 +49,7 @@ def editar(eid, cid):
         cuenta.naturaleza = request.form['naturaleza']
         cuenta.es_titulo = 'es_titulo' in request.form
         cuenta.activa = 'activa' in request.form
+        cuenta.requiere_aux = 'requiere_aux' in request.form
         db.session.commit()
         flash('Cuenta actualizada', 'success')
         return redirect(url_for('cuentas.lista', eid=eid))

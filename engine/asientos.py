@@ -3,11 +3,33 @@ Motor de journalización automática.
 Genera asientos en partida doble a partir de documentos SII o movimientos bancarios.
 """
 from models import db, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion
-from engine.plan_cuentas_default import CUENTAS_SISTEMA as _C
+from engine.plan_cuentas_default import CUENTAS_SISTEMA as _C, es_movimiento_tc
 
 
 TASA_IVA = 0.19
-TASA_RETENCION_HONORARIOS = 0.1075
+
+# Retención honorarios — escalada por Ley 21.133 (años calendario).
+# Para años no tabulados se usa el último valor conocido (≥ 2027 → 17%).
+_RETENCION_HONOR_POR_ANIO = {
+    2019: 0.1000, 2020: 0.1075, 2021: 0.1150, 2022: 0.1225,
+    2023: 0.1300, 2024: 0.1375, 2025: 0.1450, 2026: 0.1525,
+    2027: 0.1700,
+}
+
+
+def tasa_retencion_honorarios(anio: int | None = None) -> float:
+    """Tasa de retención de honorarios para el año dado (default: año en curso)."""
+    if anio is None:
+        from datetime import date
+        anio = date.today().year
+    if anio in _RETENCION_HONOR_POR_ANIO:
+        return _RETENCION_HONOR_POR_ANIO[anio]
+    # Antes del 2019 → 10% histórico; después de 2027 → 17%
+    return 0.1000 if anio < 2019 else 0.1700
+
+
+# Compat: constante para código legado (usa el año en curso)
+TASA_RETENCION_HONORARIOS = tasa_retencion_honorarios()
 
 # Tipos DTE que son notas de crédito (invierten el asiento)
 TIPOS_NC = {'61', '56'}
@@ -17,6 +39,18 @@ TIPOS_FACTURA_COMPRA = {'46'}
 
 def _buscar_cuenta(empresa_id, codigo):
     return Cuenta.query.filter_by(empresa_id=empresa_id, codigo=codigo, activa=True).first()
+
+
+def _cuenta_lado_banco(mov):
+    """Devuelve la cuenta del lado bancario para un movimiento:
+    - Banco corriente normal → 1.1.02 Banco
+    - Tarjeta de crédito     → 2.1.14 Tarjeta de Crédito (con fallback a Banco si no existe)
+    """
+    if es_movimiento_tc(mov.banco):
+        c = _buscar_cuenta(mov.empresa_id, _C['TARJETA_CREDITO'])
+        if c:
+            return c
+    return _buscar_cuenta(mov.empresa_id, _C['BANCO'])
 
 
 def _proximo_numero(empresa_id):
@@ -163,7 +197,7 @@ def generar_asiento_honorario(doc: DocumentoSII) -> Asiento:
     Boleta de honorarios:
       DEBE  Honorarios (5.2.02)               monto_neto (bruto)
       HABER Proveedores (2.1.01)              líquido a pagar
-      HABER Retención Honorarios por Pagar    retención (10.75%)
+      HABER Retención Honorarios por Pagar    retención (tasa anual, 15.25% en 2026)
     """
     _validar_doc(doc)
     emp_id = doc.empresa_id
@@ -176,7 +210,10 @@ def generar_asiento_honorario(doc: DocumentoSII) -> Asiento:
         raise ValueError(f"Faltan cuentas del plan de cuentas ({_C['HONORARIOS']}, {_C['PROVEEDORES']}, {_C['RET_HONORARIOS']})")
 
     bruto = abs(doc.total or doc.monto_neto)
-    retencion = round(bruto * TASA_RETENCION_HONORARIOS)
+    # Tasa según el año del documento (no del año en curso)
+    anio_doc = doc.fecha.year if doc.fecha else None
+    tasa = tasa_retencion_honorarios(anio_doc)
+    retencion = round(bruto * tasa)
     liquido = bruto - retencion
 
     contraparte = (doc.razon_social_contraparte or doc.rut_contraparte or '')[:60]
@@ -196,7 +233,7 @@ def generar_asiento_honorario(doc: DocumentoSII) -> Asiento:
         LineaAsiento(asiento_id=asiento.id, cuenta_id=c_prov.id,
                      debe=0, haber=liquido, descripcion=f'Líquido {contraparte}' if contraparte else 'Líquido a pagar', orden=2),
         LineaAsiento(asiento_id=asiento.id, cuenta_id=c_reten.id,
-                     debe=0, haber=retencion, descripcion='Retención 10.75%', orden=3),
+                     debe=0, haber=retencion, descripcion=f'Retención {tasa*100:.2f}%', orden=3),
     ]
     db.session.add_all(lineas)
     return asiento
@@ -210,11 +247,11 @@ def generar_asiento_banco(mov: MovimientoBanco, cuenta_contraparte_id: int,
     Abono  (entrada): DEBE banco / HABER contraparte
     """
     emp_id = mov.empresa_id
-    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
+    c_banco = _cuenta_lado_banco(mov)
     c_contra = Cuenta.query.get(cuenta_contraparte_id)
 
     if not c_banco or not c_contra:
-        raise ValueError(f"Cuenta banco ({_C['BANCO']}) o cuenta contraparte no encontrada")
+        raise ValueError(f"Cuenta banco/tarjeta o cuenta contraparte no encontrada")
 
     asiento = Asiento(
         empresa_id=emp_id,
@@ -263,9 +300,13 @@ def generar_asiento_banco_multi(movs: list,
     if not movs:
         raise ValueError("Se requiere al menos un movimiento")
     emp_id = movs[0].empresa_id
-    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
+    # Todos los movs en un asiento consolidado deben ser del mismo lado (TC o banco)
+    es_tc = es_movimiento_tc(movs[0].banco)
+    if any(es_movimiento_tc(m.banco) != es_tc for m in movs):
+        raise ValueError("No se pueden consolidar movimientos de tarjeta de crédito con movimientos de banco corriente en un mismo asiento.")
+    c_banco = _cuenta_lado_banco(movs[0])
     if not c_banco:
-        raise ValueError(f"Cuenta banco ({_C['BANCO']}) no encontrada")
+        raise ValueError("Cuenta banco/tarjeta no encontrada")
 
     if not cuenta_ids:
         raise ValueError("Se requiere al menos una cuenta contraparte")
@@ -335,9 +376,9 @@ def generar_asiento_banco_compuesto(mov: MovimientoBanco,
     aux_ids: lista paralela a cuenta_ids con contraparte_id (auxiliar) por línea, o None.
     """
     emp_id = mov.empresa_id
-    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
+    c_banco = _cuenta_lado_banco(mov)
     if not c_banco:
-        raise ValueError(f"Cuenta banco ({_C['BANCO']}) no encontrada")
+        raise ValueError("Cuenta banco/tarjeta no encontrada")
 
     if not cuenta_ids:
         raise ValueError("Se requiere al menos una cuenta contraparte")
@@ -394,7 +435,7 @@ def _generar_asiento_banco_vs_cuenta(mov: MovimientoBanco,
     Abono (entrada): DEBE banco / HABER cuenta
     """
     emp_id = mov.empresa_id
-    c_banco = _buscar_cuenta(emp_id, _C['BANCO'])
+    c_banco = _cuenta_lado_banco(mov)
     c_contra = _buscar_cuenta(emp_id, codigo_cuenta)
     if not c_banco or not c_contra:
         raise ValueError(f"Faltan cuentas {_C['BANCO']} o {codigo_cuenta} en el plan de cuentas")
@@ -453,6 +494,43 @@ def confirmar_asiento(asiento: Asiento):
         if cuenta and cuenta.es_titulo:
             raise ValueError(f"La cuenta '{cuenta.nombre}' ({cuenta.codigo}) es de título y no puede recibir movimientos")
     asiento.estado = 'CONFIRMADO'
+    _autocrear_conciliacion(asiento)
+
+
+def _autocrear_conciliacion(asiento: Asiento):
+    """Si el asiento tiene docs SII o movs banco vinculados (asiento_id) que aún
+    no tienen conciliacion_id, crea automáticamente una Conciliacion que los una.
+    Previene huérfanos: cada asiento con doc/mov queda con su trazabilidad."""
+    docs = DocumentoSII.query.filter_by(asiento_id=asiento.id, conciliacion_id=None).all()
+    movs = MovimientoBanco.query.filter_by(asiento_id=asiento.id, conciliacion_id=None).all()
+    if not docs and not movs:
+        return
+
+    contraparte_id = None
+    for d in docs:
+        if d.rut_contraparte:
+            from models import Contraparte
+            cp = Contraparte.query.filter_by(rut=d.rut_contraparte).first()
+            if cp:
+                contraparte_id = cp.id
+                break
+
+    conc = Conciliacion(
+        empresa_id=asiento.empresa_id,
+        fecha=asiento.fecha,
+        descripcion=(asiento.descripcion or 'Auto-conciliación')[:280],
+        tipo='SII' if docs else 'MANUAL',
+        respaldo_url=asiento.respaldo_url,
+        contraparte_id=contraparte_id,
+    )
+    db.session.add(conc)
+    db.session.flush()
+    for d in docs:
+        d.conciliacion_id = conc.id
+        d.procesado = True
+    for m in movs:
+        m.conciliacion_id = conc.id
+        m.procesado = True
 
 
 def anular_asiento(asiento: Asiento):

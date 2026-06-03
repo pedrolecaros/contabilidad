@@ -82,7 +82,7 @@
 {% endif %}
 
 <!-- ── Importación manual ──────────────────────────────────────────────────── -->
-<p class="text-muted small mb-3">Formatos soportados: <strong>CSV, XLS, XLSX</strong>.</p>
+<p class="text-muted small mb-3">Formatos soportados: <strong>CSV, XLS, XLSX, PDF</strong> (PDF solo para estados de cuenta de tarjeta de crédito).</p>
 
 <!-- Importación múltiple (drag & drop) -->
 <div class="card shadow-sm mb-4 border-secondary">
@@ -94,10 +94,10 @@
          style="border-style:dashed!important;cursor:pointer;"
          onclick="document.getElementById('multi-file-input').click()">
       <i class="bi bi-cloud-upload fs-2 d-block mb-2"></i>
-      Arrastra aquí los archivos CSV/XLS o haz clic para seleccionar varios
-      <div class="small mt-1">El sistema detecta automáticamente el tipo (compras, ventas, honorarios, banco)</div>
+      Arrastra aquí los archivos CSV/XLS/PDF o haz clic para seleccionar varios
+      <div class="small mt-1">El sistema detecta automáticamente el tipo (compras, ventas, honorarios, banco, tarjeta de crédito)</div>
     </div>
-    <input type="file" id="multi-file-input" multiple accept=".csv,.xls,.xlsx" style="display:none">
+    <input type="file" id="multi-file-input" multiple accept=".csv,.xls,.xlsx,.pdf" style="display:none">
     <div id="multi-file-list" class="mt-3"></div>
     <div id="multi-file-progress" class="mt-2"></div>
   </div>
@@ -188,7 +188,7 @@
         <i class="bi bi-bank me-2"></i>Cartola Bancaria
       </div>
       <div class="card-body">
-        <p class="small text-muted">Cualquier banco. Se clasifican manualmente en Pendientes.</p>
+        <p class="small text-muted">Cualquier banco (CSV/XLS/XLSX). Se clasifican manualmente en Pendientes.</p>
         <form class="form-import"
               data-url="{{ url_for('importar.subir', eid=empresa.id, tipo='banco') }}"
               enctype="multipart/form-data">
@@ -197,6 +197,29 @@
                    accept=".csv,.xls,.xlsx" required>
           </div>
           <button type="submit" class="btn btn-dark btn-sm">
+            <i class="bi bi-upload me-1"></i>Importar
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tarjeta de Crédito -->
+  <div class="col-md-6 mt-3 mt-md-0">
+    <div class="card shadow-sm">
+      <div class="card-header bg-warning text-dark">
+        <i class="bi bi-credit-card me-2"></i>Tarjeta de Crédito
+      </div>
+      <div class="card-body">
+        <p class="small text-muted">Estado de cuenta en PDF (Banco de Chile VISA). El asiento usa <strong>2.1.14 Tarjeta de Crédito</strong>.</p>
+        <form class="form-import"
+              data-url="{{ url_for('importar.subir', eid=empresa.id, tipo='tarjeta') }}"
+              enctype="multipart/form-data">
+          <div class="mb-2">
+            <input type="file" name="archivo" class="form-control form-control-sm"
+                   accept=".pdf" required>
+          </div>
+          <button type="submit" class="btn btn-warning btn-sm">
             <i class="bi bi-upload me-1"></i>Importar
           </button>
         </form>
@@ -227,7 +250,7 @@
       {% for a in archivos %}
       {% set pend = pendientes_fn(a) %}
       {% set cont = contabilizados_fn(a) %}
-      {% set es_vacio = ('_vacio' in (a.nombre_archivo or '')) or (a.ndocs == 0 and a.tipo != 'BANCO') %}
+      {% set es_vacio = ('_vacio' in (a.nombre_archivo or '')) or (a.ndocs == 0 and a.tipo not in ('BANCO','TARJETA')) %}
       <tr {% if es_vacio %}class="text-muted"{% endif %}>
         <td class="small text-nowrap">{{ a.fecha_importacion|fecha_cl }}</td>
         <td class="small">{{ a.periodo or '—' }}</td>
@@ -236,8 +259,9 @@
             {% if a.tipo=='COMPRAS' %}bg-primary
             {% elif a.tipo=='VENTAS' %}bg-success
             {% elif a.tipo=='HONORARIOS' %}bg-warning text-dark
+            {% elif a.tipo=='TARJETA' %}bg-warning text-dark
             {% else %}bg-dark{% endif %}">
-            {{ a.tipo }}
+            {% if a.tipo=='TARJETA' %}TC{% else %}{{ a.tipo }}{% endif %}
           </span>
           {% if es_vacio %}
           <span class="badge bg-light text-secondary border" style="font-size:.65rem;">sin movimientos</span>
@@ -729,6 +753,7 @@ function mostrarResultadoBatch(results, errorGlobal, tipos) {
     ventas:     '{{ url_for("importar.subir", eid=empresa.id, tipo="ventas") }}',
     honorarios: '{{ url_for("importar.subir", eid=empresa.id, tipo="honorarios") }}',
     banco:      '{{ url_for("importar.subir", eid=empresa.id, tipo="banco") }}',
+    tarjeta:    '{{ url_for("importar.subir", eid=empresa.id, tipo="tarjeta") }}',
   };
 
   function detectarTipo(nombre) {
@@ -737,14 +762,18 @@ function mostrarResultadoBatch(results, errorGlobal, tipos) {
     if (nombre.includes('compra') || nombre.startsWith('rcv_c') || nombre.includes('sii_compras')) return 'compras';
     if (nombre.includes('venta') || nombre.includes('dte_v') || nombre.startsWith('rcv_v') || nombre.includes('sii_ventas')) return 'ventas';
     if (nombre.includes('honor') || nombre.includes('boleta') || nombre.includes('_rh') || nombre.includes('sii_honor')) return 'honorarios';
+    // Tarjeta de crédito: PDF de estado de cuenta o nombre indicativo
+    if (nombre.includes('tarjeta') || nombre.includes('visa') || nombre.includes('mastercard') ||
+        nombre.includes('estado_cuenta') || nombre.includes('estado de cuenta') ||
+        (ext === 'pdf' && nombre.includes('estado'))) return 'tarjeta';
+    if (ext === 'pdf') return 'tarjeta';
     // Bancos por nombre (incluye variantes): Banco de Chile, BCI, Santander, etc.
     if (nombre.includes('banco') || nombre.includes('cartola') || nombre.includes('bci') ||
         nombre.includes('santander') || nombre.includes('chile') || nombre.includes('bch') ||
-        nombre.includes('scotiabank') || nombre.includes('itau') || nombre.includes('estado') ||
+        nombre.includes('scotiabank') || nombre.includes('itau') ||
         nombre.includes('bice') || nombre.includes('falabella') || nombre.includes('security') ||
         nombre.includes('movimientos') || nombre.includes('detalle')) return 'banco';
     // Fallback: archivos .xls / .xlsx sin keyword los tratamos como cartola banco
-    // (los libros SII suelen venir como .csv; honorarios sí es .xls pero ya matcheado arriba).
     if (ext === 'xls' || ext === 'xlsx') return 'banco';
     return null;
   }

@@ -53,6 +53,7 @@ PLAN_CUENTAS_CHILE = [
     ('2.1.11', 'Préstamos de Terceros',                 'PASIVO',    'ACREEDORA', False, 3),
     ('2.1.12', 'Préstamos Emp. Relacionadas',           'PASIVO',    'ACREEDORA', False, 3),
     ('2.1.13', 'Otros Pasivos Circulantes',             'PASIVO',    'ACREEDORA', False, 3),
+    ('2.1.14', 'Tarjeta de Crédito',                    'PASIVO',    'ACREEDORA', False, 3),
     ('2.2',    'Pasivo Largo Plazo',                    'PASIVO',    'ACREEDORA', True,  2),
     ('2.2.04', 'Otros Pasivos LP',                      'PASIVO',    'ACREEDORA', False, 3),
 
@@ -124,7 +125,22 @@ CUENTAS_SISTEMA = {
     'VENTAS_EXENTAS':   '4.1.02',
     'HONORARIOS':       '5.2.02',
     'GASTO_GENERAL':    '5.2.17',
+    'TARJETA_CREDITO':  '2.1.14',
 }
+
+# Prefijos en MovimientoBanco.banco que identifican una tarjeta de crédito
+# (la cuenta lado-banco del asiento usa TARJETA_CREDITO en lugar de BANCO).
+BANCO_PREFIJOS_TC = ('VISA', 'MASTERCARD', 'AMERICAN EXPRESS', 'AMEX', 'TARJETA')
+BANCO_SUFIJOS_TC = ('(TC)',)
+
+
+def es_movimiento_tc(banco: str | None) -> bool:
+    if not banco:
+        return False
+    b = banco.upper()
+    return (any(b.startswith(p) for p in BANCO_PREFIJOS_TC) or
+            any(s in b for s in BANCO_SUFIJOS_TC) or
+            'TC)' in b)
 
 # Cuentas líquidas (caja + banco) para cálculo de saldo en dashboard.
 CODIGOS_LIQUIDEZ = ('1.1.01', '1.1.02')
@@ -132,4 +148,13 @@ CODIGOS_LIQUIDEZ = ('1.1.01', '1.1.02')
 # Cuentas de préstamos (financiero) por tipo.
 PRESTAMOS_PAGAR_CODIGOS  = ('2.1.10', '2.1.11', '2.1.12')
 PRESTAMOS_COBRAR_CODIGOS = ('1.1.10', '1.1.11', '1.1.12')
+
+# Cuentas de activo/pasivo que representan deudas o créditos con terceros y
+# por lo tanto deben llevar siempre un auxiliar (contraparte) en cada línea.
+CODIGOS_REQUIERE_AUX = (
+    '1.1.03', '1.1.04', '1.1.07',                # Clientes, Doc x Cobrar, Anticipos a Proveedores
+    '1.1.11', '1.1.12', '1.1.13',                # Préstamos por cobrar
+    '2.1.01', '2.1.02', '2.1.09',                # Proveedores, Doc x Pagar, Anticipos de Clientes
+    '2.1.10', '2.1.11', '2.1.12',                # Préstamos por pagar
+)
 

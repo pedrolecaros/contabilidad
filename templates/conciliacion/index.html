@@ -213,6 +213,9 @@
                 </td>
                 <td class="small py-1">{{ m.fecha|fecha_cl }}</td>
                 <td class="small py-1" style="max-width:200px">
+                  {% if m.banco and ('(TC)' in m.banco or 'VISA' in m.banco|upper or 'MASTERCARD' in m.banco|upper) %}
+                    <span class="badge bg-warning text-dark me-1" style="font-size:.6rem" title="Tarjeta de Crédito — el asiento usará 2.1.14">TC</span>
+                  {% endif %}
                   <span title="{{ (m.descripcion or '') + (' · ' + m.banco if m.banco else '') }}">{{ (m.descripcion or '')[:35] }}{% if m.descripcion and m.descripcion|length > 35 %}…{% endif %}</span>
                 </td>
                 <td class="text-end small py-1 {% if m.cargo %}text-danger fw-semibold{% endif %}">
