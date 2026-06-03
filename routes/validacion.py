@@ -59,23 +59,41 @@ def index(eid):
     movs_procesados      = sum(1 for m in movs_periodo if m.procesado)
     movs_sin_procesar    = movs_total_periodo - movs_procesados
 
-    # Saldo según cartola: último movimiento con saldo informado, dentro del mes,
-    # de cuentas que NO son tarjeta de crédito.
-    movs_con_saldo = (MovimientoBanco.query
-                      .filter_by(empresa_id=eid)
-                      .filter(MovimientoBanco.fecha <= hasta,
-                              MovimientoBanco.saldo != None)
-                      .order_by(MovimientoBanco.fecha.desc(),
-                                MovimientoBanco.id.desc())
-                      .all())
+    # Saldo según cartola: 1) override manual via querystring,
+    # 2) último mov con saldo informado dentro del mes (excluyendo TC).
+    cartola_manual_raw = request.args.get('saldo_cartola', '').replace('.', '').replace(',', '.').strip()
+    try:
+        cartola_manual = float(cartola_manual_raw) if cartola_manual_raw else None
+    except ValueError:
+        cartola_manual = None
+
     saldo_banco_cartola = None
     cartola_fecha = None
-    for m in movs_con_saldo:
-        if es_movimiento_tc(m.banco):
-            continue
-        saldo_banco_cartola = m.saldo
-        cartola_fecha = m.fecha
-        break
+    cartola_origen = None  # 'manual' | 'cartola' | None
+
+    if cartola_manual is not None:
+        saldo_banco_cartola = cartola_manual
+        cartola_fecha = hasta
+        cartola_origen = 'manual'
+    else:
+        movs_con_saldo = (MovimientoBanco.query
+                          .filter_by(empresa_id=eid)
+                          .filter(MovimientoBanco.fecha <= hasta,
+                                  MovimientoBanco.saldo != None)
+                          .order_by(MovimientoBanco.fecha.desc(),
+                                    MovimientoBanco.id.desc())
+                          .all())
+        for m in movs_con_saldo:
+            if es_movimiento_tc(m.banco):
+                continue
+            saldo_banco_cartola = m.saldo
+            cartola_fecha = m.fecha
+            cartola_origen = 'cartola'
+            break
+
+    # Cantidad de movs no-TC en el período (para distinguir "no hay cartola"
+    # vs "cartola sin saldo informado")
+    movs_no_tc_periodo = sum(1 for m in movs_periodo if not es_movimiento_tc(m.banco))
 
     if saldo_banco_cartola is not None:
         cuadre_banco_diff = round(saldo_banco_sistema - saldo_banco_cartola, 0)
@@ -121,6 +139,9 @@ def index(eid):
         saldo_banco_sistema=saldo_banco_sistema,
         saldo_banco_cartola=saldo_banco_cartola,
         cartola_fecha=cartola_fecha,
+        cartola_origen=cartola_origen,
+        cartola_manual_raw=cartola_manual_raw,
+        movs_no_tc_periodo=movs_no_tc_periodo,
         cuadre_banco_diff=cuadre_banco_diff,
         cuadre_banco_ok=cuadre_banco_ok,
         movs_total_periodo=movs_total_periodo,

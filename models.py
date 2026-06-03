@@ -245,8 +245,10 @@ class DeclaracionF22(db.Model):
     folio = db.Column(db.String(30))
     fecha_descarga = db.Column(db.DateTime, default=datetime.now)
     # Códigos clave del F22
-    codigo_628 = db.Column(db.Float, default=0.0)  # Base imponible / RLI
-    codigo_643 = db.Column(db.Float, default=0.0)  # Impuesto primera categoría
+    codigo_1440 = db.Column(db.Float, default=0.0)  # Base Imponible afecta IDPC / RLI (F22 compacto)
+    codigo_643 = db.Column(db.Float, default=0.0)  # (legacy) Impuesto 1ª cat en formato no-compacto
+    codigo_1513 = db.Column(db.Float, default=0.0) # IDPC base imponible del ejercicio (F22 compacto)
+    codigo_90  = db.Column(db.Float, default=0.0)  # Impuesto adeudado (después de imputar PPM)
     codigo_91  = db.Column(db.Float, default=0.0)  # Total a pagar
     codigo_94  = db.Column(db.Float, default=0.0)  # Total con recargo
     codigos_json = db.Column(db.Text, default='{}')

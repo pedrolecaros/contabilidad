@@ -160,7 +160,10 @@
         </li>
         {% if saldo_banco_cartola is not none %}
         <li class="list-group-item d-flex justify-content-between py-2 small">
-          <span>Saldo cartola bancaria al {{ cartola_fecha|fecha_cl }}</span>
+          <span>
+            Saldo cartola al {{ cartola_fecha|fecha_cl }}
+            {% if cartola_origen == 'manual' %}<span class="badge bg-info text-dark ms-1" style="font-size:.6rem">manual</span>{% endif %}
+          </span>
           <span class="fw-semibold">{{ saldo_banco_cartola|clp }}</span>
         </li>
         <li class="list-group-item d-flex justify-content-between py-2 small fw-bold
@@ -175,9 +178,26 @@
           </span>
           <span>{{ cuadre_banco_diff|clp }}</span>
         </li>
+        {% elif movs_no_tc_periodo > 0 %}
+        <li class="list-group-item py-2 small text-muted">
+          <i class="bi bi-info-circle me-1"></i>
+          La cartola importada ({{ movs_no_tc_periodo }} movimientos en el período)
+          <strong>no incluye saldo</strong> (típico en Santander XLSX).
+          Ingresá manualmente el saldo de cierre para validar:
+        </li>
+        <li class="list-group-item py-2">
+          <form method="get" class="d-flex gap-2 align-items-center">
+            <input type="hidden" name="ano" value="{{ ano }}">
+            <input type="hidden" name="mes" value="{{ mes }}">
+            <input type="text" name="saldo_cartola" value="{{ cartola_manual_raw }}"
+                   placeholder="Saldo cartola al {{ hasta|fecha_cl }}"
+                   class="form-control form-control-sm" inputmode="numeric" style="max-width:200px">
+            <button type="submit" class="btn btn-sm btn-outline-primary">Validar</button>
+          </form>
+        </li>
         {% else %}
         <li class="list-group-item py-2 small text-muted">
-          <i class="bi bi-info-circle me-1"></i>No hay cartola con saldo informado en el período — no se puede validar cuadre.
+          <i class="bi bi-info-circle me-1"></i>No hay cartola importada en el período — no se puede validar cuadre.
         </li>
         {% endif %}
         <li class="list-group-item py-2">

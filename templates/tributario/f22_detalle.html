@@ -26,18 +26,21 @@
   <div class="col-md-3">
     <div class="card border-info">
       <div class="card-body py-2">
-        <div class="small text-muted">RLI (cód 628)</div>
-        <div class="h5 mb-0 fw-bold">{{ f22.codigo_628|clp }}</div>
-        <div class="small text-muted">Renta Líquida Imponible</div>
+        <div class="small text-muted">RLI (cód 1440)</div>
+        <div class="h5 mb-0 fw-bold">{{ f22.codigo_1440|clp }}</div>
+        <div class="small text-muted">Base Imponible afecta a IDPC</div>
       </div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card border-warning">
       <div class="card-body py-2">
-        <div class="small text-muted">Impto. 1ª Cat. (cód 643)</div>
-        <div class="h5 mb-0 fw-bold">{{ f22.codigo_643|clp }}</div>
-        <div class="small text-muted">→ 2.1.07 IR por Pagar</div>
+        <div class="small text-muted">Impto. Adeudado (cód 90)</div>
+        <div class="h5 mb-0 fw-bold">{{ f22.codigo_90|clp }}</div>
+        <div class="small text-muted">
+          IDPC bruto (1513): {{ f22.codigo_1513|clp }}<br>
+          → 2.1.07 IR por Pagar
+        </div>
       </div>
     </div>
   </div>

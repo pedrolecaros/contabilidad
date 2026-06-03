@@ -127,6 +127,9 @@ def _migrar(app):
     respaldo_url VARCHAR(500)
 )""",
         "CREATE UNIQUE INDEX IF NOT EXISTS uix_f22_emp_anio ON declaraciones_f22(empresa_id, anio)",
+        "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1440 REAL DEFAULT 0",
+        "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1513 REAL DEFAULT 0",
+        "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_90 REAL DEFAULT 0",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

@@ -39,8 +39,9 @@
         <tr>
           <th>AT</th>
           <th>Folio</th>
-          <th class="text-end">RLI (628)</th>
-          <th class="text-end">Impto. 1ª Cat. (643)</th>
+          <th class="text-end">RLI (1440)</th>
+          <th class="text-end">IDPC (1513)</th>
+          <th class="text-end">Adeudado (90)</th>
           <th class="text-end">Total (91)</th>
           <th class="text-muted small">Subido</th>
           <th></th>
@@ -51,8 +52,9 @@
         <tr>
           <td class="font-monospace">{{ f.anio }}</td>
           <td class="small text-muted">{{ f.folio or '—' }}</td>
-          <td class="text-end small">{{ f.codigo_628|clp }}</td>
-          <td class="text-end small">{{ f.codigo_643|clp }}</td>
+          <td class="text-end small">{{ f.codigo_1440|clp }}</td>
+          <td class="text-end small">{{ f.codigo_1513|clp }}</td>
+          <td class="text-end small">{{ f.codigo_90|clp }}</td>
           <td class="text-end small fw-semibold">{{ f.codigo_91|clp }}</td>
           <td class="small text-muted">{{ f.fecha_descarga|fecha_cl if f.fecha_descarga else '' }}</td>
           <td class="text-nowrap">
