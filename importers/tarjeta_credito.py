@@ -18,11 +18,12 @@ from models import db, MovimientoBanco
 
 
 _RE_FECHA = re.compile(r'\b(\d{2}/\d{2}/\d{2})\b')
-# Línea típica de movimiento:
-#   "<space>DD/MM/YY  CODREF  DESCRIPCION ... $   <monto1> $   <monto2>  NN/NN  $  <cuota>"
-# Capturamos: fecha, código (12 dígitos), descripción, primer monto (operación) con signo opcional.
+# Línea típica de movimiento. Dos variantes:
+#  A) "<space>DD/MM/YY  CODREF  DESCRIPCION  $ <monto1> $ <monto2>  NN/NN  $ <cuota>"
+#  B) "LUGAR_OPERACION    DD/MM/YY  CODREF  DESCRIPCION  $ <monto1> ..."  (compras presenciales)
+# Usamos `search` con prefijo opcional para capturar ambas.
 _RE_LINEA = re.compile(
-    r'^\s*'
+    r'(?:^|\s)'
     r'(\d{2}/\d{2}/\d{2})\s+'           # fecha DD/MM/YY
     r'(\d{6,14})\s+'                     # código referencia (suele tener 12 dígitos)
     r'(.+?)\s+'                          # descripción (no greedy)
@@ -112,7 +113,7 @@ def importar(file_storage, empresa_id, banco='', cuenta_bancaria='') -> dict:
 
     for raw in texto.splitlines():
         linea = raw.rstrip()
-        m = _RE_LINEA.match(linea)
+        m = _RE_LINEA.search(linea)
         if not m:
             continue
         fecha_str, codref, desc, monto_str = m.groups()

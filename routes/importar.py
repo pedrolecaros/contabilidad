@@ -130,26 +130,33 @@ def _periodo_docs(empresa_id, tipo, after_dt):
     return None
 
 
-def _detectar_coherencia_periodo(eid, tipo_upper, max_doc_id_antes, max_mov_id_antes):
+def _detectar_coherencia_periodo(eid, tipo_upper, max_doc_id_antes, max_mov_id_antes,
+                                  nombre_archivo=None):
     """
-    Analiza los documentos/movimientos recién importados (id > max_*_antes) y
-    devuelve un string de advertencia si hay mezcla de períodos o el período
-    del archivo no coincide con el último ya registrado.
+    Analiza los documentos/movimientos recién importados y devuelve advertencia
+    si hay mezcla de períodos o el período no coincide con el último archivo.
+
+    Si se pasa `nombre_archivo`, filtra por `archivo_origen == nombre_archivo`
+    (más confiable que id > max porque tolera importaciones en paralelo).
+    Si no, cae al método legacy basado en id.
+
     Retorna (periodo_predominante, aviso_o_None).
     """
     if tipo_upper in ('COMPRAS', 'VENTAS', 'HONORARIOS'):
-        docs_nuevos = (DocumentoSII.query
-                       .filter(DocumentoSII.empresa_id == eid,
-                               DocumentoSII.tipo_libro == tipo_upper,
-                               DocumentoSII.id > max_doc_id_antes)
-                       .all())
-        fechas = [d.fecha for d in docs_nuevos if d.fecha]
+        q = DocumentoSII.query.filter(DocumentoSII.empresa_id == eid,
+                                       DocumentoSII.tipo_libro == tipo_upper)
+        if nombre_archivo:
+            q = q.filter(DocumentoSII.archivo_origen == nombre_archivo)
+        else:
+            q = q.filter(DocumentoSII.id > max_doc_id_antes)
+        fechas = [d.fecha for d in q.all() if d.fecha]
     else:
-        movs_nuevos = (MovimientoBanco.query
-                       .filter(MovimientoBanco.empresa_id == eid,
-                               MovimientoBanco.id > max_mov_id_antes)
-                       .all())
-        fechas = [m.fecha for m in movs_nuevos if m.fecha]
+        q = MovimientoBanco.query.filter(MovimientoBanco.empresa_id == eid)
+        if nombre_archivo:
+            q = q.filter(MovimientoBanco.archivo_origen == nombre_archivo)
+        else:
+            q = q.filter(MovimientoBanco.id > max_mov_id_antes)
+        fechas = [m.fecha for m in q.all() if m.fecha]
 
     if not fechas:
         return None, None
@@ -414,8 +421,11 @@ def subir(eid, tipo):
         return redirect(url_for('importar.index', eid=eid))
 
     # Detectar período predominante y verificar coherencia
+    # Filtramos por archivo_origen para no contaminar con archivos subidos
+    # en paralelo desde el drag&drop multi-file.
     periodo_det, aviso_periodo = _detectar_coherencia_periodo(
-        eid, tipo_upper, max_doc_id, max_mov_id)
+        eid, tipo_upper, max_doc_id, max_mov_id,
+        nombre_archivo=archivo.filename)
 
     # Register the imported file
     periodo = periodo_det or _periodo_docs(eid, tipo_upper, datetime.now())
