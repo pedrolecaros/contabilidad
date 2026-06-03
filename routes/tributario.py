@@ -1,7 +1,7 @@
 import json
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
-from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DeclaracionF29
+from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DeclaracionF29, DeclaracionF22
 from sqlalchemy import func
 
 bp = Blueprint('tributario', __name__)
@@ -179,6 +179,119 @@ def f29_detalle(eid, periodo):
         todos = {}
     return render_template('tributario/f29_detalle.html',
                            empresa=empresa, f29=f29, todos=todos)
+
+
+# ── F22 anual ──────────────────────────────────────────────────────────────────
+
+@bp.route('/empresa/<int:eid>/f22')
+def f22_lista(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    declaraciones = (DeclaracionF22.query
+                     .filter_by(empresa_id=eid)
+                     .order_by(DeclaracionF22.anio.desc())
+                     .all())
+    return render_template('tributario/f22_lista.html',
+                           empresa=empresa,
+                           declaraciones=declaraciones,
+                           anio_default=date.today().year)
+
+
+@bp.route('/empresa/<int:eid>/f22/subir', methods=['POST'])
+def f22_subir(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    archivos = request.files.getlist('archivos') or request.files.getlist('archivo')
+    archivos = [a for a in archivos if a and a.filename]
+    if not archivos:
+        flash('Seleccioná uno o varios PDFs del F22', 'warning')
+        return redirect(url_for('tributario.f22_lista', eid=eid))
+
+    from importers import sii_f22
+    from importers.sii_f29 import _normalizar_rut
+    from storage import save_import_backup
+    ok, errores = [], []
+    ultimo_anio = None
+    rut_empresa = _normalizar_rut(empresa.rut)
+
+    for archivo in archivos:
+        nombre = archivo.filename
+        if not nombre.lower().endswith('.pdf'):
+            errores.append(f'{nombre}: no es PDF')
+            continue
+        bytes_pdf = archivo.read()
+        try:
+            codigos, anio_detectado, folio, rut_pdf = sii_f22.parsear_pdf(bytes_pdf)
+        except sii_f22.F22ParseError as e:
+            errores.append(f'{nombre}: {e}')
+            continue
+
+        if rut_empresa and rut_pdf and _normalizar_rut(rut_pdf) != rut_empresa:
+            errores.append(
+                f'{nombre}: RUT del PDF ({rut_pdf}) no coincide con el de '
+                f'{empresa.razon_social} ({empresa.rut}) — no se importó'
+            )
+            continue
+        elif rut_empresa and not rut_pdf:
+            errores.append(
+                f'{nombre}: no se pudo leer el RUT del PDF — '
+                f'verificá que sea de {empresa.razon_social}'
+            )
+            continue
+
+        anio = anio_detectado or (int(request.form.get('anio') or 0) or None)
+        if not anio:
+            errores.append(f'{nombre}: no se detectó el año tributario (AT)')
+            continue
+
+        respaldo_url = None
+        try:
+            rel = save_import_backup(
+                bytes_pdf, nombre,
+                current_app.config['UPLOAD_FOLDER'],
+                empresa.rut, 'F22', str(anio),
+            )
+            respaldo_url = f'local:{rel}'
+        except Exception as e:
+            errores.append(f'{nombre}: aviso — no se pudo guardar respaldo ({e})')
+
+        DeclaracionF22.query.filter_by(empresa_id=eid, anio=anio).delete()
+        f22 = DeclaracionF22(
+            empresa_id=eid,
+            anio=anio,
+            folio=folio or None,
+            fecha_descarga=datetime.now(),
+            codigo_628 = codigos.get('628', 0.0),
+            codigo_643 = codigos.get('643', 0.0),
+            codigo_91  = codigos.get('91',  0.0),
+            codigo_94  = codigos.get('94',  0.0),
+            codigos_json=json.dumps(codigos),
+            respaldo_url=respaldo_url,
+        )
+        db.session.add(f22)
+        ok.append(f'AT {anio} ({len(codigos)} códigos)')
+        ultimo_anio = anio
+
+    db.session.commit()
+
+    if ok:
+        flash(f'F22 importados: {", ".join(ok)}', 'success')
+    for e in errores:
+        flash(e, 'danger')
+
+    if len(ok) == 1 and ultimo_anio:
+        return redirect(url_for('tributario.f22_detalle', eid=eid, anio=ultimo_anio))
+    return redirect(url_for('tributario.f22_lista', eid=eid))
+
+
+@bp.route('/empresa/<int:eid>/f22/<int:anio>')
+def f22_detalle(eid, anio):
+    empresa = Empresa.query.get_or_404(eid)
+    f22 = DeclaracionF22.query.filter_by(empresa_id=eid, anio=anio).first_or_404()
+    try:
+        todos = json.loads(f22.codigos_json or '{}')
+    except json.JSONDecodeError:
+        todos = {}
+    return render_template('tributario/f22_detalle.html',
+                           empresa=empresa, f22=f22, todos=todos)
 
 
 @bp.route('/empresa/<int:eid>/f29/<periodo>/debug')

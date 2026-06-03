@@ -116,6 +116,23 @@ def consolidado():
         .group_by(Liquidacion.empresa_id, Liquidacion.periodo).all())
     liqs_data = {(r.empresa_id, r.periodo): r.n for r in rows_liq}
 
+    # F29 declaraciones by (eid, periodo)
+    from models import DeclaracionF29, DeclaracionF22
+    rows_f29 = (db.session.query(DeclaracionF29.empresa_id, DeclaracionF29.periodo)
+                .filter(DeclaracionF29.empresa_id.in_(ids),
+                        DeclaracionF29.periodo >= desde_mes,
+                        DeclaracionF29.periodo <= hasta_mes)
+                .all())
+    f29_loaded = {(r.empresa_id, r.periodo) for r in rows_f29}
+
+    # F22 declaraciones by (eid, anio) — se presentan en abril del AT
+    anios_visibles = {int(m[:4]) for m in meses if m.endswith('-04')}
+    rows_f22 = (db.session.query(DeclaracionF22.empresa_id, DeclaracionF22.anio)
+                .filter(DeclaracionF22.empresa_id.in_(ids),
+                        DeclaracionF22.anio.in_(anios_visibles) if anios_visibles else False)
+                .all()) if anios_visibles else []
+    f22_loaded = {(r.empresa_id, r.anio) for r in rows_f22}
+
     # Asientos MANUAL sin respaldo_url por empresa (total en el rango)
     rows_sinresp = (db.session.query(
             Asiento.empresa_id,
@@ -161,11 +178,16 @@ def consolidado():
             else:
                 estado = 'borrador'
 
+            es_abril = mes.endswith('-04')
+            anio_at = int(mes[:4]) if es_abril else None
             celda_data[e.id][mes] = {
                 'estado': estado,
                 'libros': libros,
                 'asientos': {'conf': conf, 'borr': borr},
                 'liqs': liqs,
+                'f29': (e.id, mes) in f29_loaded,
+                'f22_anio': anio_at,
+                'f22': es_abril and (e.id, anio_at) in f22_loaded,
             }
 
     # DB info for backup section

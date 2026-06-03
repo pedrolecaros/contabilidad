@@ -234,6 +234,29 @@ class DeclaracionF29(db.Model):
     __table_args__ = (db.UniqueConstraint('empresa_id', 'periodo', name='uix_f29_emp_periodo'),)
 
 
+class DeclaracionF22(db.Model):
+    """F22 anual (Declaración de Renta) descargado del portal SII.
+    Análogo a DeclaracionF29 pero anual. Los códigos clave varían según régimen
+    tributario; guardamos los más usados como campos rápidos + JSON completo."""
+    __tablename__ = 'declaraciones_f22'
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)  # año tributario AT (declarado en abril)
+    folio = db.Column(db.String(30))
+    fecha_descarga = db.Column(db.DateTime, default=datetime.now)
+    # Códigos clave del F22
+    codigo_628 = db.Column(db.Float, default=0.0)  # Base imponible / RLI
+    codigo_643 = db.Column(db.Float, default=0.0)  # Impuesto primera categoría
+    codigo_91  = db.Column(db.Float, default=0.0)  # Total a pagar
+    codigo_94  = db.Column(db.Float, default=0.0)  # Total con recargo
+    codigos_json = db.Column(db.Text, default='{}')
+    respaldo_url = db.Column(db.String(500))
+
+    empresa = db.relationship('Empresa', backref=db.backref('declaraciones_f22', lazy='dynamic'))
+
+    __table_args__ = (db.UniqueConstraint('empresa_id', 'anio', name='uix_f22_emp_anio'),)
+
+
 class Empleado(db.Model):
     __tablename__ = 'empleados'
     id = db.Column(db.Integer, primary_key=True)

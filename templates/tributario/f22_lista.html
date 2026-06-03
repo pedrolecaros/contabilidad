@@ -1,41 +1,35 @@
 {% extends 'base.html' %}
-{% block title %}F29 – {{ empresa.razon_social }}{% endblock %}
+{% block title %}F22 – {{ empresa.razon_social }}{% endblock %}
 {% block breadcrumb %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb mb-2">
     <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Empresas</a></li>
     <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index', eid=empresa.id) }}">{{ empresa.nombre_fantasia or empresa.razon_social }}</a></li>
-    <li class="breadcrumb-item active">F29 mensuales</li>
+    <li class="breadcrumb-item active">F22 anuales</li>
   </ol>
 </nav>
 {% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Formulario 29 — Declaraciones mensuales</h5>
-  <form method="post" action="{{ url_for('tributario.f29_subir', eid=empresa.id) }}"
-        enctype="multipart/form-data" class="d-flex gap-2" id="frmSubirPDF">
+  <h5 class="mb-0"><i class="bi bi-file-earmark-bar-graph me-2"></i>Formulario 22 — Declaración Anual de Renta</h5>
+  <form method="post" action="{{ url_for('tributario.f22_subir', eid=empresa.id) }}"
+        enctype="multipart/form-data" class="d-flex gap-2" id="frmSubirF22">
     <input type="file" name="archivos" accept=".pdf" multiple class="form-control form-control-sm" required style="width:280px">
-    <button type="submit" class="btn btn-sm btn-primary" id="btnSubirPDF">
+    <button type="submit" class="btn btn-sm btn-primary" id="btnSubirF22">
       <i class="bi bi-upload me-1"></i>Subir PDF(s)
     </button>
   </form>
 </div>
 
-<!-- Drop zone visual -->
-<div id="dropZoneF29" class="border border-2 border-dashed rounded p-4 text-center text-muted mb-3"
+<div id="dropZoneF22" class="border border-2 border-dashed rounded p-4 text-center text-muted mb-3"
      style="border-style:dashed!important;cursor:pointer;">
   <i class="bi bi-cloud-upload fs-2 d-block mb-2"></i>
-  Arrastrá acá uno o varios PDFs del <strong>F29 compacto</strong> (uno por mes) o usá el botón "Subir PDF(s)".
+  Arrastrá acá uno o varios PDFs del <strong>F22 compacto</strong> (uno por año tributario) o usá el botón "Subir PDF(s)".
   <div class="small mt-1">
-    Descargá el "F29 compacto" desde el SII (Mis Declaraciones → F29 enviado → opción "Compacto").
-    El parser detecta período, folio y RUT automáticamente.
+    Descargá el "F22 compacto" desde el SII (Mis Declaraciones → Renta → F22 enviado → opción "Compacto").
+    El parser detecta año tributario, folio y RUT automáticamente.
   </div>
 </div>
-
-<p class="text-muted small">
-  Descarga el F29 enviado al SII y parsea los códigos clave (89 PPM, 39/151 retenciones, 538/547 IVA, 91 total a pagar)
-  para que puedas conciliar contra los pasivos tributarios (2.1.04, 2.1.08).
-</p>
 
 {% if declaraciones %}
 <div class="card shadow-sm">
@@ -43,29 +37,22 @@
     <table class="table table-sm table-hover mb-0">
       <thead class="table-light">
         <tr>
-          <th>Período</th>
+          <th>AT</th>
           <th>Folio</th>
-          <th class="text-end">PPM (62)</th>
-          <th class="text-end">Ret. trab. (48)</th>
-          <th class="text-end">Ret. hon. (39/151)</th>
-          <th class="text-end">IVA Déb (538)</th>
-          <th class="text-end">IVA Cré (537)</th>
+          <th class="text-end">RLI (628)</th>
+          <th class="text-end">Impto. 1ª Cat. (643)</th>
           <th class="text-end">Total (91)</th>
-          <th class="text-muted small">Descargado</th>
+          <th class="text-muted small">Subido</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for f in declaraciones %}
-        {% set retencion_hon = (f.codigo_39 or 0) + (f.codigo_151 or 0) %}
         <tr>
-          <td class="font-monospace">{{ f.periodo }}</td>
+          <td class="font-monospace">{{ f.anio }}</td>
           <td class="small text-muted">{{ f.folio or '—' }}</td>
-          <td class="text-end small">{{ f.codigo_62|clp }}</td>
-          <td class="text-end small">{{ f.codigo_48|clp }}</td>
-          <td class="text-end small">{{ retencion_hon|clp }}</td>
-          <td class="text-end small">{{ f.codigo_538|clp }}</td>
-          <td class="text-end small">{{ f.codigo_537|clp }}</td>
+          <td class="text-end small">{{ f.codigo_628|clp }}</td>
+          <td class="text-end small">{{ f.codigo_643|clp }}</td>
           <td class="text-end small fw-semibold">{{ f.codigo_91|clp }}</td>
           <td class="small text-muted">{{ f.fecha_descarga|fecha_cl if f.fecha_descarga else '' }}</td>
           <td class="text-nowrap">
@@ -75,7 +62,7 @@
               <i class="bi bi-file-earmark-pdf"></i>
             </a>
             {% endif %}
-            <a href="{{ url_for('tributario.f29_detalle', eid=empresa.id, periodo=f.periodo) }}"
+            <a href="{{ url_for('tributario.f22_detalle', eid=empresa.id, anio=f.anio) }}"
                class="btn btn-sm btn-link p-0" title="Detalle parseado">
               <i class="bi bi-table"></i>
             </a>
@@ -90,17 +77,17 @@
 <div class="card shadow-sm">
   <div class="card-body text-muted text-center py-5">
     <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-    Sin F29 descargados. Usá "Descargar SII" o "Subir PDF".
+    Sin F22 cargados. Subí el PDF del F22 enviado en abril.
   </div>
 </div>
 {% endif %}
 
 <script>
 (function() {
-  var frm = document.getElementById('frmSubirPDF');
-  var btn = document.getElementById('btnSubirPDF');
+  var frm = document.getElementById('frmSubirF22');
+  var btn = document.getElementById('btnSubirF22');
   var fileInput = frm.querySelector('input[type="file"]');
-  var dropZone = document.getElementById('dropZoneF29');
+  var dropZone = document.getElementById('dropZoneF22');
 
   frm.addEventListener('submit', function() {
     btn.disabled = true;
@@ -134,5 +121,4 @@
   });
 })();
 </script>
-
 {% endblock %}

@@ -150,6 +150,9 @@
         <li><a class="nav-link {% if request.endpoint and request.endpoint.startswith('tributario.f29') %}active{% endif %}"
                href="{{ url_for('tributario.f29_lista', eid=empresa.id) }}">
           <i class="bi bi-file-earmark-text me-2"></i>F29 mensual</a></li>
+        <li><a class="nav-link {% if request.endpoint and request.endpoint.startswith('tributario.f22') %}active{% endif %}"
+               href="{{ url_for('tributario.f22_lista', eid=empresa.id) }}">
+          <i class="bi bi-file-earmark-bar-graph me-2"></i>F22 anual</a></li>
 
       </ul>
 

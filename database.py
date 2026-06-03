@@ -113,6 +113,20 @@ def _migrar(app):
         "ALTER TABLE declaraciones_f29 ADD COLUMN codigo_62 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f29 ADD COLUMN codigo_48 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f29 ADD COLUMN codigo_537 REAL DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS declaraciones_f22 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    anio INTEGER NOT NULL,
+    folio VARCHAR(30),
+    fecha_descarga DATETIME DEFAULT CURRENT_TIMESTAMP,
+    codigo_628 REAL DEFAULT 0,
+    codigo_643 REAL DEFAULT 0,
+    codigo_91 REAL DEFAULT 0,
+    codigo_94 REAL DEFAULT 0,
+    codigos_json TEXT DEFAULT '{}',
+    respaldo_url VARCHAR(500)
+)""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uix_f22_emp_anio ON declaraciones_f22(empresa_id, anio)",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:

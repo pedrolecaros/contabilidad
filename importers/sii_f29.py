@@ -107,18 +107,103 @@ def _parsear_codigos(html: str) -> Dict[str, float]:
     """
     valores: Dict[str, float] = {}
 
-    # Estrategia 1: <input ... id="cod_<NN>" value="<num>">
+    # Estrategia 4 (PDF compacto SII): la más confiable, corre primero.
+    # Estrategia 4: F29/F22 compacto (PDF SII).
+    # Filas con 1+ columnas tipo "<código> <descripción> <valor>".
+    # Encuentro todos los códigos por línea (los que van seguidos de descripción
+    # en letras) y para cada uno el valor es el último número del segmento que
+    # va hasta el siguiente código.
+    VALOR_OK = r'(0|-?\d{1,3}(?:\.\d{3})+(?:,\d+)?|-?\d{4,}(?:[\.,]\d+)?)'
+    NUM_REGEX = re.compile(
+        r'(-?(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[\.,]\d+)?))'
+    )
+    for linea in html.split('\n'):
+        # códigos en la línea: número 2-4 dígitos seguido de descripción
+        codigos_pos = list(re.finditer(
+            r'(?<![\d.])(\d{2,4})(?=\s{2,}[A-ZÁÉÍÓÚÑa-záéíóúñ])', linea))
+        for i, m in enumerate(codigos_pos):
+            cod = m.group(1).lstrip('0') or '0'
+            if cod in valores:
+                continue
+            start = m.end()
+            end = codigos_pos[i+1].start() if i+1 < len(codigos_pos) else len(linea)
+            segmento = linea[start:end]
+            # último número "limpio" del segmento (formato miles, decimal o entero)
+            nums = list(NUM_REGEX.finditer(segmento))
+            if not nums:
+                continue
+            txt = nums[-1].group(1)
+            # rechazar fechas tipo "04/2026" o similares: si el último número
+            # está adyacente a un slash/fecha, lo dejamos pasar pero igual va
+            # como número entero. Heurística: descartar si hay '/' inmediatamente
+            # antes o después.
+            s, e = nums[-1].start(), nums[-1].end()
+            ctx_l = segmento[max(0, s-2):s]
+            ctx_r = segmento[e:e+2]
+            if '/' in ctx_l or '/' in ctx_r:
+                continue
+            try:
+                neg = txt.startswith('-')
+                valor = _parsear_numero_es(txt.lstrip('-'))
+                if neg:
+                    valor = -valor
+                valores[cod] = valor
+            except ValueError:
+                continue
+
+    # Estrategia 5: línea de totales tipo "85    448.942    +"
+    # (código junto al valor sin descripción intermedia, terminada en +/-/=)
+    for linea in html.split('\n'):
+        for m in re.finditer(
+                r'(?<![\d.])(\d{2,4})\s{2,}' + VALOR_OK + r'\s+[\+\-=](?:\s|$)',
+                linea):
+            cod = m.group(1).lstrip('0') or '0'
+            if cod in valores:
+                continue
+            try:
+                txt = m.group(2)
+                neg = txt.startswith('-')
+                valor = _parsear_numero_es(txt.lstrip('-'))
+                if neg:
+                    valor = -valor
+                valores[cod] = valor
+            except ValueError:
+                continue
+
+    # Estrategia 6: "<TEXTO> <cod 2-3 dig> <valor> [+/-/=]"
+    # Para "Impuesto Adeudado   90   123.456 +" o "TOTAL A PAGAR ... 91 ... 150.997"
     for m in re.finditer(
-            r'(?:id|name)\s*=\s*["\']?(?:cod_?|c_)?(\d{2,4})["\']?\s+[^>]*value\s*=\s*["\']?([\-\d\.,]+)',
-            html, flags=re.IGNORECASE):
-        cod, raw = m.group(1).lstrip('0') or '0', m.group(2)
+            r'(?:[A-ZÁÉÍÓÚÑa-záéíóúñ]\S*\s){1,}(\d{2,3})\s+' + VALOR_OK + r'\s*[\+\-=]?',
+            html):
+        cod = m.group(1).lstrip('0') or '0'
+        if cod in valores:
+            continue
         try:
-            valor = float(raw.replace('.', '').replace(',', '.'))
+            txt = m.group(2)
+            neg = txt.startswith('-')
+            valor = _parsear_numero_es(txt.lstrip('-'))
+            if neg:
+                valor = -valor
             valores[cod] = valor
         except ValueError:
             continue
 
-    # Estrategia 2: "Código 89" ... número
+    # ── Legacy strategies (HTML / texto plano sin formato compacto) ─────────
+    # Solo capturan lo que las 4/5/6 no encontraron.
+
+    # Estrategia legacy 1: <input ... id="cod_<NN>" value="<num>">
+    for m in re.finditer(
+            r'(?:id|name)\s*=\s*["\']?(?:cod_?|c_)?(\d{2,4})["\']?\s+[^>]*value\s*=\s*["\']?([\-\d\.,]+)',
+            html, flags=re.IGNORECASE):
+        cod = m.group(1).lstrip('0') or '0'
+        if cod in valores:
+            continue
+        try:
+            valores[cod] = float(m.group(2).replace('.', '').replace(',', '.'))
+        except ValueError:
+            continue
+
+    # Estrategia legacy 2: "Código 89" ... número
     for m in re.finditer(
             r'(?:C[óo]digo|C\.?|Cod\.?)\s*(\d{2,4})[^\d\$]{1,80}\$?\s*([\-\d\.,]+)',
             html, flags=re.IGNORECASE):
@@ -126,12 +211,11 @@ def _parsear_codigos(html: str) -> Dict[str, float]:
         if cod in valores:
             continue
         try:
-            valor = float(m.group(2).replace('.', '').replace(',', '.'))
-            valores[cod] = valor
+            valores[cod] = float(m.group(2).replace('.', '').replace(',', '.'))
         except ValueError:
             continue
 
-    # Estrategia 3: tabla con <td>89</td><td>123.456</td>
+    # Estrategia legacy 3: tabla con <td>89</td><td>123.456</td>
     for m in re.finditer(
             r'<td[^>]*>\s*(\d{2,4})\s*</td>\s*<td[^>]*>[^<]*</td>\s*<td[^>]*>\s*\$?\s*([\-\d\.,]+)',
             html, flags=re.IGNORECASE):
@@ -139,41 +223,7 @@ def _parsear_codigos(html: str) -> Dict[str, float]:
         if cod in valores:
             continue
         try:
-            valor = float(m.group(2).replace('.', '').replace(',', '.'))
-            valores[cod] = valor
-        except ValueError:
-            continue
-
-    # Estrategia 4: F29 compacto (PDF SII).
-    # Filas tipo:  "089     IMP. DETERM. IVA                                          0"
-    # Múltiples columnas paralelas separadas por >= 2 espacios. Descripción
-    # puede incluir dígitos, barras, paréntesis, etc.
-    for linea in html.split('\n'):
-        for m in re.finditer(
-                r'(?<![\d.])(\d{2,4})\s{2,}'
-                r'([A-ZÁÉÍÓÚÑa-záéíóúñ][^\n]*?)'
-                r'\s{2,}([\d][\d\.,]*)'
-                r'(?=\s{2}|\s*$)',
-                linea):
-            cod = m.group(1).lstrip('0') or '0'
-            if cod in valores:
-                continue
-            try:
-                valor = _parsear_numero_es(m.group(3))
-                valores[cod] = valor
-            except ValueError:
-                continue
-
-    # Estrategia 5: totales finales tipo "TOTAL A PAGAR ... 91 ... 150.997"
-    for m in re.finditer(
-            r'TOTAL[^\n]+?\s(\d{2,3})\s+([\d\.,]+)',
-            html):
-        cod = m.group(1).lstrip('0') or '0'
-        if cod in valores:
-            continue
-        try:
-            valor = float(m.group(2).replace('.', '').replace(',', '.'))
-            valores[cod] = valor
+            valores[cod] = float(m.group(2).replace('.', '').replace(',', '.'))
         except ValueError:
             continue
 
