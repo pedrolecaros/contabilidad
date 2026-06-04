@@ -337,6 +337,166 @@ def f29_debug(eid, periodo):
 
 # ── Renta Líquida Imponible ────────────────────────────────────────────────────
 
+@bp.route('/empresa/<int:eid>/tributario/rli-pyme')
+def rli_pyme(eid):
+    """RLI PYME (régimen 14D / Pro-PYME): base caja real, no devengado.
+    Recorre cargos/abonos de Banco+Caja del año y los clasifica:
+    - Egresos PYME: pagos a proveedores, sueldos, leasing capital+interés, compra activo, impuestos, TC.
+      Excluye: capital crédito directo (devolución pasivo), aportes a FFMM, transferencias entre cuentas propias.
+    - Ingresos PYME: cobranzas a clientes, otros ingresos reales.
+      Excluye: préstamos recibidos, rescates FFMM, aportes capital.
+    Considera pérdida tributaria de arrastre del F22 año anterior (cód 1440).
+    """
+    empresa = Empresa.query.get_or_404(eid)
+    hoy = date.today()
+    anio = int(request.args.get('anio', hoy.year))
+    desde = date(anio, 1, 1)
+    hasta = date(anio, 12, 31)
+
+    # Cuentas relevantes
+    cuentas_banco_caja = ['1.1.01', '1.1.02']  # caja + banco corriente
+    cuenta_ids = {c.codigo: c.id for c in Cuenta.query.filter_by(empresa_id=eid).all()}
+
+    # Recorrer todas las líneas de Banco+Caja del año en asientos confirmados.
+    # Para cada línea, traer todas las otras líneas del mismo asiento para clasificar.
+    movs = (db.session.query(LineaAsiento, Asiento)
+            .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+            .join(Cuenta, Cuenta.id == LineaAsiento.cuenta_id)
+            .filter(
+                Asiento.empresa_id == eid,
+                Asiento.estado == 'CONFIRMADO',
+                Asiento.fecha >= desde,
+                Asiento.fecha <= hasta,
+                Cuenta.codigo.in_(cuentas_banco_caja),
+            ).all())
+
+    # Cache de líneas por asiento
+    asiento_ids = list({m[1].id for m in movs})
+    todas_lineas = (db.session.query(LineaAsiento, Cuenta)
+                    .join(Cuenta, Cuenta.id == LineaAsiento.cuenta_id)
+                    .filter(LineaAsiento.asiento_id.in_(asiento_ids)).all()) if asiento_ids else []
+    lineas_x_asiento = {}
+    for la, c in todas_lineas:
+        lineas_x_asiento.setdefault(la.asiento_id, []).append((la, c))
+
+    egresos_total = 0.0
+    ingresos_total = 0.0
+    egresos_detalle = []  # {fecha, asiento, monto, categoria, glosa}
+    ingresos_detalle = []
+    excluidos = []  # movs que NO son ingreso/egreso PYME (informativo)
+
+    for la_bk, asiento in movs:
+        haber = float(la_bk.haber or 0)  # salida del banco
+        debe  = float(la_bk.debe or 0)   # entrada al banco
+        otras = [(l, c) for l, c in lineas_x_asiento.get(asiento.id, []) if l.id != la_bk.id]
+
+        # Helper: detectar si una línea es restitución de pasivo (cod 2.1.11 con débito = capital crédito directo)
+        # o aporte/rescate FFMM (1.1.09) o transferencia caja↔banco (1.1.01 o 1.1.02)
+        if haber > 0:
+            # SALIDA de banco/caja → candidato a EGRESO
+            cat_excluida = None
+            for la_o, c_o in otras:
+                if c_o.codigo == '2.1.11' and (la_o.debe or 0) > 0:
+                    cat_excluida = 'Devolución capital crédito/préstamo (no es egreso PYME)'
+                    break
+                if c_o.codigo == '1.1.09' and (la_o.debe or 0) > 0:
+                    cat_excluida = 'Aporte a Fondos Mutuos (traslado, no egreso)'
+                    break
+                if c_o.codigo in cuentas_banco_caja and (la_o.debe or 0) > 0:
+                    cat_excluida = 'Transferencia entre cuentas propias'
+                    break
+            if cat_excluida:
+                excluidos.append({'fecha': asiento.fecha, 'asiento_num': asiento.numero,
+                                  'monto': haber, 'categoria': cat_excluida,
+                                  'glosa': asiento.descripcion[:80]})
+                continue
+            # Categorizar el egreso por la cuenta destino principal
+            principal = max((l for l, c in otras if (l.debe or 0) > 0),
+                            key=lambda l: l.debe or 0, default=None)
+            if principal:
+                cta_p = next((c for l, c in otras if l.id == principal.id), None)
+                cat = f'{cta_p.codigo} {cta_p.nombre}' if cta_p else 'Otros'
+            else:
+                cat = 'Otros'
+            egresos_total += haber
+            egresos_detalle.append({'fecha': asiento.fecha, 'asiento_num': asiento.numero,
+                                    'monto': haber, 'categoria': cat,
+                                    'glosa': asiento.descripcion[:80]})
+        elif debe > 0:
+            # ENTRADA al banco/caja → candidato a INGRESO
+            cat_excluida = None
+            for la_o, c_o in otras:
+                if c_o.codigo == '2.1.11' and (la_o.haber or 0) > 0:
+                    cat_excluida = 'Préstamo recibido (no es ingreso PYME)'
+                    break
+                if c_o.codigo == '1.1.09' and (la_o.haber or 0) > 0:
+                    cat_excluida = 'Rescate Fondos Mutuos (traslado, no ingreso)'
+                    break
+                if c_o.codigo in ('3.1.01',) and (la_o.haber or 0) > 0:
+                    cat_excluida = 'Aporte de capital (no es ingreso operacional)'
+                    break
+                if c_o.codigo in cuentas_banco_caja and (la_o.haber or 0) > 0:
+                    cat_excluida = 'Transferencia entre cuentas propias'
+                    break
+            if cat_excluida:
+                excluidos.append({'fecha': asiento.fecha, 'asiento_num': asiento.numero,
+                                  'monto': debe, 'categoria': cat_excluida,
+                                  'glosa': asiento.descripcion[:80]})
+                continue
+            principal = max((l for l, c in otras if (l.haber or 0) > 0),
+                            key=lambda l: l.haber or 0, default=None)
+            if principal:
+                cta_p = next((c for l, c in otras if l.id == principal.id), None)
+                cat = f'{cta_p.codigo} {cta_p.nombre}' if cta_p else 'Otros'
+            else:
+                cat = 'Otros'
+            ingresos_total += debe
+            ingresos_detalle.append({'fecha': asiento.fecha, 'asiento_num': asiento.numero,
+                                     'monto': debe, 'categoria': cat,
+                                     'glosa': asiento.descripcion[:80]})
+
+    rli_anio = ingresos_total - egresos_total
+
+    # Pérdida arrastre del F22 año anterior (cód 1440 negativo = pérdida disponible)
+    f22_ant = DeclaracionF22.query.filter_by(empresa_id=eid, anio=anio).first()
+    perdida_arrastre = 0.0
+    f22_origen = None
+    if f22_ant and f22_ant.codigo_1440:
+        # En F22 cód 1440 negativo = pérdida arrastrada disponible
+        if f22_ant.codigo_1440 < 0:
+            perdida_arrastre = abs(f22_ant.codigo_1440)
+            f22_origen = f'F22 AT {anio} cód 1440'
+
+    rli_imponible = max(0.0, rli_anio - perdida_arrastre)
+    perdida_consumida = min(perdida_arrastre, max(0.0, rli_anio))
+    perdida_remanente = perdida_arrastre - perdida_consumida
+    if rli_anio < 0:
+        perdida_remanente += abs(rli_anio)
+
+    # Resumen por categoría
+    from collections import defaultdict
+    cat_egresos = defaultdict(float)
+    for e in egresos_detalle:
+        cat_egresos[e['categoria']] += e['monto']
+    cat_ingresos = defaultdict(float)
+    for e in ingresos_detalle:
+        cat_ingresos[e['categoria']] += e['monto']
+
+    return render_template('tributario/rli_pyme.html',
+        empresa=empresa, anio=anio,
+        ingresos_total=ingresos_total, egresos_total=egresos_total,
+        rli_anio=rli_anio,
+        perdida_arrastre=perdida_arrastre, f22_origen=f22_origen,
+        perdida_consumida=perdida_consumida, perdida_remanente=perdida_remanente,
+        rli_imponible=rli_imponible,
+        cat_egresos=sorted(cat_egresos.items(), key=lambda x: -x[1]),
+        cat_ingresos=sorted(cat_ingresos.items(), key=lambda x: -x[1]),
+        egresos_detalle=sorted(egresos_detalle, key=lambda x: x['fecha']),
+        ingresos_detalle=sorted(ingresos_detalle, key=lambda x: x['fecha']),
+        excluidos=sorted(excluidos, key=lambda x: x['fecha']),
+    )
+
+
 @bp.route('/empresa/<int:eid>/tributario/rli')
 def rli(eid):
     empresa = Empresa.query.get_or_404(eid)

@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% block title %}RLI PYME {{ anio }} – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h5 class="mb-0">
+    <i class="bi bi-calculator me-2"></i>
+    RLI PYME {{ anio }} — <span class="text-muted">{{ empresa.razon_social }}</span>
+  </h5>
+  <span class="badge bg-secondary ms-auto">Base caja (14D Pro-PYME)</span>
+</div>
+
+<form method="get" class="d-flex gap-2 mb-3 align-items-center">
+  <label class="small text-muted">Año comercial:</label>
+  <input type="number" name="anio" value="{{ anio }}" min="2020" max="2030"
+         class="form-control form-control-sm" style="width:90px"
+         onchange="this.form.submit()">
+  <a href="{{ url_for('tributario.rli', eid=empresa.id, anio=anio) }}"
+     class="btn btn-sm btn-outline-secondary ms-auto" title="Ver cálculo contable (devengado)">
+    Ver RLI contable
+  </a>
+</form>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-success">
+      <div class="card-body py-2">
+        <div class="small text-muted">Ingresos PYME (cobrado)</div>
+        <div class="h5 text-success mb-0">{{ ingresos_total|clp }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-danger">
+      <div class="card-body py-2">
+        <div class="small text-muted">Egresos PYME (pagado)</div>
+        <div class="h5 text-danger mb-0">{{ egresos_total|clp }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card {% if rli_anio >= 0 %}border-primary{% else %}border-warning{% endif %}">
+      <div class="card-body py-2">
+        <div class="small text-muted">RLI del año (antes arrastre)</div>
+        <div class="h5 mb-0 {% if rli_anio >= 0 %}text-primary{% else %}text-warning{% endif %}">
+          {{ rli_anio|clp }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if perdida_arrastre > 0 %}
+<div class="card border-info mb-4">
+  <div class="card-body py-2">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <div class="small text-muted">Pérdida tributaria de arrastre disponible
+          {% if f22_origen %}<span class="badge bg-info ms-1" style="font-size:.6rem">{{ f22_origen }}</span>{% endif %}
+        </div>
+        <div class="h6 text-info mb-0">{{ perdida_arrastre|clp }}</div>
+      </div>
+      <div class="text-end">
+        <div class="small text-muted">Consumida este año</div>
+        <div class="h6 mb-0">{{ perdida_consumida|clp }}</div>
+      </div>
+      <div class="text-end">
+        <div class="small text-muted">Remanente para próximo año</div>
+        <div class="h6 mb-0">{{ perdida_remanente|clp }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card border-dark mb-4">
+  <div class="card-body py-3 text-center">
+    <div class="small text-muted">RLI IMPONIBLE {{ anio }} (base para impuesto)</div>
+    <div class="display-6 {% if rli_imponible > 0 %}text-danger{% else %}text-success{% endif %}">
+      {{ rli_imponible|clp }}
+    </div>
+    {% if rli_imponible == 0 and perdida_arrastre > 0 %}
+      <div class="small text-success"><i class="bi bi-check-circle me-1"></i>RLI absorbida por pérdida arrastre — sin impuesto</div>
+    {% elif rli_imponible == 0 and rli_anio <= 0 %}
+      <div class="small text-warning"><i class="bi bi-arrow-down me-1"></i>Año con pérdida — se arrastra a próximos años</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Resumen por categoría -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <h6 class="text-success"><i class="bi bi-arrow-down-circle me-1"></i>Ingresos por categoría</h6>
+    <table class="table table-sm">
+      <thead><tr><th>Categoría (cuenta destino)</th><th class="text-end">Monto</th></tr></thead>
+      <tbody>
+        {% for cat, monto in cat_ingresos %}
+        <tr><td class="small">{{ cat }}</td><td class="text-end small">{{ monto|clp }}</td></tr>
+        {% endfor %}
+        <tr class="fw-bold border-top"><td>Total</td><td class="text-end">{{ ingresos_total|clp }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col-md-6">
+    <h6 class="text-danger"><i class="bi bi-arrow-up-circle me-1"></i>Egresos por categoría</h6>
+    <table class="table table-sm">
+      <thead><tr><th>Categoría (cuenta destino)</th><th class="text-end">Monto</th></tr></thead>
+      <tbody>
+        {% for cat, monto in cat_egresos %}
+        <tr><td class="small">{{ cat }}</td><td class="text-end small">{{ monto|clp }}</td></tr>
+        {% endfor %}
+        <tr class="fw-bold border-top"><td>Total</td><td class="text-end">{{ egresos_total|clp }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if excluidos %}
+<details class="mb-3">
+  <summary class="text-muted small">Movimientos excluidos del cálculo PYME ({{ excluidos|length }})</summary>
+  <table class="table table-sm mt-2">
+    <thead><tr><th>Fecha</th><th>Asiento</th><th class="text-end">Monto</th><th>Razón</th><th>Glosa</th></tr></thead>
+    <tbody>
+      {% for e in excluidos %}
+      <tr class="small">
+        <td>{{ e.fecha|fecha_cl }}</td>
+        <td>#{{ e.asiento_num }}</td>
+        <td class="text-end">{{ e.monto|clp }}</td>
+        <td><span class="badge bg-light text-dark">{{ e.categoria }}</span></td>
+        <td class="text-muted">{{ e.glosa }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+
+<details class="mb-3">
+  <summary class="text-muted small">Detalle de ingresos ({{ ingresos_detalle|length }} movs)</summary>
+  <table class="table table-sm mt-2">
+    <thead><tr><th>Fecha</th><th>Asiento</th><th class="text-end">Monto</th><th>Categoría</th><th>Glosa</th></tr></thead>
+    <tbody>
+      {% for e in ingresos_detalle %}
+      <tr class="small">
+        <td>{{ e.fecha|fecha_cl }}</td>
+        <td>#{{ e.asiento_num }}</td>
+        <td class="text-end">{{ e.monto|clp }}</td>
+        <td>{{ e.categoria }}</td>
+        <td class="text-muted">{{ e.glosa }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+
+<details class="mb-3">
+  <summary class="text-muted small">Detalle de egresos ({{ egresos_detalle|length }} movs)</summary>
+  <table class="table table-sm mt-2">
+    <thead><tr><th>Fecha</th><th>Asiento</th><th class="text-end">Monto</th><th>Categoría</th><th>Glosa</th></tr></thead>
+    <tbody>
+      {% for e in egresos_detalle %}
+      <tr class="small">
+        <td>{{ e.fecha|fecha_cl }}</td>
+        <td>#{{ e.asiento_num }}</td>
+        <td class="text-end">{{ e.monto|clp }}</td>
+        <td>{{ e.categoria }}</td>
+        <td class="text-muted">{{ e.glosa }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+
+{% endblock %}
