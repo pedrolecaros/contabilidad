@@ -123,19 +123,23 @@
   </div>
 </div>
 
+{% else %}
+<p class="text-muted">No hay archivos.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
 <script>
-(function() {
+document.addEventListener('DOMContentLoaded', function() {
   const modalEl = document.getElementById('modalPreview');
+  if (!modalEl) return;
   const modal = new bootstrap.Modal(modalEl);
   const frame = document.getElementById('modalPreviewFrame');
   const title = document.getElementById('modalPreviewTitle');
   const dl = document.getElementById('modalDownloadLink');
   const INLINE_EXTS = ['.pdf','.jpg','.jpeg','.png','.gif','.webp','.svg'];
 
-  function extOf(name) {
-    const i = name.lastIndexOf('.');
-    return i >= 0 ? name.slice(i).toLowerCase() : '';
-  }
+  function extOf(n) { const i = n.lastIndexOf('.'); return i >= 0 ? n.slice(i).toLowerCase() : ''; }
 
   document.querySelectorAll('.btn-ver-archivo').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -154,9 +158,6 @@
     });
   });
   modalEl.addEventListener('hidden.bs.modal', () => { frame.src = 'about:blank'; });
-})();
+});
 </script>
-{% else %}
-<p class="text-muted">No hay archivos.</p>
-{% endif %}
 {% endblock %}

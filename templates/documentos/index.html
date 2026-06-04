@@ -115,48 +115,6 @@
   </div>
 </div>
 
-<script>
-(function() {
-  const modalEl = document.getElementById('modalPreview');
-  const modal = new bootstrap.Modal(modalEl);
-  const frame = document.getElementById('modalPreviewFrame');
-  const title = document.getElementById('modalPreviewTitle');
-  const dl = document.getElementById('modalDownloadLink');
-
-  const INLINE_EXTS = ['.pdf','.jpg','.jpeg','.png','.gif','.webp','.svg'];
-  const PREVIEW_EXTS = ['.csv','.xlsx','.xls','.txt','.log'];
-  const EID = {{ empresa.id }};
-
-  function extOf(name) {
-    const i = name.lastIndexOf('.');
-    return i >= 0 ? name.slice(i).toLowerCase() : '';
-  }
-
-  document.querySelectorAll('.btn-ver-archivo').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.preventDefault();
-      const rel = btn.dataset.rel;
-      const nombre = btn.dataset.nombre;
-      const ext = extOf(nombre);
-      title.textContent = nombre;
-      dl.href = `/empresa/${EID}/archivos/descargar?rel=${encodeURIComponent(rel)}`;
-      let url;
-      if (INLINE_EXTS.includes(ext)) {
-        url = `/empresa/${EID}/archivos/inline?rel=${encodeURIComponent(rel)}`;
-      } else if (PREVIEW_EXTS.includes(ext)) {
-        url = `/empresa/${EID}/archivos/preview?rel=${encodeURIComponent(rel)}`;
-      } else {
-        // No previsualizable — abrir directo el preview que muestra mensaje
-        url = `/empresa/${EID}/archivos/preview?rel=${encodeURIComponent(rel)}`;
-      }
-      frame.src = url;
-      modal.show();
-    });
-  });
-
-  modalEl.addEventListener('hidden.bs.modal', () => { frame.src = 'about:blank'; });
-})();
-</script>
 {% else %}
 <p class="text-muted">No hay archivos en backup. Subí archivos desde la sección <a href="{{ url_for('importar.index', eid=empresa.id) }}">Importar</a>.</p>
 {% endif %}
@@ -166,4 +124,38 @@
   Archivos almacenados en <code>uploads/backups_importacion/{{ rut_clean }}/</code>.
   Cada importación (compras/ventas/honorarios/banco/TC/F29/F22/otros) deja copia automática acá.
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const modalEl = document.getElementById('modalPreview');
+  if (!modalEl) return;
+  const modal = new bootstrap.Modal(modalEl);
+  const frame = document.getElementById('modalPreviewFrame');
+  const title = document.getElementById('modalPreviewTitle');
+  const dl = document.getElementById('modalDownloadLink');
+  const INLINE_EXTS = ['.pdf','.jpg','.jpeg','.png','.gif','.webp','.svg'];
+  const EID = {{ empresa.id }};
+
+  function extOf(n) { const i = n.lastIndexOf('.'); return i >= 0 ? n.slice(i).toLowerCase() : ''; }
+
+  document.querySelectorAll('.btn-ver-archivo').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      const rel = btn.dataset.rel;
+      const nombre = btn.dataset.nombre;
+      const ext = extOf(nombre);
+      title.textContent = nombre;
+      dl.href = `/empresa/${EID}/archivos/descargar?rel=${encodeURIComponent(rel)}`;
+      const url = INLINE_EXTS.includes(ext)
+        ? `/empresa/${EID}/archivos/inline?rel=${encodeURIComponent(rel)}`
+        : `/empresa/${EID}/archivos/preview?rel=${encodeURIComponent(rel)}`;
+      frame.src = url;
+      modal.show();
+    });
+  });
+  modalEl.addEventListener('hidden.bs.modal', () => { frame.src = 'about:blank'; });
+});
+</script>
 {% endblock %}
