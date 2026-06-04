@@ -263,7 +263,78 @@ python3 -c "import sqlite3; c=sqlite3.connect('contabilidad.db').cursor(); c.exe
 
 ## 12. Si trabajás desde otro PC (cliente remoto)
 
-- NO tener DB local. Trabajar contra el server remoto vía HTTP.
-- Clonar el repo solo para que Claude pueda leer código si necesita entender una validación.
-- Para escrituras (crear asientos), idealmente usar API REST (en desarrollo). Mientras tanto, conectarse al server por SSH y ejecutar scripts allá.
-- URL típica: `http://notebook-pedro:5000` (vía Tailscale).
+**Setup**:
+```bash
+git clone https://github.com/pedrolecaros/contabilidad.git
+cd contabilidad
+claude   # Claude Code lee CLAUDE.md automáticamente
+```
+
+**NO tener DB local**. Toda operación via API HTTP al server. URL típica: `http://notebook-pedro:5000` (vía Tailscale).
+
+## 13. API REST para clientes remotos
+
+Base URL: `http://notebook-pedro:5000/api`
+
+### Lectura
+
+| Endpoint | Devuelve |
+|---|---|
+| `GET /api/health` | OK + timestamp |
+| `GET /api/empresas?activas=1` | Lista empresas (incl. régimen, tc_activa) |
+| `GET /api/empresa/<id>` | Detalle empresa |
+| `GET /api/empresa/<id>/cuentas` | Plan de cuentas + `requiere_aux` flag |
+| `GET /api/empresa/<id>/contrapartes` | Lista clientes/proveedores |
+| `GET /api/empresa/<id>/movs-banco?desde=&hasta=&procesado=0` | Movs cartola filtrados |
+| `GET /api/empresa/<id>/sii?desde=&hasta=&libro=COMPRAS&procesado=0` | Docs SII |
+| `GET /api/empresa/<id>/asientos?desde=&hasta=&estado=` | Asientos |
+| `GET /api/asiento/<id>` | Detalle asiento + líneas |
+| `GET /api/empresa/<id>/saldos?hasta=YYYY-MM-DD` | Saldo por cuenta |
+| `GET /api/empresa/<id>/cuenta/<codigo>/mayor?desde=&hasta=` | Mayor de cuenta |
+
+### Escritura
+
+```bash
+# Crear contraparte
+POST /api/empresa/<id>/contraparte
+{"rut": "76.123.456-7", "razon_social": "Foo SpA", "tipo": "PROVEEDOR"}
+
+# Crear asiento (valida cuadre + aux + trigger numero)
+POST /api/empresa/<id>/asiento
+{
+  "fecha": "2026-04-15",
+  "descripcion": "Pago factura 123 Proveedor X",
+  "estado": "BORRADOR",          // o "CONFIRMADO"
+  "origen": "BANCO",              // MANUAL|BANCO|LIBRO_COMPRAS|...
+  "lineas": [
+    {"cuenta_codigo": "2.1.01", "debe": 119000, "haber": 0,
+     "contraparte_id": 42, "descripcion": "Pago fact 123"},
+    {"cuenta_codigo": "1.1.02", "debe": 0, "haber": 119000,
+     "descripcion": "TRASPASO A: Proveedor X"}
+  ],
+  "mov_banco_ids": [1234],        // opcional, marca mov como procesado
+  "sii_doc_ids": [567]            // opcional, marca SII como procesado
+}
+
+POST /api/asiento/<id>/confirmar
+POST /api/asiento/<id>/anular
+```
+
+### SQL libre (solo SELECT)
+
+```bash
+POST /api/sql
+{"sql": "SELECT codigo, COUNT(*) FROM cuentas GROUP BY codigo", "params": {}}
+```
+
+### Autenticación
+
+Sin auth hoy. Si se expone públicamente (no solo Tailscale), agregar API key en header o token.
+
+### Validaciones automáticas al crear asiento
+
+- Fecha en formato ISO YYYY-MM-DD
+- Cuenta existe en la empresa (busca por código o ID)
+- Si cuenta tiene `requiere_aux=1` → debe traer `contraparte_id` válido de la misma empresa
+- Cuadre Debe = Haber (tolerancia $1)
+- Devuelve 400 con mensaje claro si algo falla; 201 con el asiento creado si todo OK

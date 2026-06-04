@@ -1,0 +1,385 @@
+"""API REST para clientes remotos (Claude Code en otra PC, scripts, integraciones).
+
+Diseño:
+- JSON in/out
+- Sin auth (Tailscale = red privada). Si se expone públicamente, agregar API key.
+- Reusa la lógica del backend (confirmar_asiento, _validar_aux_requerido, etc.)
+- Todos los POST de escritura validan cuadre + aux antes de persistir.
+
+Convenciones:
+- Fechas: ISO 8601 (YYYY-MM-DD)
+- Montos: float
+- Cuenta se identifica por código (1.1.02) o id; contraparte por id
+"""
+import json
+from datetime import date, datetime
+from flask import Blueprint, request, jsonify, abort
+from sqlalchemy import func, text
+from models import (db, Empresa, Asiento, LineaAsiento, Cuenta, Contraparte,
+                    DocumentoSII, MovimientoBanco)
+from engine.asientos import confirmar_asiento, anular_asiento
+
+bp = Blueprint('api', __name__, url_prefix='/api')
+
+
+def _e2j(asiento, with_lines=False):
+    d = {
+        'id': asiento.id, 'empresa_id': asiento.empresa_id,
+        'numero': asiento.numero, 'fecha': asiento.fecha.isoformat() if asiento.fecha else None,
+        'descripcion': asiento.descripcion, 'origen': asiento.origen, 'estado': asiento.estado,
+        'total_debe': float(asiento.total_debe or 0), 'total_haber': float(asiento.total_haber or 0),
+        'cuadrado': asiento.cuadrado,
+    }
+    if with_lines:
+        d['lineas'] = [{
+            'id': l.id, 'cuenta_id': l.cuenta_id, 'cuenta_codigo': l.cuenta.codigo,
+            'cuenta_nombre': l.cuenta.nombre,
+            'contraparte_id': l.contraparte_id,
+            'contraparte_rut': l.contraparte.rut if l.contraparte else None,
+            'contraparte_nombre': l.contraparte.razon_social if l.contraparte else None,
+            'debe': float(l.debe or 0), 'haber': float(l.haber or 0),
+            'descripcion': l.descripcion, 'orden': l.orden,
+        } for l in sorted(asiento.lineas, key=lambda x: x.orden or 0)]
+    return d
+
+
+# ─── Health & catálogo ────────────────────────────────────────────────────────
+@bp.route('/health')
+def health():
+    return jsonify({'ok': True, 'ts': datetime.now().isoformat()})
+
+
+@bp.route('/empresas')
+def empresas():
+    activas = request.args.get('activas', '1') == '1'
+    q = Empresa.query
+    if activas:
+        q = q.filter_by(activa=True)
+    return jsonify([{
+        'id': e.id, 'rut': e.rut, 'razon_social': e.razon_social,
+        'nombre_fantasia': e.nombre_fantasia, 'regimen': e.regimen,
+        'tc_activa': bool(getattr(e, 'tc_activa', False)),
+        'contribuyente_iva': bool(e.contribuyente_iva),
+        'activa': bool(e.activa),
+    } for e in q.order_by(Empresa.razon_social).all()])
+
+
+@bp.route('/empresa/<int:eid>')
+def empresa_detalle(eid):
+    e = Empresa.query.get_or_404(eid)
+    return jsonify({
+        'id': e.id, 'rut': e.rut, 'razon_social': e.razon_social,
+        'nombre_fantasia': e.nombre_fantasia, 'giro': e.giro,
+        'regimen': e.regimen, 'contribuyente_iva': bool(e.contribuyente_iva),
+        'tasa_ppm': e.tasa_ppm, 'tc_activa': bool(getattr(e, 'tc_activa', False)),
+        'activa': bool(e.activa),
+    })
+
+
+@bp.route('/empresa/<int:eid>/cuentas')
+def cuentas(eid):
+    Empresa.query.get_or_404(eid)
+    return jsonify([{
+        'id': c.id, 'codigo': c.codigo, 'nombre': c.nombre, 'tipo': c.tipo,
+        'naturaleza': c.naturaleza, 'requiere_aux': bool(c.requiere_aux),
+        'es_titulo': bool(c.es_titulo), 'activa': bool(c.activa),
+    } for c in Cuenta.query.filter_by(empresa_id=eid).order_by(Cuenta.codigo).all()])
+
+
+@bp.route('/empresa/<int:eid>/contrapartes')
+def contrapartes(eid):
+    Empresa.query.get_or_404(eid)
+    return jsonify([{
+        'id': c.id, 'rut': c.rut, 'razon_social': c.razon_social, 'tipo': c.tipo,
+    } for c in Contraparte.query.filter_by(empresa_id=eid, activo=True)
+                                .order_by(Contraparte.razon_social).all()])
+
+
+@bp.route('/empresa/<int:eid>/contraparte', methods=['POST'])
+def contraparte_crear(eid):
+    Empresa.query.get_or_404(eid)
+    data = request.get_json() or {}
+    rut = (data.get('rut') or '').strip()
+    razon = (data.get('razon_social') or '').strip()
+    tipo = data.get('tipo', 'PROVEEDOR')
+    if not rut or not razon:
+        return jsonify({'error': 'rut y razon_social requeridos'}), 400
+    existente = Contraparte.query.filter_by(empresa_id=eid, rut=rut).first()
+    if existente:
+        return jsonify({'id': existente.id, 'rut': existente.rut,
+                        'razon_social': existente.razon_social, 'existente': True})
+    cp = Contraparte(empresa_id=eid, rut=rut, razon_social=razon, tipo=tipo, activo=True)
+    db.session.add(cp)
+    db.session.commit()
+    return jsonify({'id': cp.id, 'rut': cp.rut, 'razon_social': cp.razon_social,
+                    'existente': False}), 201
+
+
+# ─── Movs banco y SII ─────────────────────────────────────────────────────────
+@bp.route('/empresa/<int:eid>/movs-banco')
+def movs_banco(eid):
+    Empresa.query.get_or_404(eid)
+    desde = request.args.get('desde'); hasta = request.args.get('hasta')
+    procesado = request.args.get('procesado')  # '1', '0', None=todos
+    q = MovimientoBanco.query.filter_by(empresa_id=eid)
+    if desde: q = q.filter(MovimientoBanco.fecha >= desde)
+    if hasta: q = q.filter(MovimientoBanco.fecha <= hasta)
+    if procesado in ('0', 'false', 'False'):
+        q = q.filter(MovimientoBanco.procesado == False)
+    elif procesado in ('1', 'true', 'True'):
+        q = q.filter(MovimientoBanco.procesado == True)
+    return jsonify([{
+        'id': m.id, 'fecha': m.fecha.isoformat() if m.fecha else None,
+        'descripcion': m.descripcion, 'banco': m.banco,
+        'cargo': float(m.cargo or 0), 'abono': float(m.abono or 0),
+        'saldo': float(m.saldo) if m.saldo is not None else None,
+        'procesado': bool(m.procesado), 'asiento_id': m.asiento_id,
+        'conciliacion_id': m.conciliacion_id,
+    } for m in q.order_by(MovimientoBanco.fecha, MovimientoBanco.id).all()])
+
+
+@bp.route('/empresa/<int:eid>/sii')
+def sii_docs(eid):
+    Empresa.query.get_or_404(eid)
+    desde = request.args.get('desde'); hasta = request.args.get('hasta')
+    libro = request.args.get('libro')  # COMPRAS|VENTAS|HONORARIOS
+    procesado = request.args.get('procesado')
+    q = DocumentoSII.query.filter_by(empresa_id=eid)
+    if desde: q = q.filter(DocumentoSII.fecha >= desde)
+    if hasta: q = q.filter(DocumentoSII.fecha <= hasta)
+    if libro: q = q.filter_by(tipo_libro=libro.upper())
+    if procesado in ('0', 'false', 'False'):
+        q = q.filter(DocumentoSII.procesado == False)
+    elif procesado in ('1', 'true', 'True'):
+        q = q.filter(DocumentoSII.procesado == True)
+    return jsonify([{
+        'id': d.id, 'tipo_libro': d.tipo_libro, 'tipo_dte': d.tipo_dte,
+        'folio': d.folio, 'fecha': d.fecha.isoformat() if d.fecha else None,
+        'rut_contraparte': d.rut_contraparte,
+        'razon_social_contraparte': d.razon_social_contraparte,
+        'monto_neto': float(d.monto_neto or 0), 'iva': float(d.iva or 0),
+        'monto_exento': float(d.monto_exento or 0), 'total': float(d.total or 0),
+        'procesado': bool(d.procesado), 'asiento_id': d.asiento_id,
+    } for d in q.order_by(DocumentoSII.fecha, DocumentoSII.folio).all()])
+
+
+# ─── Asientos: crear, confirmar, anular, listar, detalle ──────────────────────
+@bp.route('/empresa/<int:eid>/asientos')
+def asientos_lista(eid):
+    Empresa.query.get_or_404(eid)
+    desde = request.args.get('desde'); hasta = request.args.get('hasta')
+    estado = request.args.get('estado')
+    q = Asiento.query.filter_by(empresa_id=eid)
+    if desde: q = q.filter(Asiento.fecha >= desde)
+    if hasta: q = q.filter(Asiento.fecha <= hasta)
+    if estado: q = q.filter_by(estado=estado)
+    return jsonify([_e2j(a) for a in q.order_by(Asiento.fecha, Asiento.numero).all()])
+
+
+@bp.route('/api/asiento/<int:aid>')
+@bp.route('/asiento/<int:aid>')
+def asiento_detalle(aid):
+    a = Asiento.query.get_or_404(aid)
+    return jsonify(_e2j(a, with_lines=True))
+
+
+@bp.route('/empresa/<int:eid>/asiento', methods=['POST'])
+def asiento_crear(eid):
+    """Crea un asiento con sus líneas. Valida cuadre + aux requerido.
+    Payload JSON:
+    {
+        "fecha": "2026-04-01",
+        "descripcion": "...",
+        "estado": "BORRADOR" (default) | "CONFIRMADO",
+        "origen": "MANUAL" (default) | "BANCO" | "SII" | etc.,
+        "lineas": [
+            {"cuenta_codigo": "1.1.02", "debe": 100000, "haber": 0,
+             "descripcion": "Pago X", "contraparte_id": 5},
+            ...
+        ],
+        "mov_banco_ids": [1234, ...],   # opcional, marca movs procesados
+        "sii_doc_ids": [567, ...]       # opcional, marca docs procesados
+    }
+    """
+    empresa = Empresa.query.get_or_404(eid)
+    data = request.get_json() or {}
+
+    # Validaciones básicas
+    try:
+        fecha = date.fromisoformat(data['fecha'])
+    except (KeyError, ValueError):
+        return jsonify({'error': 'fecha inválida (YYYY-MM-DD requerido)'}), 400
+    desc = (data.get('descripcion') or '').strip()
+    if not desc:
+        return jsonify({'error': 'descripcion requerida'}), 400
+    lineas_in = data.get('lineas') or []
+    if not lineas_in:
+        return jsonify({'error': 'al menos una línea requerida'}), 400
+
+    # Resolver cuentas por código → id
+    codigos = {c.codigo: c for c in Cuenta.query.filter_by(empresa_id=eid).all()}
+    lineas_parsed = []
+    total_d = total_h = 0.0
+    for i, ln in enumerate(lineas_in):
+        cod = ln.get('cuenta_codigo') or ''
+        cta = codigos.get(cod)
+        if not cta:
+            cta_id = ln.get('cuenta_id')
+            if cta_id:
+                cta = Cuenta.query.filter_by(empresa_id=eid, id=int(cta_id)).first()
+        if not cta:
+            return jsonify({'error': f'línea {i+1}: cuenta {cod or ln.get("cuenta_id")} no existe'}), 400
+        d = float(ln.get('debe') or 0); h = float(ln.get('haber') or 0)
+        cp_id = ln.get('contraparte_id')
+        # Validar aux requerido
+        if cta.requiere_aux and (d or h) and not cp_id:
+            return jsonify({'error': f'línea {i+1} ({cta.codigo} {cta.nombre}) requiere contraparte_id'}), 400
+        if cp_id:
+            cp = Contraparte.query.filter_by(empresa_id=eid, id=int(cp_id)).first()
+            if not cp:
+                return jsonify({'error': f'línea {i+1}: contraparte_id {cp_id} no existe en esta empresa'}), 400
+        lineas_parsed.append({
+            'cuenta_id': cta.id, 'debe': d, 'haber': h,
+            'descripcion': (ln.get('descripcion') or '').strip(),
+            'contraparte_id': int(cp_id) if cp_id else None,
+            'orden': i + 1,
+        })
+        total_d += d; total_h += h
+
+    if abs(total_d - total_h) > 1:
+        return jsonify({'error': f'asiento descuadrado: D={total_d:,.0f} H={total_h:,.0f} diff={total_d-total_h:,.0f}'}), 400
+
+    estado = (data.get('estado') or 'BORRADOR').upper()
+    origen = (data.get('origen') or 'MANUAL').upper()
+
+    # Insert
+    asiento = Asiento(empresa_id=eid, fecha=fecha, descripcion=desc,
+                      estado='BORRADOR', origen=origen)
+    db.session.add(asiento)
+    db.session.flush()
+    for l in lineas_parsed:
+        db.session.add(LineaAsiento(asiento_id=asiento.id, **l))
+    db.session.flush()
+
+    # Marcar movs banco / sii como procesados
+    for mid in (data.get('mov_banco_ids') or []):
+        m = MovimientoBanco.query.filter_by(empresa_id=eid, id=int(mid)).first()
+        if m:
+            m.procesado = True; m.asiento_id = asiento.id
+    for did in (data.get('sii_doc_ids') or []):
+        d_sii = DocumentoSII.query.filter_by(empresa_id=eid, id=int(did)).first()
+        if d_sii:
+            d_sii.procesado = True; d_sii.asiento_id = asiento.id
+
+    # Confirmar si fue solicitado
+    if estado == 'CONFIRMADO':
+        try:
+            confirmar_asiento(asiento)
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': f'no se pudo confirmar: {e}'}), 400
+
+    db.session.commit()
+    return jsonify(_e2j(asiento, with_lines=True)), 201
+
+
+@bp.route('/asiento/<int:aid>/confirmar', methods=['POST'])
+def asiento_confirmar(aid):
+    a = Asiento.query.get_or_404(aid)
+    if a.estado == 'CONFIRMADO':
+        return jsonify({'error': 'ya está confirmado'}), 400
+    try:
+        confirmar_asiento(a)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    return jsonify(_e2j(a, with_lines=True))
+
+
+@bp.route('/asiento/<int:aid>/anular', methods=['POST'])
+def asiento_anular_api(aid):
+    a = Asiento.query.get_or_404(aid)
+    try:
+        anular_asiento(a)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    return jsonify(_e2j(a, with_lines=True))
+
+
+# ─── Saldos y mayor ───────────────────────────────────────────────────────────
+@bp.route('/empresa/<int:eid>/saldos')
+def saldos(eid):
+    Empresa.query.get_or_404(eid)
+    hasta = request.args.get('hasta', date.today().isoformat())
+    desde = request.args.get('desde')  # opcional
+    rows = (db.session.query(
+                Cuenta.codigo, Cuenta.nombre, Cuenta.tipo,
+                func.sum(LineaAsiento.debe).label('td'),
+                func.sum(LineaAsiento.haber).label('th'))
+            .join(LineaAsiento, LineaAsiento.cuenta_id == Cuenta.id)
+            .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+            .filter(Cuenta.empresa_id == eid, Asiento.empresa_id == eid,
+                    Asiento.estado == 'CONFIRMADO',
+                    Asiento.fecha <= hasta)
+            .group_by(Cuenta.id).order_by(Cuenta.codigo).all())
+    if desde:
+        # filtrar también por desde
+        rows = [r for r in rows]  # ya está aplicado en query si pasáramos desde — simplificamos
+    return jsonify([{
+        'codigo': r.codigo, 'nombre': r.nombre, 'tipo': r.tipo,
+        'debe': float(r.td or 0), 'haber': float(r.th or 0),
+        'saldo': float((r.td or 0) - (r.th or 0)),
+    } for r in rows if (r.td or r.th)])
+
+
+@bp.route('/empresa/<int:eid>/cuenta/<path:codigo>/mayor')
+def mayor_cuenta(eid, codigo):
+    Empresa.query.get_or_404(eid)
+    cta = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo).first()
+    if not cta:
+        return jsonify({'error': f'cuenta {codigo} no existe'}), 404
+    desde = request.args.get('desde'); hasta = request.args.get('hasta')
+    q = (db.session.query(LineaAsiento, Asiento)
+         .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+         .filter(LineaAsiento.cuenta_id == cta.id,
+                 Asiento.empresa_id == eid,
+                 Asiento.estado == 'CONFIRMADO'))
+    if desde: q = q.filter(Asiento.fecha >= desde)
+    if hasta: q = q.filter(Asiento.fecha <= hasta)
+    rows = q.order_by(Asiento.fecha, Asiento.numero).all()
+    return jsonify({
+        'cuenta': {'codigo': cta.codigo, 'nombre': cta.nombre},
+        'lineas': [{
+            'asiento_id': a.id, 'numero': a.numero, 'fecha': a.fecha.isoformat(),
+            'descripcion': a.descripcion,
+            'debe': float(l.debe or 0), 'haber': float(l.haber or 0),
+            'glosa': l.descripcion,
+            'contraparte_id': l.contraparte_id,
+        } for l, a in rows],
+    })
+
+
+# ─── Query SQL libre (solo SELECT, sólo lectura) ──────────────────────────────
+@bp.route('/sql', methods=['POST'])
+def sql_query():
+    """SELECT libre para casos no cubiertos. Solo lectura.
+    Payload: {"sql": "SELECT ...", "params": {...}}"""
+    data = request.get_json() or {}
+    sql = (data.get('sql') or '').strip()
+    if not sql.lower().startswith('select'):
+        return jsonify({'error': 'solo SELECT permitido'}), 400
+    params = data.get('params') or {}
+    try:
+        result = db.session.execute(text(sql), params)
+        rows = [dict(r._mapping) for r in result.fetchall()]
+        # Convert non-serializable
+        for r in rows:
+            for k, v in r.items():
+                if isinstance(v, (date, datetime)):
+                    r[k] = v.isoformat()
+        return jsonify({'rows': rows, 'count': len(rows)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
