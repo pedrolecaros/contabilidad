@@ -131,6 +131,18 @@ def _migrar(app):
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1513 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_90 REAL DEFAULT 0",
         "ALTER TABLE empresas ADD COLUMN tc_activa BOOLEAN DEFAULT 0",
+        # Documentos adjuntos por empresa (PDFs, Excels libres, respaldos varios)
+        """CREATE TABLE IF NOT EXISTS documentos_adjuntos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    nombre VARCHAR(300) NOT NULL,
+    categoria VARCHAR(50),
+    descripcion VARCHAR(500),
+    archivo_url VARCHAR(500) NOT NULL,
+    tamano INTEGER,
+    fecha_subida DATETIME DEFAULT CURRENT_TIMESTAMP
+)""",
+        "CREATE INDEX IF NOT EXISTS ix_doc_adj_emp_fecha ON documentos_adjuntos(empresa_id, fecha_subida DESC)",
         # Saldo manual cartola por (empresa, periodo) — para bancos sin saldo en XLSX (Santander)
         """CREATE TABLE IF NOT EXISTS saldos_cartola_manual (
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),

@@ -117,6 +117,9 @@
         <li><a class="nav-link {% if request.endpoint and request.endpoint.startswith('respaldos_locales') %}active{% endif %}"
                href="{{ url_for('respaldos_locales.index', eid=empresa.id) }}">
           <i class="bi bi-image me-2"></i>Respaldos fotos</a></li>
+        <li><a class="nav-link {% if request.endpoint and request.endpoint.startswith('documentos') %}active{% endif %}"
+               href="{{ url_for('documentos.index', eid=empresa.id) }}">
+          <i class="bi bi-folder2-open me-2"></i>Documentos</a></li>
       </ul>
 
       <div class="nav-section mt-2">Módulos</div>

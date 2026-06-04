@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}Documentos – {{ empresa.razon_social }}{% endblock %}
+{% block content %}
+<h5 class="mb-3"><i class="bi bi-folder2-open me-2"></i>Documentos adjuntos</h5>
+
+<form method="post" enctype="multipart/form-data" class="row g-2 align-items-end mb-4 p-3 bg-light rounded">
+  <div class="col-md-4">
+    <label class="form-label small">Archivo</label>
+    <input type="file" name="archivo" class="form-control form-control-sm" required>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label small">Categoría</label>
+    <select name="categoria" class="form-select form-select-sm">
+      {% for c in categorias %}
+        <option value="{{ c }}">{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label small">Descripción (opcional)</label>
+    <input type="text" name="descripcion" class="form-control form-control-sm" placeholder="Ej. Tabla desarrollo créditos privados 2026">
+  </div>
+  <div class="col-md-2">
+    <button type="submit" class="btn btn-primary btn-sm w-100">
+      <i class="bi bi-upload me-1"></i>Subir
+    </button>
+  </div>
+</form>
+
+{% if docs %}
+<table class="table table-sm table-hover">
+  <thead class="table-dark">
+    <tr>
+      <th>Archivo</th>
+      <th>Categoría</th>
+      <th>Descripción</th>
+      <th class="text-end">Tamaño</th>
+      <th>Subido</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in docs %}
+    <tr>
+      <td>
+        <a href="{{ url_for('documentos.descargar', eid=empresa.id, doc_id=d.id) }}" class="text-decoration-none">
+          <i class="bi bi-file-earmark me-1"></i>{{ d.nombre }}
+        </a>
+      </td>
+      <td><span class="badge bg-secondary">{{ d.categoria }}</span></td>
+      <td class="small text-muted">{{ d.descripcion or '' }}</td>
+      <td class="text-end small">{{ '%.1f'|format(d.tamano / 1024) }} KB</td>
+      <td class="small text-muted">{{ d.fecha_subida|fecha_cl if d.fecha_subida else '' }}</td>
+      <td class="text-end">
+        <form method="post" action="{{ url_for('documentos.eliminar', eid=empresa.id, doc_id=d.id) }}" style="display:inline"
+              onsubmit="return confirm('¿Eliminar este documento?');">
+          <button class="btn btn-sm btn-outline-danger" title="Eliminar">
+            <i class="bi bi-trash"></i>
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No hay documentos cargados. Subí PDFs, Excels o cualquier archivo de respaldo para esta empresa.</p>
+{% endif %}
+{% endblock %}
