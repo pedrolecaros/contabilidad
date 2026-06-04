@@ -166,7 +166,7 @@
         </td>
 
         <td class="small">{{ a.fecha|fecha_cl }}</td>
-        <td class="small">{{ (a.descripcion or '')[:40] }}{% if a.descripcion and a.descripcion|length > 40 %}…{% endif %}</td>
+        <td class="small" {% if a.descripcion and a.descripcion|length > 40 %}title="{{ a.descripcion }}" style="cursor:help"{% endif %}>{{ (a.descripcion or '')[:40] }}{% if a.descripcion and a.descripcion|length > 40 %}…{% endif %}</td>
 
         <!-- Monto -->
         <td class="text-end font-monospace small text-nowrap pe-3 {{ 'text-muted' if a.estado == 'ANULADO' }}">
