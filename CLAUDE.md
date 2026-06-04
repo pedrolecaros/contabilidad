@@ -191,6 +191,26 @@ Compras a Ahern, Toyota, etc. de maquinaria como activo (no leasing):
 
 Depreciación 1×/año (no mensual).
 
+### Mandatos (sociedad actúa como mandatario por cuenta de un tercero)
+
+Cuando la sociedad recibe plata y hace pagos por cuenta y riesgo de un mandante (ej. Cerro Colorado opera por cuenta de Ecox Real Estate Florida — EREF), **NO usar** las cuentas separadas `1.1.14 Otros Activos Circulantes` y `2.1.13 Otros Pasivos Circulantes`. Esas dos cuentas crecen en paralelo y obligan a compensar manualmente.
+
+**Patrón correcto**: una sola cuenta corriente del mandato con auxiliar por mandante.
+
+- Cuenta: **`1.1.16 Cta. Cte. Mandatos`** (tipo ACTIVO, naturaleza DEUDORA, `requiere_aux=1`)
+- Crearla con `INSERT INTO cuentas` la primera vez que se necesite en cada empresa.
+- Aux: contraparte del mandante (ej. EREF id=168 en Cerro Colorado).
+
+**Asientos**:
+- Ingreso recibido para el mandante (entra plata al banco): `1.1.02 Banco D / 1.1.16 Mandato aux H` (la sociedad ahora le debe al mandante)
+- Pago hecho por cuenta del mandante (sale plata): `1.1.16 Mandato aux D / 1.1.02 Banco H` (la sociedad recupera lo que ya entregó)
+
+**Saldo neto en cualquier momento**:
+- D = lo que el mandante le debe a la sociedad (pagamos más de lo que recibimos por él)
+- H = lo que la sociedad le debe al mandante (recibimos más de lo que pagamos)
+
+Sin necesidad de compensar mes a mes. Si hay múltiples mandantes, distintos aux en la misma cuenta.
+
 ### Créditos privados (cuotas en UF mensuales)
 
 Sin factura SII. Asiento por cada cuota:
