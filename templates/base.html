@@ -84,9 +84,6 @@
         <li><a class="nav-link {% if request.endpoint=='dashboard.index' %}active{% endif %}"
                href="{{ url_for('dashboard.index', eid=empresa.id) }}">
           <i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
-        <li><a class="nav-link {% if request.endpoint and request.endpoint.startswith('papelera') %}active{% endif %}"
-               href="{{ url_for('papelera.index', eid=empresa.id) }}">
-          <i class="bi bi-trash3 me-2 text-secondary"></i>Papelera</a></li>
       </ul>
       <hr class="text-secondary my-1">
 
@@ -215,6 +212,9 @@
         <li><a class="nav-link {% if request.endpoint == 'main.db_manager' %}active{% endif %}"
                href="{{ url_for('main.db_manager') }}">
           <i class="bi bi-database-gear me-2"></i>Gestionar BD</a></li>
+        <li><a class="nav-link {% if request.endpoint and request.endpoint.startswith('papelera') %}active{% endif %}"
+               href="{{ url_for('papelera.index', eid=empresa.id) }}">
+          <i class="bi bi-trash3 me-2 text-secondary"></i>Papelera</a></li>
       </ul>
 
     </nav>
