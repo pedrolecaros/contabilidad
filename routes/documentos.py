@@ -218,12 +218,61 @@ def preview(eid):
                     truncated = True; break
                 rows.append(['' if v is None else str(v) for v in row])
         elif ext in ('.xls',):
-            import xlrd
-            wb = xlrd.open_workbook(full)
-            sh = wb.sheet_by_index(0)
-            for r in range(min(sh.nrows, LIMIT)):
-                rows.append([str(sh.cell_value(r, c)) for c in range(sh.ncols)])
-            if sh.nrows > LIMIT: truncated = True
+            # XLS puede ser: (a) binario BIFF clásico, (b) HTML disfrazado (SII),
+            # (c) CSV/texto con extensión .xls (cartolas algunos bancos).
+            with open(full, 'rb') as f:
+                head_raw = f.read(2048)
+            head = head_raw.lstrip().lower()
+            is_binary_xls = head_raw[:4] == b'\xd0\xcf\x11\xe0'
+            is_html = (not is_binary_xls) and head.startswith(b'<') and (b'<table' in head or b'<html' in head)
+            is_text = (not is_binary_xls) and (not is_html) and all(
+                b in (9, 10, 13) or 32 <= b < 127 or b > 127 for b in head_raw[:512])
+            if is_text and not is_html:
+                # CSV/TSV disfrazado de .xls
+                import csv as _csv
+                with open(full, encoding='utf-8', errors='replace') as f:
+                    sample = f.read(2048); f.seek(0)
+                    delim = ';' if sample.count(';') > sample.count(',') else (',' if ',' in sample else '\t')
+                    for i, row in enumerate(_csv.reader(f, delimiter=delim)):
+                        if i >= LIMIT:
+                            truncated = True; break
+                        rows.append(row)
+            elif is_html:
+                # Parsear como HTML: extraer <tr><td> de la primera tabla
+                from html.parser import HTMLParser
+                class _TblParser(HTMLParser):
+                    def __init__(self):
+                        super().__init__()
+                        self.rows = []; self.row = None; self.cell = None
+                        self.in_table = False; self.cell_text = ''
+                    def handle_starttag(self, tag, attrs):
+                        t = tag.lower()
+                        if t == 'table': self.in_table = True
+                        elif t == 'tr' and self.in_table: self.row = []
+                        elif t in ('td','th') and self.row is not None: self.cell = []; self.cell_text = ''
+                        elif t == 'br' and self.cell is not None: self.cell_text += ' '
+                    def handle_endtag(self, tag):
+                        t = tag.lower()
+                        if t in ('td','th') and self.cell is not None and self.row is not None:
+                            self.row.append(self.cell_text.strip()); self.cell = None; self.cell_text = ''
+                        elif t == 'tr' and self.row is not None:
+                            self.rows.append(self.row); self.row = None
+                        elif t == 'table': self.in_table = False
+                    def handle_data(self, data):
+                        if self.cell is not None: self.cell_text += data
+                with open(full, encoding='utf-8', errors='replace') as f:
+                    txt = f.read()
+                p = _TblParser(); p.feed(txt)
+                for r in p.rows[:LIMIT]:
+                    rows.append(r)
+                if len(p.rows) > LIMIT: truncated = True
+            else:
+                import xlrd
+                wb = xlrd.open_workbook(full)
+                sh = wb.sheet_by_index(0)
+                for r in range(min(sh.nrows, LIMIT)):
+                    rows.append([str(sh.cell_value(r, c)) for c in range(sh.ncols)])
+                if sh.nrows > LIMIT: truncated = True
         elif ext in ('.txt', '.log'):
             with open(full, encoding='utf-8', errors='replace') as f:
                 contenido = f.read(200_000)

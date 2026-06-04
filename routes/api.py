@@ -369,6 +369,46 @@ def archivo_contenido(eid):
             return jsonify({'ext': ext, 'nombre': fname, 'rows': rows, 'count': len(rows),
                             'sheet': ws.title})
         elif ext == '.xls':
+            with open(full, 'rb') as f:
+                head_raw = f.read(2048)
+            head = head_raw.lstrip().lower()
+            is_binary_xls = head_raw[:4] == b'\xd0\xcf\x11\xe0'
+            is_html = (not is_binary_xls) and head.startswith(b'<') and (b'<table' in head or b'<html' in head)
+            is_text = (not is_binary_xls) and (not is_html) and all(
+                b in (9, 10, 13) or 32 <= b < 127 or b > 127 for b in head_raw[:512])
+            if is_text and not is_html:
+                import csv as _csv
+                rows = []
+                with open(full, encoding='utf-8', errors='replace') as f:
+                    sample = f.read(2048); f.seek(0)
+                    delim = ';' if sample.count(';') > sample.count(',') else (',' if ',' in sample else '\t')
+                    for i, row in enumerate(_csv.reader(f, delimiter=delim)):
+                        if i >= max_rows: break
+                        rows.append(row)
+                return jsonify({'ext': ext, 'nombre': fname, 'rows': rows, 'count': len(rows),
+                                'formato': 'csv-disfrazado', 'delim': delim})
+            if is_html:
+                from html.parser import HTMLParser
+                class _P(HTMLParser):
+                    def __init__(self):
+                        super().__init__(); self.rows=[]; self.row=None; self.cell=None; self.txt=''; self.in_t=False
+                    def handle_starttag(self,t,a):
+                        if t=='table': self.in_t=True
+                        elif t=='tr' and self.in_t: self.row=[]
+                        elif t in ('td','th') and self.row is not None: self.cell=[]; self.txt=''
+                        elif t=='br' and self.cell is not None: self.txt+=' '
+                    def handle_endtag(self,t):
+                        if t in ('td','th') and self.cell is not None and self.row is not None:
+                            self.row.append(self.txt.strip()); self.cell=None; self.txt=''
+                        elif t=='tr' and self.row is not None: self.rows.append(self.row); self.row=None
+                        elif t=='table': self.in_t=False
+                    def handle_data(self,d):
+                        if self.cell is not None: self.txt+=d
+                with open(full, encoding='utf-8', errors='replace') as f:
+                    p = _P(); p.feed(f.read())
+                rows = p.rows[:max_rows]
+                return jsonify({'ext': ext, 'nombre': fname, 'rows': rows, 'count': len(rows),
+                                'formato': 'html-disfrazado'})
             import xlrd
             wb = xlrd.open_workbook(full)
             sh = wb.sheet_by_index(0)
