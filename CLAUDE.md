@@ -283,14 +283,35 @@ python3 -c "import sqlite3; c=sqlite3.connect('contabilidad.db').cursor(); c.exe
 
 ## 12. Si trabajás desde otro PC (cliente remoto)
 
-**Setup**:
+**Setup (una vez)**:
 ```bash
 git clone https://github.com/pedrolecaros/contabilidad.git
 cd contabilidad
-claude   # Claude Code lee CLAUDE.md automáticamente
+claude
 ```
 
-**NO tener DB local**. Toda operación via API HTTP al server. URL típica: `http://notebook-pedro:5000` (vía Tailscale).
+**Uso diario**:
+```bash
+cd contabilidad
+git pull        # opcional, traer cambios
+claude
+> hagamos marzo de Parque Sur
+```
+
+### Servidor
+
+**URL por defecto**: `http://192.168.100.128:5000` (server local de Pedro en la red WiFi de la oficina).
+
+Alternativas si la principal no responde:
+- `http://localhost:5000` (si corre en la misma máquina)
+- `http://notebook-pedro:5000` (si está configurado Tailscale)
+
+**Al iniciar la primera sesión, Claude debe**:
+1. Probar `GET /api/health` contra la URL por defecto
+2. Si responde 200 → seguir usando esa URL
+3. Si NO responde (timeout, connection refused, etc.) → **PREGUNTAR al usuario**: *"No puedo alcanzar http://192.168.100.128:5000. ¿En qué IP/URL está corriendo el server hoy?"* Esperar respuesta antes de continuar.
+
+NO tener DB local. Toda operación va via API HTTP al server (ver sección 13).
 
 ## 13. API REST para clientes remotos
 
