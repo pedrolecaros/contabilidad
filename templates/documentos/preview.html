@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{{ fname }}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+<style>
+  body { margin:0; padding:.75rem; font-size:.82rem; }
+  table { font-size:.78rem; }
+  th, td { white-space:nowrap; max-width:300px; overflow:hidden; text-overflow:ellipsis; }
+  thead th { position:sticky; top:0; background:#212529; color:white; z-index:5; }
+  pre { white-space:pre-wrap; font-size:.78rem; }
+  .alert-truncated { position:sticky; top:0; z-index:6; }
+</style>
+</head>
+<body>
+
+{% if error %}
+  <div class="alert alert-warning">{{ error }}</div>
+  <p>Si querés acceder al contenido del archivo, descargalo y abrilo en tu PC.</p>
+{% elif texto is defined %}
+  {% if truncated %}<div class="alert alert-info alert-truncated mb-2">Mostrando primeros 200 KB</div>{% endif %}
+  <pre class="bg-light p-2 border rounded">{{ texto }}</pre>
+{% elif rows %}
+  {% if truncated %}
+  <div class="alert alert-info alert-truncated mb-2">Mostrando primeras 500 filas (archivo más grande — descargar para ver completo)</div>
+  {% endif %}
+  <div class="text-muted mb-2"><strong>{{ rows|length }}</strong> filas mostradas</div>
+  <table class="table table-sm table-hover table-bordered">
+    {% if rows[0] %}
+    <thead><tr>{% for cell in rows[0] %}<th>{{ cell }}</th>{% endfor %}</tr></thead>
+    {% endif %}
+    <tbody>
+    {% for row in rows[1:] %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="text-muted">Archivo vacío.</p>
+{% endif %}
+
+</body>
+</html>

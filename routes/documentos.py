@@ -53,6 +53,55 @@ def _scan_dir(root, rel='', max_depth=4):
     return items
 
 
+@bp.route('/consolidado/archivos')
+def consolidado():
+    """Explorador consolidado: archivos de TODAS las empresas activas con filtros."""
+    empresas = Empresa.query.filter_by(activa=True).order_by(Empresa.razon_social).all()
+    base_root = os.path.join(current_app.config['UPLOAD_FOLDER'], 'backups_importacion')
+
+    archivos = []
+    for emp in empresas:
+        rut_clean = _rut_clean(emp.rut)
+        emp_dir = os.path.join(base_root, rut_clean)
+        for a in _scan_dir(emp_dir, max_depth=5):
+            a['empresa_id'] = emp.id
+            a['empresa_nombre'] = emp.nombre_fantasia or emp.razon_social
+            a['empresa_rut'] = emp.rut
+            archivos.append(a)
+
+    # Filtros
+    f_emp = request.args.get('empresa', '').strip()
+    f_tipo = request.args.get('tipo', '').strip().upper()
+    f_periodo = request.args.get('periodo', '').strip()
+    f_search = request.args.get('q', '').strip().lower()
+
+    if f_emp:
+        archivos = [a for a in archivos if str(a['empresa_id']) == f_emp]
+    if f_tipo:
+        archivos = [a for a in archivos if a['tipo'].upper() == f_tipo]
+    if f_periodo:
+        archivos = [a for a in archivos if a['periodo'] == f_periodo]
+    if f_search:
+        archivos = [a for a in archivos if f_search in a['nombre'].lower()]
+
+    archivos.sort(key=lambda x: x['mtime'], reverse=True)
+
+    # Listas para filtros
+    all_files = []
+    for emp in empresas:
+        rut_clean = _rut_clean(emp.rut)
+        all_files.extend(_scan_dir(os.path.join(base_root, rut_clean), max_depth=5))
+    tipos = sorted({a['tipo'] for a in all_files})
+    periodos = sorted({a['periodo'] for a in all_files if a['periodo']}, reverse=True)
+    total_bytes = sum(a['tamano'] for a in archivos)
+
+    return render_template('documentos/consolidado.html',
+        empresas=empresas, archivos=archivos,
+        tipos=tipos, periodos=periodos,
+        f_emp=f_emp, f_tipo=f_tipo, f_periodo=f_periodo, f_search=f_search,
+        total_bytes=total_bytes, total_count=len(all_files))
+
+
 @bp.route('/empresa/<int:eid>/archivos')
 def index(eid):
     empresa = Empresa.query.get_or_404(eid)
@@ -91,22 +140,100 @@ def index(eid):
         rut_clean=rut_clean)
 
 
-@bp.route('/empresa/<int:eid>/archivos/descargar')
-def descargar(eid):
-    empresa = Empresa.query.get_or_404(eid)
-    rel = request.args.get('rel', '').strip()
+def _full_path(empresa, rel):
+    """Resuelve la ruta completa validando que sea dentro del directorio de la empresa."""
     if not rel or '..' in rel.split('/'):
-        abort(400)
+        return None
     rut_clean = _rut_clean(empresa.rut)
     base = os.path.join(current_app.config['UPLOAD_FOLDER'],
                         'backups_importacion', rut_clean)
     full = os.path.join(base, rel)
     if not os.path.isfile(full):
+        return None
+    return full
+
+
+@bp.route('/empresa/<int:eid>/archivos/descargar')
+def descargar(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    rel = request.args.get('rel', '').strip()
+    full = _full_path(empresa, rel)
+    if not full:
         flash(f'Archivo no encontrado: {rel}', 'danger')
         return redirect(url_for('documentos.index', eid=eid))
-    directory = os.path.dirname(full)
+    return send_from_directory(os.path.dirname(full), os.path.basename(full),
+                                as_attachment=True)
+
+
+@bp.route('/empresa/<int:eid>/archivos/inline')
+def inline(eid):
+    """Sirve el archivo inline (sin forzar download) — para PDF/imagen en <iframe>/<img>."""
+    empresa = Empresa.query.get_or_404(eid)
+    rel = request.args.get('rel', '').strip()
+    full = _full_path(empresa, rel)
+    if not full:
+        abort(404)
+    return send_from_directory(os.path.dirname(full), os.path.basename(full),
+                                as_attachment=False)
+
+
+@bp.route('/empresa/<int:eid>/archivos/preview')
+def preview(eid):
+    """Render preview HTML para CSV/XLS/XLSX. PDFs e imágenes van inline."""
+    empresa = Empresa.query.get_or_404(eid)
+    rel = request.args.get('rel', '').strip()
+    full = _full_path(empresa, rel)
+    if not full:
+        abort(404)
+    ext = os.path.splitext(full)[1].lower()
     fname = os.path.basename(full)
-    return send_from_directory(directory, fname, as_attachment=True)
+
+    rows = []
+    error = None
+    truncated = False
+    LIMIT = 500
+
+    try:
+        if ext == '.csv':
+            import csv as _csv
+            with open(full, encoding='utf-8', errors='replace') as f:
+                reader = _csv.reader(f, delimiter=';' if ';' in f.readline() else ',')
+                f.seek(0)
+                reader = _csv.reader(f, delimiter=';' if ';' in f.readline() else ',')
+                f.seek(0)
+                for i, row in enumerate(_csv.reader(f)):
+                    if i >= LIMIT:
+                        truncated = True; break
+                    rows.append(row)
+        elif ext == '.xlsx':
+            from openpyxl import load_workbook
+            wb = load_workbook(full, data_only=True, read_only=True)
+            ws = wb.active
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                if i >= LIMIT:
+                    truncated = True; break
+                rows.append(['' if v is None else str(v) for v in row])
+        elif ext in ('.xls',):
+            import xlrd
+            wb = xlrd.open_workbook(full)
+            sh = wb.sheet_by_index(0)
+            for r in range(min(sh.nrows, LIMIT)):
+                rows.append([str(sh.cell_value(r, c)) for c in range(sh.ncols)])
+            if sh.nrows > LIMIT: truncated = True
+        elif ext in ('.txt', '.log'):
+            with open(full, encoding='utf-8', errors='replace') as f:
+                contenido = f.read(200_000)
+            return render_template('documentos/preview.html',
+                empresa=empresa, fname=fname, rel=rel,
+                texto=contenido, truncated=len(contenido) >= 200_000)
+        else:
+            error = f'Tipo de archivo no previsualizable: {ext}. Usá Descargar.'
+    except Exception as e:
+        error = f'Error al leer archivo: {e}'
+
+    return render_template('documentos/preview.html',
+        empresa=empresa, fname=fname, rel=rel,
+        rows=rows, truncated=truncated, error=error)
 
 
 @bp.route('/empresa/<int:eid>/archivos/eliminar', methods=['POST'])
