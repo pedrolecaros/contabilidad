@@ -10,6 +10,50 @@
     {{ archivos|length }} {% if f_emp or f_tipo or f_periodo or f_search %}filtrados de {{ total_count }}{% else %}archivos{% endif %}
     · Total: {{ '%.1f'|format(total_bytes / 1024 / 1024) }} MB
   </span>
+  <button class="btn btn-sm btn-primary ms-auto" data-bs-toggle="modal" data-bs-target="#modalSubir">
+    <i class="bi bi-plus-lg me-1"></i>Agregar archivo
+  </button>
+</div>
+
+<!-- Modal subir archivo -->
+<div class="modal fade" id="modalSubir" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('documentos.subir_consolidado') }}" enctype="multipart/form-data" class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Agregar archivo a empresa</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small">Empresa <span class="text-danger">*</span></label>
+          <select name="empresa_id" class="form-select form-select-sm" required>
+            <option value="">— Seleccionar —</option>
+            {% for e in empresas %}
+            <option value="{{ e.id }}">{{ e.razon_social }} ({{ e.rut }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">Archivo <span class="text-danger">*</span></label>
+          <input type="file" name="archivo" class="form-control form-control-sm" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">Período (opcional)</label>
+          <input type="month" name="periodo" class="form-control form-control-sm">
+          <div class="form-text small">
+            Vacío = archivo <strong>GLOBAL</strong> (no expira al limpiar respaldos).
+          </div>
+        </div>
+        <div class="alert alert-info small mb-0">
+          Categoría: <strong>OTROS</strong>. No se procesa contablemente — solo respaldo.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-upload me-1"></i>Subir</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <form method="get" class="row g-2 mb-3 align-items-end">

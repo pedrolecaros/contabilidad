@@ -53,6 +53,48 @@ def _scan_dir(root, rel='', max_depth=4):
     return items
 
 
+@bp.route('/consolidado/archivos/subir', methods=['POST'])
+def subir_consolidado():
+    """Sube un archivo desde el consolidado seleccionando empresa."""
+    from storage import save_import_backup
+    from flask import current_app as _ca
+    from models import ArchivoImportado
+    eid_str = request.form.get('empresa_id', '').strip()
+    if not eid_str:
+        flash('Seleccioná una empresa', 'warning')
+        return redirect(url_for('documentos.consolidado'))
+    try:
+        eid = int(eid_str)
+    except ValueError:
+        flash('empresa_id inválido', 'danger')
+        return redirect(url_for('documentos.consolidado'))
+    empresa = Empresa.query.get(eid)
+    if not empresa:
+        flash('Empresa no existe', 'danger')
+        return redirect(url_for('documentos.consolidado'))
+    archivo = request.files.get('archivo')
+    if not archivo or not archivo.filename:
+        flash('Seleccioná un archivo', 'warning')
+        return redirect(url_for('documentos.consolidado'))
+    periodo = (request.form.get('periodo') or '').strip() or None
+    archivo.stream.seek(0)
+    blob = archivo.stream.read()
+    sub_rel = save_import_backup(blob, archivo.filename,
+                                  _ca.config['UPLOAD_FOLDER'],
+                                  empresa.rut, 'OTROS', periodo)
+    import hashlib
+    sha = hashlib.sha256(blob).hexdigest()
+    registro = ArchivoImportado(
+        empresa_id=eid, tipo='OTROS', nombre_archivo=archivo.filename,
+        sha256=sha, periodo=periodo or '',
+        fecha_importacion=__import__('datetime').datetime.now(), ndocs=0,
+        respaldo_url=f'local:{sub_rel}',
+    )
+    db.session.add(registro); db.session.commit()
+    flash(f'"{archivo.filename}" guardado en {empresa.razon_social} ({"global" if not periodo else periodo})', 'success')
+    return redirect(url_for('documentos.consolidado'))
+
+
 @bp.route('/consolidado/archivos')
 def consolidado():
     """Explorador consolidado: archivos de TODAS las empresas activas con filtros."""
