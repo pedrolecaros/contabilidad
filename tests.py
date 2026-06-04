@@ -1588,6 +1588,172 @@ class TestMejoras20a30(unittest.TestCase):
         )
 
 
+class TestApiRest(unittest.TestCase):
+    """API REST endpoints (priority 1-6 desde cliente remoto)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import json as _json
+        from app import create_app
+        from config import Config
+
+        class TestConfig(Config):
+            TESTING = True
+            SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+            SECRET_KEY = 'test-key'
+
+        cls.app = create_app(config_override=TestConfig)
+        from models import db, Empresa, Cuenta, Contraparte
+        with cls.app.app_context():
+            db.create_all()
+            emp = Empresa(rut='99.999.999-9', razon_social='Empresa API Test', activa=True, regimen='PYME')
+            db.session.add(emp); db.session.flush()
+            cls.eid = emp.id
+            # Plan mínimo
+            for cod, nom, tipo, nat, aux in [
+                ('1.1.01', 'Caja', 'ACTIVO', 'DEUDORA', 0),
+                ('1.1.02', 'Banco', 'ACTIVO', 'DEUDORA', 0),
+                ('1.1.05', 'IVA CF', 'ACTIVO', 'DEUDORA', 0),
+                ('1.1.06', 'PPM', 'ACTIVO', 'DEUDORA', 0),
+                ('2.1.01', 'Proveedores', 'PASIVO', 'ACREEDORA', 1),
+                ('2.1.03', 'IVA DF', 'PASIVO', 'ACREEDORA', 0),
+                ('2.1.04', 'Ret Hon', 'PASIVO', 'ACREEDORA', 0),
+            ]:
+                db.session.add(Cuenta(empresa_id=emp.id, codigo=cod, nombre=nom,
+                                       tipo=tipo, naturaleza=nat, nivel=3,
+                                       activa=True, es_titulo=False, requiere_aux=aux))
+            cp = Contraparte(empresa_id=emp.id, rut='77.111.222-3', razon_social='Foo SpA',
+                              tipo='PROVEEDOR', activo=True)
+            db.session.add(cp); db.session.flush()
+            cls.cp_id = cp.id
+            db.session.commit()
+        cls.client = cls.app.test_client()
+
+    def test_health(self):
+        r = self.client.get('/api/health')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('ok', r.get_json())
+
+    def test_nota_get_404_y_put_upsert(self):
+        # GET sin nota → 404
+        r = self.client.get(f'/api/empresa/{self.eid}/nota')
+        self.assertEqual(r.status_code, 404)
+        # PUT crea
+        r = self.client.put(f'/api/empresa/{self.eid}/nota',
+                             json={'contenido': 'mi nota'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()['contenido'], 'mi nota')
+        # GET ahora trae
+        r = self.client.get(f'/api/empresa/{self.eid}/nota')
+        self.assertEqual(r.status_code, 200)
+        # PUT actualiza
+        r = self.client.put(f'/api/empresa/{self.eid}/nota',
+                             json={'contenido': 'modificada'})
+        self.assertEqual(r.get_json()['contenido'], 'modificada')
+
+    def test_nota_put_validacion(self):
+        r = self.client.put(f'/api/empresa/{self.eid}/nota', json={})
+        self.assertEqual(r.status_code, 400)
+
+    def test_saldos_estados(self):
+        # Sin asientos cualquier filtro debe devolver lista vacía pero status 200
+        r = self.client.get(f'/api/empresa/{self.eid}/saldos-estados?estados=BORRADOR,CONFIRMADO')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('cuentas', r.get_json())
+
+    def test_saldos_estados_vacio(self):
+        r = self.client.get(f'/api/empresa/{self.eid}/saldos-estados?estados=')
+        self.assertEqual(r.status_code, 400)
+
+    def test_mes_resumen(self):
+        r = self.client.get(f'/api/empresa/{self.eid}/mes/2026-03/resumen')
+        self.assertEqual(r.status_code, 200)
+        d = r.get_json()
+        self.assertIn('movs_banco', d)
+        self.assertIn('sii', d)
+        self.assertIn('asientos', d)
+        self.assertIn('saldos_clave', d)
+
+    def test_mes_resumen_periodo_invalido(self):
+        r = self.client.get(f'/api/empresa/{self.eid}/mes/abril/resumen')
+        self.assertEqual(r.status_code, 400)
+
+    def test_asiento_crud(self):
+        # Crear borrador
+        r = self.client.post(f'/api/empresa/{self.eid}/asiento', json={
+            'fecha': '2026-04-15', 'descripcion': 'Test CRUD',
+            'lineas': [
+                {'cuenta_codigo': '1.1.02', 'debe': 100000, 'haber': 0},
+                {'cuenta_codigo': '1.1.01', 'debe': 0, 'haber': 100000},
+            ]
+        })
+        self.assertEqual(r.status_code, 201)
+        aid = r.get_json()['id']
+        # Editar
+        r = self.client.patch(f'/api/asiento/{aid}', json={
+            'descripcion': 'Modificado',
+            'lineas': [
+                {'cuenta_codigo': '1.1.02', 'debe': 200000, 'haber': 0},
+                {'cuenta_codigo': '1.1.01', 'debe': 0, 'haber': 200000},
+            ]
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()['descripcion'], 'Modificado')
+        self.assertEqual(r.get_json()['total_debe'], 200000.0)
+        # Eliminar
+        r = self.client.delete(f'/api/asiento/{aid}')
+        self.assertEqual(r.status_code, 200)
+        # GET ahora 404
+        r = self.client.get(f'/api/asiento/{aid}')
+        self.assertEqual(r.status_code, 404)
+
+    def test_asiento_editar_falla_si_confirmado(self):
+        r = self.client.post(f'/api/empresa/{self.eid}/asiento', json={
+            'fecha': '2026-04-16', 'descripcion': 'Conf',
+            'estado': 'CONFIRMADO',
+            'lineas': [
+                {'cuenta_codigo': '1.1.02', 'debe': 5000, 'haber': 0},
+                {'cuenta_codigo': '1.1.01', 'debe': 0, 'haber': 5000},
+            ]
+        })
+        self.assertEqual(r.status_code, 201)
+        aid = r.get_json()['id']
+        r = self.client.patch(f'/api/asiento/{aid}', json={'descripcion': 'no debe permitir'})
+        self.assertEqual(r.status_code, 400)
+
+    def test_bulk_confirmar(self):
+        # Crear 2 borradores
+        ids = []
+        for i in range(2):
+            r = self.client.post(f'/api/empresa/{self.eid}/asiento', json={
+                'fecha': '2026-04-17', 'descripcion': f'Bulk {i}',
+                'lineas': [
+                    {'cuenta_codigo': '1.1.02', 'debe': 1000, 'haber': 0},
+                    {'cuenta_codigo': '1.1.01', 'debe': 0, 'haber': 1000},
+                ]
+            })
+            ids.append(r.get_json()['id'])
+        r = self.client.post('/api/asientos/confirmar', json={'ids': ids})
+        d = r.get_json()
+        self.assertEqual(len(d['confirmados']), 2)
+        self.assertEqual(len(d['fallidos']), 0)
+
+    def test_bulk_confirmar_vacio(self):
+        r = self.client.post('/api/asientos/confirmar', json={'ids': []})
+        self.assertEqual(r.status_code, 400)
+
+    def test_contrapartes_buscar(self):
+        r = self.client.get(f'/api/empresa/{self.eid}/contrapartes?q=foo')
+        self.assertEqual(r.status_code, 200)
+        self.assertGreaterEqual(len(r.get_json()), 1)
+        r = self.client.get(f'/api/empresa/{self.eid}/contrapartes?q=zzzzz')
+        self.assertEqual(len(r.get_json()), 0)
+
+    def test_f29_404(self):
+        r = self.client.get(f'/api/empresa/{self.eid}/f29/2026-01')
+        self.assertEqual(r.status_code, 404)
+
+
 if __name__ == '__main__':
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -1602,6 +1768,7 @@ if __name__ == '__main__':
     suite.addTests(loader.loadTestsFromTestCase(TestPrestamosAsientos))
     suite.addTests(loader.loadTestsFromTestCase(TestVacaciones))
     suite.addTests(loader.loadTestsFromTestCase(TestMejoras20a30))
+    suite.addTests(loader.loadTestsFromTestCase(TestApiRest))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

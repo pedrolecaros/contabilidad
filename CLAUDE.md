@@ -399,3 +399,85 @@ Sin auth hoy. Si se expone públicamente (no solo Tailscale), agregar API key en
 - Si cuenta tiene `requiere_aux=1` → debe traer `contraparte_id` válido de la misma empresa
 - Cuadre Debe = Haber (tolerancia $1)
 - Devuelve 400 con mensaje claro si algo falla; 201 con el asiento creado si todo OK
+
+### Notas contables por empresa (P1)
+
+```bash
+# Leer la nota markdown
+GET  /api/empresa/<id>/nota
+# → {"empresa_id": 1, "contenido": "...", "actualizado_en": "..."} o 404
+
+# Crear/actualizar (upsert)
+PUT  /api/empresa/<id>/nota
+{"contenido": "## Notas operativas\n- regla X..."}
+```
+
+### Saldos con estados configurables (P2)
+
+```bash
+# Solo CONFIRMADO (default — backwards compatible con /api/empresa/<id>/saldos)
+GET  /api/empresa/<id>/saldos-estados?hasta=2026-03-31&estados=CONFIRMADO
+
+# Proyección incluyendo borradores no confirmados
+GET  /api/empresa/<id>/saldos-estados?hasta=2026-03-31&estados=BORRADOR,CONFIRMADO
+```
+
+### Resumen ejecutivo del mes (P3)
+
+```bash
+GET  /api/empresa/<id>/mes/2026-03/resumen
+# →
+# {
+#   "periodo": "2026-03",
+#   "movs_banco": {"total": 68, "sin_procesar": 0, "ingresos": $, "egresos": $},
+#   "sii": {
+#     "COMPRAS":    {"total": N, "sin_procesar": N, "monto": $},
+#     "VENTAS":     {"total": N, "sin_procesar": N, "monto": $},
+#     "HONORARIOS": {"total": N, "sin_procesar": N, "monto": $}
+#   },
+#   "asientos": {"BORRADOR": 0, "CONFIRMADO": 148, "ANULADO": 0, "descuadrados": 0},
+#   "saldos_clave": {"banco": $, "caja": $, "iva_cf": $, "iva_df": $,
+#                    "ret_honorarios": $, "ppm": $},
+#   "f29_mes_anterior": {"periodo": "2026-02", "cargado": true, "codigo_91": 81466}
+# }
+```
+
+### Editar y eliminar asiento BORRADOR (P4)
+
+```bash
+# Editar (mismos campos opcionales que POST; lineas reemplaza todas)
+PATCH  /api/asiento/<id>
+# Rechaza 400 si estado == CONFIRMADO (debe anularse primero)
+{"descripcion": "...", "lineas": [...], "estado": "CONFIRMADO"}  # estado opcional confirma
+
+# Eliminar BORRADOR (marca movs/sii asociados como procesado=0)
+DELETE /api/asiento/<id>
+# Rechaza 400 si CONFIRMADO
+```
+
+### Confirmación bulk (P5)
+
+```bash
+POST /api/asientos/confirmar
+{"ids": [1804, 1805, 1806]}
+# → {"confirmados": [1804, 1805], "fallidos": [{"id": 1806, "error": "..."}]}
+# Atómico por id, no rollback global.
+```
+
+### Búsqueda contrapartes (P6)
+
+```bash
+# Sin q: trae todas (hasta el orden por razon_social)
+GET  /api/empresa/<id>/contrapartes
+# Con q: busca por razon_social o RUT, max 50 resultados
+GET  /api/empresa/<id>/contrapartes?q=ahern
+```
+
+### Lectura F29 con descomposición (P6)
+
+```bash
+GET  /api/empresa/<id>/f29/2026-01
+# → {"codigo_62": 39134, "codigo_48": 34375, "codigo_151": 0, "codigo_91": 73509,
+#    "codigos_completos": {"77": ..., "504": ..., ...}}
+# 404 si no cargado
+```

@@ -43,6 +43,11 @@ def _e2j(asiento, with_lines=False):
     return d
 
 
+# ─── Helpers para serialización ───────────────────────────────────────────────
+def _err(msg, code=400):
+    return jsonify({'error': msg}), code
+
+
 # ─── Health & catálogo ────────────────────────────────────────────────────────
 @bp.route('/health')
 def health():
@@ -89,10 +94,20 @@ def cuentas(eid):
 @bp.route('/empresa/<int:eid>/contrapartes')
 def contrapartes(eid):
     Empresa.query.get_or_404(eid)
+    q = (request.args.get('q') or '').strip().lower()
+    base = Contraparte.query.filter_by(empresa_id=eid, activo=True)
+    if q:
+        pattern = f'%{q}%'
+        base = base.filter(db.or_(
+            func.lower(Contraparte.razon_social).like(pattern),
+            func.lower(Contraparte.rut).like(pattern)
+        ))
+    base = base.order_by(Contraparte.razon_social)
+    if q:
+        base = base.limit(50)
     return jsonify([{
         'id': c.id, 'rut': c.rut, 'razon_social': c.razon_social, 'tipo': c.tipo,
-    } for c in Contraparte.query.filter_by(empresa_id=eid, activo=True)
-                                .order_by(Contraparte.razon_social).all()])
+    } for c in base.all()])
 
 
 @bp.route('/empresa/<int:eid>/contraparte', methods=['POST'])
@@ -501,3 +516,324 @@ def sql_query():
         return jsonify({'rows': rows, 'count': len(rows)})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Endpoints adicionales (priority 1-6 según pedido cliente remoto)
+# ════════════════════════════════════════════════════════════════════════════
+
+# ─── P1: Notas contables (lectura/escritura) ──────────────────────────────────
+@bp.route('/empresa/<int:eid>/nota', methods=['GET'])
+def nota_get(eid):
+    Empresa.query.get_or_404(eid)
+    r = db.session.execute(text(
+        "SELECT contenido, actualizado_en FROM notas_contables WHERE empresa_id=:e"
+    ), {'e': eid}).fetchone()
+    if not r:
+        return _err('nota no existe', 404)
+    return jsonify({
+        'empresa_id': eid,
+        'contenido': r[0],
+        'actualizado_en': r[1].isoformat() if hasattr(r[1], 'isoformat') else str(r[1]),
+    })
+
+
+@bp.route('/empresa/<int:eid>/nota', methods=['PUT'])
+def nota_put(eid):
+    Empresa.query.get_or_404(eid)
+    data = request.get_json() or {}
+    contenido = data.get('contenido')
+    if contenido is None:
+        return _err('contenido requerido')
+    db.session.execute(text("""
+        INSERT INTO notas_contables (empresa_id, contenido, actualizado_en)
+        VALUES (:e, :c, CURRENT_TIMESTAMP)
+        ON CONFLICT(empresa_id) DO UPDATE SET
+            contenido=excluded.contenido, actualizado_en=CURRENT_TIMESTAMP
+    """), {'e': eid, 'c': contenido})
+    db.session.commit()
+    r = db.session.execute(text(
+        "SELECT contenido, actualizado_en FROM notas_contables WHERE empresa_id=:e"
+    ), {'e': eid}).fetchone()
+    return jsonify({
+        'empresa_id': eid,
+        'contenido': r[0],
+        'actualizado_en': r[1].isoformat() if hasattr(r[1], 'isoformat') else str(r[1]),
+    })
+
+
+# ─── P2: Saldos con estados configurables (incl. BORRADOR) ────────────────────
+@bp.route('/empresa/<int:eid>/saldos-estados')
+def saldos_con_estados(eid):
+    """Saldos por cuenta filtrando por estados de asiento (CSV).
+    Default: CONFIRMADO. Ej: ?estados=BORRADOR,CONFIRMADO para ver proyección."""
+    Empresa.query.get_or_404(eid)
+    hasta = request.args.get('hasta', date.today().isoformat())
+    estados_csv = request.args.get('estados', 'CONFIRMADO')
+    estados = [s.strip().upper() for s in estados_csv.split(',') if s.strip()]
+    if not estados:
+        return _err('estados vacío')
+    rows = (db.session.query(
+                Cuenta.codigo, Cuenta.nombre, Cuenta.tipo,
+                func.sum(LineaAsiento.debe).label('td'),
+                func.sum(LineaAsiento.haber).label('th'))
+            .join(LineaAsiento, LineaAsiento.cuenta_id == Cuenta.id)
+            .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+            .filter(Cuenta.empresa_id == eid, Asiento.empresa_id == eid,
+                    Asiento.estado.in_(estados),
+                    Asiento.fecha <= hasta)
+            .group_by(Cuenta.id).order_by(Cuenta.codigo).all())
+    return jsonify({
+        'hasta': hasta, 'estados': estados,
+        'cuentas': [{
+            'codigo': r.codigo, 'nombre': r.nombre, 'tipo': r.tipo,
+            'debe': float(r.td or 0), 'haber': float(r.th or 0),
+            'saldo': float((r.td or 0) - (r.th or 0)),
+        } for r in rows if (r.td or r.th)]
+    })
+
+
+# ─── P3: Resumen de mes (dashboard) ───────────────────────────────────────────
+@bp.route('/empresa/<int:eid>/mes/<periodo>/resumen')
+def mes_resumen(eid, periodo):
+    """Resumen ejecutivo del mes para dashboard."""
+    Empresa.query.get_or_404(eid)
+    if len(periodo) != 7 or periodo[4] != '-':
+        return _err('periodo formato YYYY-MM')
+    try:
+        anio, mes = int(periodo[:4]), int(periodo[5:7])
+    except ValueError:
+        return _err('periodo inválido')
+    import calendar as _cal
+    desde = date(anio, mes, 1)
+    hasta = date(anio, mes, _cal.monthrange(anio, mes)[1])
+
+    # Movs banco
+    movs = MovimientoBanco.query.filter_by(empresa_id=eid).filter(
+        MovimientoBanco.fecha >= desde, MovimientoBanco.fecha <= hasta).all()
+    movs_total = len(movs)
+    movs_sin = sum(1 for m in movs if not m.procesado)
+    ing_banco = sum(float(m.abono or 0) for m in movs)
+    egr_banco = sum(float(m.cargo or 0) for m in movs)
+
+    # SII por libro
+    sii_resumen = {}
+    for libro in ('COMPRAS', 'VENTAS', 'HONORARIOS'):
+        docs = DocumentoSII.query.filter_by(empresa_id=eid, tipo_libro=libro).filter(
+            DocumentoSII.fecha >= desde, DocumentoSII.fecha <= hasta).all()
+        sii_resumen[libro] = {
+            'total': len(docs),
+            'sin_procesar': sum(1 for d in docs if not d.procesado),
+            'monto': sum(float(d.total or 0) for d in docs),
+        }
+
+    # Asientos por estado
+    asientos = Asiento.query.filter_by(empresa_id=eid).filter(
+        Asiento.fecha >= desde, Asiento.fecha <= hasta).all()
+    asi_resumen = {'BORRADOR': 0, 'CONFIRMADO': 0, 'ANULADO': 0, 'descuadrados': 0}
+    for a in asientos:
+        asi_resumen[a.estado] = asi_resumen.get(a.estado, 0) + 1
+        if not a.cuadrado:
+            asi_resumen['descuadrados'] += 1
+
+    # Saldos clave (a fin de mes, solo CONFIRMADO)
+    cuentas_clave = {
+        'banco': '1.1.02', 'caja': '1.1.01',
+        'iva_cf': '1.1.05', 'iva_df': '2.1.03',
+        'ret_honorarios': '2.1.04', 'ppm': '1.1.06',
+    }
+    saldos = {}
+    for nombre, codigo in cuentas_clave.items():
+        cta = Cuenta.query.filter_by(empresa_id=eid, codigo=codigo).first()
+        saldos[nombre] = float(cta.saldo(hasta=hasta)) if cta else 0.0
+
+    # F29 mes anterior cargado
+    if mes == 1:
+        mes_prev = f'{anio-1}-12'
+    else:
+        mes_prev = f'{anio}-{mes-1:02d}'
+    from models import DeclaracionF29
+    f29_prev = DeclaracionF29.query.filter_by(empresa_id=eid, periodo=mes_prev).first()
+
+    return jsonify({
+        'periodo': periodo,
+        'movs_banco': {'total': movs_total, 'sin_procesar': movs_sin,
+                       'ingresos': ing_banco, 'egresos': egr_banco},
+        'sii': sii_resumen,
+        'asientos': asi_resumen,
+        'saldos_clave': saldos,
+        'f29_mes_anterior': {
+            'periodo': mes_prev,
+            'cargado': f29_prev is not None,
+            'codigo_91': float(f29_prev.codigo_91) if f29_prev else None,
+        },
+    })
+
+
+# ─── P4: Editar y eliminar asiento BORRADOR ───────────────────────────────────
+@bp.route('/asiento/<int:aid>', methods=['PATCH'])
+def asiento_editar(aid):
+    a = Asiento.query.get_or_404(aid)
+    if a.estado == 'CONFIRMADO':
+        return _err('asiento confirmado no editable — anular primero')
+    if a.estado == 'ANULADO':
+        return _err('asiento anulado no editable')
+    data = request.get_json() or {}
+
+    # Fecha
+    if 'fecha' in data:
+        try:
+            a.fecha = date.fromisoformat(data['fecha'])
+        except ValueError:
+            return _err('fecha inválida (YYYY-MM-DD)')
+    if 'descripcion' in data:
+        a.descripcion = (data['descripcion'] or '').strip() or a.descripcion
+    if 'origen' in data and data['origen']:
+        a.origen = data['origen'].upper()
+
+    # Líneas (reemplazan TODAS las existentes)
+    if 'lineas' in data:
+        codigos = {c.codigo: c for c in Cuenta.query.filter_by(empresa_id=a.empresa_id).all()}
+        lineas_in = data['lineas']
+        if not lineas_in:
+            return _err('lineas vacías')
+        lineas_parsed = []
+        td = th = 0.0
+        for i, ln in enumerate(lineas_in):
+            cod = ln.get('cuenta_codigo') or ''
+            cta = codigos.get(cod)
+            if not cta and ln.get('cuenta_id'):
+                cta = Cuenta.query.filter_by(empresa_id=a.empresa_id, id=int(ln['cuenta_id'])).first()
+            if not cta:
+                return _err(f'línea {i+1}: cuenta {cod or ln.get("cuenta_id")} no existe')
+            d = float(ln.get('debe') or 0); h = float(ln.get('haber') or 0)
+            cp_id = ln.get('contraparte_id')
+            if cta.requiere_aux and (d or h) and not cp_id:
+                return _err(f'línea {i+1} ({cta.codigo} {cta.nombre}) requiere contraparte_id')
+            if cp_id:
+                if not Contraparte.query.filter_by(empresa_id=a.empresa_id, id=int(cp_id)).first():
+                    return _err(f'línea {i+1}: contraparte_id {cp_id} no existe')
+            lineas_parsed.append({
+                'cuenta_id': cta.id, 'debe': d, 'haber': h,
+                'descripcion': (ln.get('descripcion') or '').strip(),
+                'contraparte_id': int(cp_id) if cp_id else None, 'orden': i + 1,
+            })
+            td += d; th += h
+        if abs(td - th) > 1:
+            return _err(f'descuadrado: D={td:,.0f} H={th:,.0f}')
+        # Borrar líneas viejas e insertar nuevas
+        LineaAsiento.query.filter_by(asiento_id=a.id).delete()
+        for l in lineas_parsed:
+            db.session.add(LineaAsiento(asiento_id=a.id, **l))
+
+    # Confirmar si lo pide
+    if data.get('estado', '').upper() == 'CONFIRMADO':
+        db.session.flush()
+        try:
+            confirmar_asiento(a)
+        except Exception as e:
+            db.session.rollback()
+            return _err(f'no se pudo confirmar: {e}')
+
+    # Re-asignar movs/sii si vienen
+    for mid in (data.get('mov_banco_ids') or []):
+        m = MovimientoBanco.query.filter_by(empresa_id=a.empresa_id, id=int(mid)).first()
+        if m:
+            m.procesado = True; m.asiento_id = a.id
+    for did in (data.get('sii_doc_ids') or []):
+        d_sii = DocumentoSII.query.filter_by(empresa_id=a.empresa_id, id=int(did)).first()
+        if d_sii:
+            d_sii.procesado = True; d_sii.asiento_id = a.id
+
+    db.session.commit()
+    return jsonify(_e2j(a, with_lines=True))
+
+
+@bp.route('/asiento/<int:aid>', methods=['DELETE'])
+def asiento_eliminar(aid):
+    a = Asiento.query.get_or_404(aid)
+    if a.estado == 'CONFIRMADO':
+        return _err('asiento confirmado no eliminable — anular primero')
+    # Desvincular movs y sii (procesado=0, asiento_id=NULL)
+    for m in MovimientoBanco.query.filter_by(asiento_id=aid).all():
+        m.procesado = False; m.asiento_id = None
+    for d in DocumentoSII.query.filter_by(asiento_id=aid).all():
+        d.procesado = False; d.asiento_id = None
+    LineaAsiento.query.filter_by(asiento_id=aid).delete()
+    db.session.delete(a)
+    db.session.commit()
+    return jsonify({'ok': True, 'eliminado_id': aid})
+
+
+# ─── P5: Confirmación bulk ────────────────────────────────────────────────────
+@bp.route('/asientos/confirmar', methods=['POST'])
+def asientos_confirmar_bulk(  ):
+    data = request.get_json() or {}
+    ids = data.get('ids') or []
+    if not ids:
+        return _err('ids vacíos')
+    confirmados, fallidos = [], []
+    for aid in ids:
+        a = Asiento.query.get(int(aid))
+        if not a:
+            fallidos.append({'id': aid, 'error': 'no existe'}); continue
+        if a.estado == 'CONFIRMADO':
+            fallidos.append({'id': aid, 'error': 'ya confirmado'}); continue
+        try:
+            confirmar_asiento(a)
+            db.session.commit()
+            confirmados.append(aid)
+        except Exception as e:
+            db.session.rollback()
+            fallidos.append({'id': aid, 'error': str(e)})
+    return jsonify({'confirmados': confirmados, 'fallidos': fallidos})
+
+
+# ─── P6: Búsqueda contrapartes + lectura F29 ──────────────────────────────────
+# El GET /api/empresa/<id>/contrapartes ya existe. Agrego soporte de ?q=
+# modificando el handler existente (ver más arriba). Acá agrego el otro.
+@bp.route('/empresa/<int:eid>/contrapartes-buscar')
+def contrapartes_buscar(eid):
+    Empresa.query.get_or_404(eid)
+    q = (request.args.get('q') or '').strip().lower()
+    if not q:
+        cps = Contraparte.query.filter_by(empresa_id=eid, activo=True).order_by(
+            Contraparte.razon_social).limit(50).all()
+    else:
+        pattern = f'%{q}%'
+        cps = (Contraparte.query.filter_by(empresa_id=eid, activo=True)
+               .filter(db.or_(
+                   func.lower(Contraparte.razon_social).like(pattern),
+                   func.lower(Contraparte.rut).like(pattern)
+               )).order_by(Contraparte.razon_social).limit(50).all())
+    return jsonify([{
+        'id': c.id, 'rut': c.rut, 'razon_social': c.razon_social, 'tipo': c.tipo,
+    } for c in cps])
+
+
+@bp.route('/empresa/<int:eid>/f29/<periodo>')
+def f29_lectura(eid, periodo):
+    Empresa.query.get_or_404(eid)
+    from models import DeclaracionF29
+    import json as _json
+    f29 = DeclaracionF29.query.filter_by(empresa_id=eid, periodo=periodo).first()
+    if not f29:
+        return _err(f'F29 {periodo} no cargado', 404)
+    codigos = {}
+    try:
+        codigos = _json.loads(f29.codigos_json or '{}')
+    except Exception:
+        codigos = {}
+    return jsonify({
+        'empresa_id': eid, 'periodo': periodo, 'folio': f29.folio,
+        'fecha_descarga': f29.fecha_descarga.isoformat() if f29.fecha_descarga else None,
+        'codigo_62': float(f29.codigo_62 or 0),
+        'codigo_48': float(f29.codigo_48 or 0),
+        'codigo_151': float(f29.codigo_151 or 0),
+        'codigo_89': float(f29.codigo_89 or 0),
+        'codigo_91': float(f29.codigo_91 or 0),
+        'codigo_92': float(f29.codigo_92 or 0),
+        'codigo_538': float(f29.codigo_538 or 0),
+        'codigo_547': float(f29.codigo_547 or 0),
+        'codigos_completos': codigos,
+    })
