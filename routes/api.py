@@ -811,6 +811,137 @@ def contrapartes_buscar(eid):
     } for c in cps])
 
 
+# ─── Importar SII / cartola vía API (multipart) ───────────────────────────────
+@bp.route('/empresa/<int:eid>/importar/<tipo>', methods=['POST'])
+def importar_archivo(eid, tipo):
+    """Importa libros SII (compras/ventas/honorarios) o cartolas (banco/tarjeta).
+    multipart/form-data con campo 'archivo'. Opcional: banco, cuenta_bancaria.
+    Solo para tipos procesables; para subir respaldos libres usar el módulo Documentos.
+    """
+    Empresa.query.get_or_404(eid)
+    tipo = (tipo or '').lower()
+    if tipo not in ('compras', 'ventas', 'honorarios', 'banco', 'tarjeta'):
+        return _err(f'tipo inválido: {tipo}. Use compras|ventas|honorarios|banco|tarjeta')
+    archivo = request.files.get('archivo')
+    if not archivo or not archivo.filename:
+        return _err('archivo requerido (multipart/form-data)')
+    try:
+        if tipo == 'compras':
+            from importers import libro_compras
+            resultado = libro_compras.importar(archivo, eid)
+        elif tipo == 'ventas':
+            from importers import libro_ventas
+            resultado = libro_ventas.importar(archivo, eid)
+        elif tipo == 'honorarios':
+            from importers import libro_honorarios
+            resultado = libro_honorarios.importar(archivo, eid)
+        elif tipo == 'banco':
+            from importers import cartola
+            banco = (request.form.get('banco') or '').strip()
+            cuenta_bancaria = (request.form.get('cuenta_bancaria') or '').strip()
+            resultado = cartola.importar(archivo, eid, banco, cuenta_bancaria)
+        elif tipo == 'tarjeta':
+            from importers import tarjeta_credito as tc_mod
+            banco = (request.form.get('banco') or 'Banco de Chile (TC)').strip()
+            cuenta_bancaria = (request.form.get('cuenta_bancaria') or '').strip()
+            resultado = tc_mod.importar(archivo, eid, banco, cuenta_bancaria)
+        db.session.commit()
+        return jsonify({
+            'ok': True, 'tipo': tipo.upper(), 'archivo': archivo.filename,
+            'resumen': str(resultado) if resultado else 'importado',
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return _err(f'error al importar: {e}', 500)
+
+
+# ─── Gatillar descarga SII (sii_scraper) ──────────────────────────────────────
+@bp.route('/empresa/<int:eid>/sii/descargar', methods=['POST'])
+def sii_descargar(eid):
+    """Descarga libros SII directo desde el portal con las credenciales de la empresa.
+    Body JSON: {"libro": "COMPRAS|VENTAS|HONORARIOS", "periodo": "YYYY-MM"}
+    """
+    empresa = Empresa.query.get_or_404(eid)
+    if not empresa.clave_sii:
+        return _err('empresa sin clave_sii configurada')
+    data = request.get_json() or {}
+    libro = (data.get('libro') or '').upper()
+    periodo = data.get('periodo') or ''
+    if libro not in ('COMPRAS', 'VENTAS', 'HONORARIOS'):
+        return _err('libro debe ser COMPRAS|VENTAS|HONORARIOS')
+    if len(periodo) != 7 or periodo[4] != '-':
+        return _err('periodo formato YYYY-MM')
+    try:
+        from importers.sii_scraper import descargar
+        bytes_archivo = descargar(empresa.rut, empresa.clave_sii, periodo, libro.lower())
+    except Exception as e:
+        return _err(f'error scraper SII: {e}', 500)
+    # Procesar con el importer correspondiente
+    try:
+        from io import BytesIO
+        class _FS:  # mini FileStorage-like
+            def __init__(s, data, name):
+                s.stream = BytesIO(data); s.filename = name
+            def save(s, dst):
+                with open(dst, 'wb') as f: f.write(s.stream.getvalue())
+        ext = '.xlsx' if libro != 'HONORARIOS' else '.xls'
+        fs = _FS(bytes_archivo, f'sii_{libro.lower()}_{periodo}{ext}')
+        if libro == 'COMPRAS':
+            from importers import libro_compras; resultado = libro_compras.importar(fs, eid)
+        elif libro == 'VENTAS':
+            from importers import libro_ventas; resultado = libro_ventas.importar(fs, eid)
+        else:
+            from importers import libro_honorarios; resultado = libro_honorarios.importar(fs, eid)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return _err(f'descargó pero falló importar: {e}', 500)
+    return jsonify({
+        'ok': True, 'libro': libro, 'periodo': periodo,
+        'bytes_descargados': len(bytes_archivo),
+        'resumen': str(resultado) if resultado else 'procesado',
+    })
+
+
+# ─── Mayor por contraparte ────────────────────────────────────────────────────
+@bp.route('/contraparte/<int:cp_id>/mayor')
+def mayor_contraparte(cp_id):
+    """Lista todas las líneas de asientos confirmados que tienen esta contraparte.
+    Útil para auditar saldos de un proveedor/cliente específico."""
+    cp = Contraparte.query.get_or_404(cp_id)
+    desde = request.args.get('desde'); hasta = request.args.get('hasta')
+    q = (db.session.query(LineaAsiento, Asiento, Cuenta)
+         .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+         .join(Cuenta, Cuenta.id == LineaAsiento.cuenta_id)
+         .filter(LineaAsiento.contraparte_id == cp_id,
+                 Asiento.estado == 'CONFIRMADO'))
+    if desde: q = q.filter(Asiento.fecha >= desde)
+    if hasta: q = q.filter(Asiento.fecha <= hasta)
+    rows = q.order_by(Asiento.fecha, Asiento.numero).all()
+    lineas = []
+    saldo = 0.0
+    for l, a, c in rows:
+        d = float(l.debe or 0); h = float(l.haber or 0)
+        saldo += d - h
+        lineas.append({
+            'fecha': a.fecha.isoformat(), 'asiento_id': a.id, 'numero': a.numero,
+            'descripcion': a.descripcion, 'cuenta_codigo': c.codigo, 'cuenta_nombre': c.nombre,
+            'debe': d, 'haber': h, 'saldo_acumulado': saldo,
+            'glosa': l.descripcion,
+        })
+    return jsonify({
+        'contraparte': {'id': cp.id, 'rut': cp.rut, 'razon_social': cp.razon_social,
+                        'tipo': cp.tipo, 'empresa_id': cp.empresa_id},
+        'desde': desde, 'hasta': hasta,
+        'lineas': lineas,
+        'totales': {
+            'debe': sum(l['debe'] for l in lineas),
+            'haber': sum(l['haber'] for l in lineas),
+            'saldo_final': saldo,
+        },
+    })
+
+
 @bp.route('/empresa/<int:eid>/f29/<periodo>')
 def f29_lectura(eid, periodo):
     Empresa.query.get_or_404(eid)

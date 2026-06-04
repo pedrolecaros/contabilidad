@@ -1753,6 +1753,53 @@ class TestApiRest(unittest.TestCase):
         r = self.client.get(f'/api/empresa/{self.eid}/f29/2026-01')
         self.assertEqual(r.status_code, 404)
 
+    def test_importar_tipo_invalido(self):
+        r = self.client.post(f'/api/empresa/{self.eid}/importar/xxx',
+                              data={'archivo': (open('/dev/null', 'rb'), 'foo.csv')})
+        self.assertEqual(r.status_code, 400)
+
+    def test_importar_sin_archivo(self):
+        r = self.client.post(f'/api/empresa/{self.eid}/importar/compras')
+        self.assertEqual(r.status_code, 400)
+
+    def test_mayor_contraparte(self):
+        # Crear asiento usando la contraparte
+        r = self.client.post(f'/api/empresa/{self.eid}/asiento', json={
+            'fecha': '2026-04-18', 'descripcion': 'Fact prov',
+            'estado': 'CONFIRMADO',
+            'lineas': [
+                {'cuenta_codigo': '1.1.05', 'debe': 19000, 'haber': 0},
+                {'cuenta_codigo': '1.1.06', 'debe': 100000, 'haber': 0},
+                {'cuenta_codigo': '2.1.01', 'debe': 0, 'haber': 119000, 'contraparte_id': self.cp_id},
+            ]
+        })
+        self.assertEqual(r.status_code, 201)
+        # Consultar mayor
+        r = self.client.get(f'/api/contraparte/{self.cp_id}/mayor')
+        self.assertEqual(r.status_code, 200)
+        d = r.get_json()
+        self.assertEqual(len(d['lineas']), 1)
+        self.assertEqual(d['totales']['saldo_final'], -119000.0)
+
+    def test_sii_descargar_sin_clave(self):
+        # Limpiar clave_sii explícitamente porque otro test puede haberla seteado
+        from models import db, Empresa
+        with self.app.app_context():
+            e = Empresa.query.get(self.eid); e.clave_sii = None; db.session.commit()
+        r = self.client.post(f'/api/empresa/{self.eid}/sii/descargar',
+                              json={'libro': 'COMPRAS', 'periodo': '2026-03'})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('clave_sii', r.get_json()['error'])
+
+    def test_sii_descargar_libro_invalido(self):
+        # Setear clave para que pase la primera validación
+        from models import db, Empresa
+        with self.app.app_context():
+            e = Empresa.query.get(self.eid); e.clave_sii = 'test'; db.session.commit()
+        r = self.client.post(f'/api/empresa/{self.eid}/sii/descargar',
+                              json={'libro': 'XXX', 'periodo': '2026-03'})
+        self.assertEqual(r.status_code, 400)
+
 
 if __name__ == '__main__':
     loader = unittest.TestLoader()

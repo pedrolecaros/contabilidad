@@ -481,3 +481,48 @@ GET  /api/empresa/<id>/f29/2026-01
 #    "codigos_completos": {"77": ..., "504": ..., ...}}
 # 404 si no cargado
 ```
+
+### Importar archivos vía API (multipart)
+
+```bash
+# Sube y procesa libro SII o cartola
+POST /api/empresa/<id>/importar/<tipo>
+# tipo: compras | ventas | honorarios | banco | tarjeta
+# Form fields:
+#   archivo: <file>           (requerido)
+#   banco: "Banco Chile"      (banco/tarjeta — opcional)
+#   cuenta_bancaria: "00-..."  (banco/tarjeta — opcional)
+
+# Ejemplo curl
+curl -X POST http://server:5000/api/empresa/1/importar/compras \
+  -F "archivo=@compras_marzo.csv"
+```
+
+### Descargar libros SII automático (scraper)
+
+Requiere `empresa.clave_sii` configurada. Descarga, importa y guarda backup en una sola operación.
+
+```bash
+POST /api/empresa/<id>/sii/descargar
+{"libro": "COMPRAS", "periodo": "2026-03"}
+# libro: COMPRAS | VENTAS | HONORARIOS
+# → {"ok": true, "libro": ..., "periodo": ..., "bytes_descargados": N, "resumen": "..."}
+
+# Caso típico de uso desde cliente remoto:
+# "Importá compras de Cerro Colorado mayo 2026"
+# → Claude llama POST /api/empresa/7/sii/descargar {"libro": "COMPRAS", "periodo": "2026-05"}
+```
+
+### Mayor por contraparte (auditoría)
+
+```bash
+GET /api/contraparte/<cp_id>/mayor?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+# → {
+#     "contraparte": {"id", "rut", "razon_social", "tipo", "empresa_id"},
+#     "lineas": [{"fecha", "asiento_id", "numero", "descripcion",
+#                 "cuenta_codigo", "cuenta_nombre", "debe", "haber",
+#                 "saldo_acumulado", "glosa"}],
+#     "totales": {"debe", "haber", "saldo_final"}
+#   }
+# Solo asientos CONFIRMADOS.
+```
