@@ -79,7 +79,9 @@ def consolidado():
         archivos = [a for a in archivos if str(a['empresa_id']) == f_emp]
     if f_tipo:
         archivos = [a for a in archivos if a['tipo'].upper() == f_tipo]
-    if f_periodo:
+    if f_periodo == '__global__':
+        archivos = [a for a in archivos if not a['periodo']]
+    elif f_periodo:
         archivos = [a for a in archivos if a['periodo'] == f_periodo]
     if f_search:
         archivos = [a for a in archivos if f_search in a['nombre'].lower()]
@@ -117,7 +119,9 @@ def index(eid):
 
     if f_tipo:
         archivos = [a for a in archivos if a['tipo'].upper() == f_tipo]
-    if f_periodo:
+    if f_periodo == '__global__':
+        archivos = [a for a in archivos if not a['periodo']]
+    elif f_periodo:
         archivos = [a for a in archivos if a['periodo'] == f_periodo]
     if f_search:
         archivos = [a for a in archivos if f_search in a['nombre'].lower()]

@@ -27,6 +27,7 @@
     <label class="form-label small mb-0">Período</label>
     <select name="periodo" class="form-select form-select-sm" onchange="this.form.submit()">
       <option value="">Todos</option>
+      <option value="__global__" {% if f_periodo == '__global__' %}selected{% endif %}>(solo GLOBAL)</option>
       {% for p in periodos %}
       <option value="{{ p }}" {% if p == f_periodo %}selected{% endif %}>{{ p }}</option>
       {% endfor %}
@@ -69,7 +70,7 @@
         </a>
       </td>
       <td><span class="badge bg-secondary">{{ a.tipo }}</span></td>
-      <td class="small">{{ a.periodo or '-' }}</td>
+      <td>{% if a.periodo %}<span class="small">{{ a.periodo }}</span>{% else %}<span class="badge bg-success" title="Archivo sin período — global, conviene conservar al limpiar respaldos">GLOBAL</span>{% endif %}</td>
       <td class="text-end small">{{ '%.1f'|format(a.tamano / 1024) }} KB</td>
       <td class="small text-muted">{{ a.mtime|fecha_unix if a.mtime else '' }}</td>
       <td class="text-end">

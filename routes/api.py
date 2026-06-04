@@ -310,6 +310,84 @@ def asiento_anular_api(aid):
 
 
 # ─── Saldos y mayor ───────────────────────────────────────────────────────────
+@bp.route('/empresa/<int:eid>/archivos')
+def archivos_lista(eid):
+    """Lista archivos en backup de la empresa (filesystem)."""
+    import os
+    empresa = Empresa.query.get_or_404(eid)
+    from routes.documentos import _scan_dir, _rut_clean
+    from flask import current_app as _ca
+    base = os.path.join(_ca.config['UPLOAD_FOLDER'], 'backups_importacion', _rut_clean(empresa.rut))
+    archivos = _scan_dir(base, max_depth=5)
+    return jsonify([{
+        'rel_path': a['rel_path'], 'nombre': a['nombre'], 'tipo': a['tipo'],
+        'periodo': a['periodo'] or None, 'tamano': a['tamano'], 'mtime': a['mtime'],
+        'es_global': not a['periodo'],
+    } for a in sorted(archivos, key=lambda x: x['mtime'], reverse=True)])
+
+
+@bp.route('/empresa/<int:eid>/archivo')
+def archivo_contenido(eid):
+    """Devuelve contenido parseado de un archivo (Excel/CSV/TXT). PDFs e imágenes no
+    se parsean — pedir descarga via /empresa/<id>/archivos/descargar?rel=...
+    Útil para que un Claude remoto pueda leer cartolas/Excels sin descargarlos.
+    Query params: rel=ruta_relativa, max_rows=N (default 1000)
+    """
+    import os
+    empresa = Empresa.query.get_or_404(eid)
+    rel = request.args.get('rel', '').strip()
+    max_rows = int(request.args.get('max_rows', 1000))
+    if not rel or '..' in rel.split('/'):
+        return jsonify({'error': 'rel inválido'}), 400
+    from routes.documentos import _rut_clean
+    from flask import current_app as _ca
+    base = os.path.join(_ca.config['UPLOAD_FOLDER'], 'backups_importacion', _rut_clean(empresa.rut))
+    full = os.path.join(base, rel)
+    if not os.path.isfile(full):
+        return jsonify({'error': f'archivo no encontrado: {rel}'}), 404
+    ext = os.path.splitext(full)[1].lower()
+    fname = os.path.basename(full)
+    try:
+        if ext == '.csv':
+            import csv as _csv
+            rows = []
+            with open(full, encoding='utf-8', errors='replace') as f:
+                sample = f.read(2048); f.seek(0)
+                delim = ';' if sample.count(';') > sample.count(',') else ','
+                for i, row in enumerate(_csv.reader(f, delimiter=delim)):
+                    if i >= max_rows: break
+                    rows.append(row)
+            return jsonify({'ext': ext, 'nombre': fname, 'rows': rows, 'count': len(rows)})
+        elif ext == '.xlsx':
+            from openpyxl import load_workbook
+            wb = load_workbook(full, data_only=True, read_only=True)
+            ws = wb.active
+            rows = []
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                if i >= max_rows: break
+                rows.append(['' if v is None else str(v) for v in row])
+            return jsonify({'ext': ext, 'nombre': fname, 'rows': rows, 'count': len(rows),
+                            'sheet': ws.title})
+        elif ext == '.xls':
+            import xlrd
+            wb = xlrd.open_workbook(full)
+            sh = wb.sheet_by_index(0)
+            rows = []
+            for r in range(min(sh.nrows, max_rows)):
+                rows.append([str(sh.cell_value(r, c)) for c in range(sh.ncols)])
+            return jsonify({'ext': ext, 'nombre': fname, 'rows': rows, 'count': len(rows),
+                            'sheet': sh.name})
+        elif ext in ('.txt', '.log', '.md'):
+            with open(full, encoding='utf-8', errors='replace') as f:
+                contenido = f.read(500_000)
+            return jsonify({'ext': ext, 'nombre': fname, 'texto': contenido,
+                            'truncated': len(contenido) >= 500_000})
+        else:
+            return jsonify({'error': f'tipo {ext} no parseable — usar descarga'}), 415
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/empresa/<int:eid>/saldos')
 def saldos(eid):
     Empresa.query.get_or_404(eid)

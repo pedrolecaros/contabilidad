@@ -327,6 +327,26 @@ POST /api/sql
 {"sql": "SELECT codigo, COUNT(*) FROM cuentas GROUP BY codigo", "params": {}}
 ```
 
+### Archivos en backup (lectura para Claude remoto)
+
+Cada empresa tiene archivos respaldados en filesystem (libros SII, cartolas, F29/F22, TC, otros). Claude puede listarlos y **leerlos parseados** sin descargarlos:
+
+```bash
+# Lista todos los archivos en backup de una empresa
+GET /api/empresa/<id>/archivos
+# Respuesta: [{rel_path, nombre, tipo, periodo, tamano, mtime, es_global}, ...]
+
+# Lee contenido parseado de un Excel/CSV/TXT
+GET /api/empresa/<id>/archivo?rel=COMPRAS/2026-03/foo.csv&max_rows=1000
+# CSV/XLSX/XLS → {rows: [[...], [...]], count: N}
+# TXT/LOG → {texto: "..."}
+# PDF/imagen → error 415, usar /empresa/<id>/archivos/descargar
+```
+
+**Cuándo usar**: cuando el usuario menciona "el Excel de créditos privados", "la tabla de leasing", "la cartola del mes X" — Claude puede leerlos directo via API en lugar de pedirlos.
+
+**Archivos con período vacío** (`es_global: true`) son archivos que el usuario quiere conservar (Excels de créditos, contratos). NO eliminarlos al limpiar respaldos.
+
 ### Autenticación
 
 Sin auth hoy. Si se expone públicamente (no solo Tailscale), agregar API key en header o token.
