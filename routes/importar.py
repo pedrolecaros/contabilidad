@@ -402,7 +402,9 @@ def subir(eid, tipo):
         return redirect(url_for('importar.index', eid=eid))
 
     archivo = request.files['archivo']
-    if not _ext_ok(archivo.filename):
+    # "Otros" acepta cualquier extensión (PDF, DOCX, JPG, etc.) — solo se guarda como respaldo.
+    # Los demás tipos requieren CSV/XLS/XLSX/PDF.
+    if tipo != 'otros' and not _ext_ok(archivo.filename):
         flash('Formato no válido. Use CSV, XLS o XLSX', 'danger')
         return redirect(url_for('importar.index', eid=eid))
 
