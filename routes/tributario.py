@@ -337,19 +337,11 @@ def f29_debug(eid, periodo):
 
 # ── Renta Líquida Imponible ────────────────────────────────────────────────────
 
-@bp.route('/empresa/<int:eid>/tributario/rli-pyme')
-def rli_pyme(eid):
-    """RLI PYME (régimen 14D / Pro-PYME): base caja real, no devengado.
-    Recorre cargos/abonos de Banco+Caja del año y los clasifica:
-    - Egresos PYME: pagos a proveedores, sueldos, leasing capital+interés, compra activo, impuestos, TC.
-      Excluye: capital crédito directo (devolución pasivo), aportes a FFMM, transferencias entre cuentas propias.
-    - Ingresos PYME: cobranzas a clientes, otros ingresos reales.
-      Excluye: préstamos recibidos, rescates FFMM, aportes capital.
-    Considera pérdida tributaria de arrastre del F22 año anterior (cód 1440).
-    """
-    empresa = Empresa.query.get_or_404(eid)
-    hoy = date.today()
-    anio = int(request.args.get('anio', hoy.year))
+def _calcular_rli_pyme(eid, anio):
+    """Devuelve dict con los componentes del cálculo RLI PYME para (empresa, año).
+    Reutilizable desde la vista individual y desde el consolidado."""
+    from collections import defaultdict
+    empresa = Empresa.query.get(eid)
     desde = date(anio, 1, 1)
     hasta = date(anio, 12, 31)
 
@@ -474,7 +466,6 @@ def rli_pyme(eid):
         perdida_remanente += abs(rli_anio)
 
     # Resumen por categoría
-    from collections import defaultdict
     cat_egresos = defaultdict(float)
     for e in egresos_detalle:
         cat_egresos[e['categoria']] += e['monto']
@@ -482,19 +473,94 @@ def rli_pyme(eid):
     for e in ingresos_detalle:
         cat_ingresos[e['categoria']] += e['monto']
 
-    return render_template('tributario/rli_pyme.html',
-        empresa=empresa, anio=anio,
-        ingresos_total=ingresos_total, egresos_total=egresos_total,
-        rli_anio=rli_anio,
-        perdida_arrastre=perdida_arrastre, f22_origen=f22_origen,
-        perdida_consumida=perdida_consumida, perdida_remanente=perdida_remanente,
-        rli_imponible=rli_imponible,
-        cat_egresos=sorted(cat_egresos.items(), key=lambda x: -x[1]),
-        cat_ingresos=sorted(cat_ingresos.items(), key=lambda x: -x[1]),
-        egresos_detalle=sorted(egresos_detalle, key=lambda x: x['fecha']),
-        ingresos_detalle=sorted(ingresos_detalle, key=lambda x: x['fecha']),
-        excluidos=sorted(excluidos, key=lambda x: x['fecha']),
-    )
+    return {
+        'empresa': empresa, 'anio': anio,
+        'ingresos_total': ingresos_total, 'egresos_total': egresos_total,
+        'rli_anio': rli_anio,
+        'perdida_arrastre': perdida_arrastre, 'f22_origen': f22_origen,
+        'perdida_consumida': perdida_consumida, 'perdida_remanente': perdida_remanente,
+        'rli_imponible': rli_imponible,
+        'cat_egresos': sorted(cat_egresos.items(), key=lambda x: -x[1]),
+        'cat_ingresos': sorted(cat_ingresos.items(), key=lambda x: -x[1]),
+        'egresos_detalle': sorted(egresos_detalle, key=lambda x: x['fecha']),
+        'ingresos_detalle': sorted(ingresos_detalle, key=lambda x: x['fecha']),
+        'excluidos': sorted(excluidos, key=lambda x: x['fecha']),
+    }
+
+
+@bp.route('/empresa/<int:eid>/tributario/rli-pyme')
+def rli_pyme(eid):
+    """Vista RLI PYME individual. Renderiza el detalle completo."""
+    empresa = Empresa.query.get_or_404(eid)
+    hoy = date.today()
+    anio = int(request.args.get('anio', hoy.year))
+    data = _calcular_rli_pyme(eid, anio)
+    return render_template('tributario/rli_pyme.html', **data)
+
+
+@bp.route('/consolidado/rli')
+def rli_consolidado():
+    """Consolidado RLI: una fila por empresa con ingresos/egresos/RLI año/arrastre/imponible.
+    Solo empresas activas. PYME usa base caja, General usa cálculo contable."""
+    hoy = date.today()
+    anio = int(request.args.get('anio', hoy.year))
+    empresas = Empresa.query.filter_by(activa=True).order_by(Empresa.razon_social).all()
+
+    filas = []
+    for emp in empresas:
+        if emp.regimen == 'PYME':
+            d = _calcular_rli_pyme(emp.id, anio)
+            filas.append({
+                'empresa': emp,
+                'metodo': 'PYME (caja)',
+                'ingresos': d['ingresos_total'],
+                'egresos': d['egresos_total'],
+                'rli_anio': d['rli_anio'],
+                'arrastre': d['perdida_arrastre'],
+                'consumido': d['perdida_consumida'],
+                'remanente': d['perdida_remanente'],
+                'rli_imponible': d['rli_imponible'],
+            })
+        else:
+            # General: rapidamente calcular ingresos/gastos contables del año
+            desde = date(anio, 1, 1); hasta = date(anio, 12, 31)
+            rows = (db.session.query(Cuenta.tipo,
+                        func.sum(LineaAsiento.debe).label('td'),
+                        func.sum(LineaAsiento.haber).label('th'))
+                    .join(LineaAsiento, LineaAsiento.cuenta_id == Cuenta.id)
+                    .join(Asiento, Asiento.id == LineaAsiento.asiento_id)
+                    .filter(Cuenta.empresa_id == emp.id, Asiento.empresa_id == emp.id,
+                            Asiento.estado == 'CONFIRMADO',
+                            Asiento.fecha >= desde, Asiento.fecha <= hasta)
+                    .group_by(Cuenta.tipo).all())
+            ing = gas = 0.0
+            for r in rows:
+                if r.tipo == 'INGRESO': ing = float(r.th or 0) - float(r.td or 0)
+                elif r.tipo == 'GASTO': gas = float(r.td or 0) - float(r.th or 0)
+            rli_anio = ing - gas
+            # Arrastre F22 cód 1440
+            f22 = DeclaracionF22.query.filter_by(empresa_id=emp.id, anio=anio).first()
+            arr = abs(f22.codigo_1440) if f22 and f22.codigo_1440 and f22.codigo_1440 < 0 else 0.0
+            consumido = min(arr, max(0, rli_anio))
+            remanente = arr - consumido + (abs(rli_anio) if rli_anio < 0 else 0)
+            filas.append({
+                'empresa': emp,
+                'metodo': 'General (contable)',
+                'ingresos': ing, 'egresos': gas, 'rli_anio': rli_anio,
+                'arrastre': arr, 'consumido': consumido, 'remanente': remanente,
+                'rli_imponible': max(0.0, rli_anio - arr),
+            })
+
+    # Totales
+    totales = {
+        'ingresos': sum(f['ingresos'] for f in filas),
+        'egresos': sum(f['egresos'] for f in filas),
+        'rli_anio': sum(f['rli_anio'] for f in filas),
+        'arrastre': sum(f['arrastre'] for f in filas),
+        'rli_imponible': sum(f['rli_imponible'] for f in filas),
+    }
+    return render_template('tributario/rli_consolidado.html',
+                           anio=anio, filas=filas, totales=totales)
 
 
 @bp.route('/empresa/<int:eid>/tributario/rli')

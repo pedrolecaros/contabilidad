@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}RLI Consolidado {{ anio }}{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-3 mb-3">
+  <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>RLI Consolidado {{ anio }}</h5>
+  <form method="get" class="d-flex gap-1 align-items-center">
+    <label class="small text-muted">Año:</label>
+    <input type="number" name="anio" value="{{ anio }}" min="2020" max="2030"
+           class="form-control form-control-sm" style="width:90px"
+           onchange="this.form.submit()">
+  </form>
+  <span class="text-muted small ms-auto">PYME = base caja · General = contable · Click empresa → detalle</span>
+</div>
+
+<table class="table table-sm table-hover">
+  <thead class="table-dark">
+    <tr>
+      <th>Empresa</th>
+      <th class="small text-muted">Régimen</th>
+      <th class="text-end">Ingresos</th>
+      <th class="text-end">Egresos</th>
+      <th class="text-end">RLI año</th>
+      <th class="text-end">Arrastre disp.</th>
+      <th class="text-end">Consumido</th>
+      <th class="text-end">Remanente</th>
+      <th class="text-end fw-bold">RLI imponible</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in filas %}
+    <tr>
+      <td>
+        <a href="{{ url_for('tributario.rli', eid=f.empresa.id, anio=anio) }}"
+           class="text-decoration-none fw-semibold text-dark">
+          {{ f.empresa.nombre_fantasia or f.empresa.razon_social }}
+        </a>
+        <div class="text-muted" style="font-size:.68rem;">{{ f.empresa.rut }}</div>
+      </td>
+      <td><span class="badge {% if f.empresa.regimen == 'PYME' %}bg-info{% else %}bg-secondary{% endif %}" style="font-size:.65rem">{{ f.metodo }}</span></td>
+      <td class="text-end small text-success">{{ f.ingresos|clp }}</td>
+      <td class="text-end small text-danger">{{ f.egresos|clp }}</td>
+      <td class="text-end {% if f.rli_anio >= 0 %}text-primary{% else %}text-warning{% endif %}">{{ f.rli_anio|clp }}</td>
+      <td class="text-end small text-info">{{ f.arrastre|clp }}</td>
+      <td class="text-end small text-muted">{{ f.consumido|clp }}</td>
+      <td class="text-end small text-info">{{ f.remanente|clp }}</td>
+      <td class="text-end fw-bold {% if f.rli_imponible > 0 %}text-danger{% else %}text-success{% endif %}">{{ f.rli_imponible|clp }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="fw-bold table-secondary">
+      <td colspan="2">TOTAL CONSOLIDADO</td>
+      <td class="text-end">{{ totales.ingresos|clp }}</td>
+      <td class="text-end">{{ totales.egresos|clp }}</td>
+      <td class="text-end">{{ totales.rli_anio|clp }}</td>
+      <td class="text-end">{{ totales.arrastre|clp }}</td>
+      <td></td>
+      <td></td>
+      <td class="text-end">{{ totales.rli_imponible|clp }}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="alert alert-info small mt-3">
+  <strong>Nota:</strong>
+  PYME usa base caja: ingresos = cobranzas; egresos = pagos (incl. capital leasing y compra activo, excluye capital crédito directo).
+  General usa cálculo contable (devengado). Arrastre = pérdida tributaria disponible del F22 cód 1440.
+</div>
+{% endblock %}
