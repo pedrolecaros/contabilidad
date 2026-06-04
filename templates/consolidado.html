@@ -114,14 +114,14 @@
           {% for e in empresas %}
           {% set eid = e.id %}
           <tr style="border-top: 1px solid #dee2e6;">
-            <!-- Empresa column -->
+            <!-- Empresa column: nombre en 1 fila (no wrap), RUT pequeño debajo -->
             <td style="position:sticky;left:0;z-index:1;background:white;
                        border-right:2px solid #dee2e6;
                        box-shadow:2px 0 4px rgba(0,0,0,.08);
                        vertical-align:middle; padding:.4rem .5rem;">
               <a href="{{ url_for('asientos.lista', eid=eid) }}"
                  class="text-decoration-none fw-semibold text-dark d-block"
-                 style="font-size:.82rem; line-height:1.2;">
+                 style="font-size:.82rem; line-height:1.2; white-space:nowrap;">
                 {{ e.nombre_fantasia or e.razon_social }}
               </a>
               <div class="text-muted" style="font-size:.68rem;">{{ e.rut }}</div>
@@ -148,8 +148,8 @@
 
               {% else %}
 
-                {# Libros row #}
-                <div class="d-flex gap-1 flex-wrap mt-1">
+                {# Libros row — fila 1: archivos (NO wrap, badges compactos) #}
+                <div class="d-flex gap-1 mt-1" style="flex-wrap:nowrap; overflow:hidden;">
                   {% for tipo, short in [('COMPRAS','C'),('VENTAS','V'),('HONORARIOS','H'),('BANCO','B')] %}
                   {% set lib = c['libros'][tipo] %}
                   {% if lib['loaded'] and lib['pending'] > 0 %}
@@ -215,11 +215,11 @@
                   {% endif %}
                 </div>
 
-                {# 3. Asientos row #}
+                {# Fila 2: Asientos + Liquidaciones inline #}
                 {% set conf = c['asientos']['conf'] %}
                 {% set borr = c['asientos']['borr'] %}
-                {% if conf > 0 or borr > 0 %}
-                <div class="mt-1 d-flex gap-1 flex-wrap" style="font-size:.68rem;">
+                {% if conf > 0 or borr > 0 or c['liqs'] > 0 %}
+                <div class="mt-1 d-flex gap-2 align-items-center" style="font-size:.68rem; flex-wrap:nowrap; overflow:hidden;">
                   {% if conf > 0 %}
                   <a href="{{ url_for('asientos.lista', eid=eid, estado='CONFIRMADO') }}"
                      class="text-success text-decoration-none"
@@ -234,20 +234,15 @@
                     <i class="bi bi-pencil"></i>{{ borr }}
                   </a>
                   {% endif %}
-                </div>
-                {% endif %}
-
-                {# 4. Liquidaciones #}
-                {% if c['liqs'] > 0 %}
-                <div class="mt-1" style="font-size:.68rem;">
+                  {% if c['liqs'] > 0 %}
                   <a href="{{ url_for('remuneraciones.libro', eid=eid, periodo=mes) }}"
                      class="text-info text-decoration-none"
                      title="{{ c['liqs'] }} liquidaciones">
                     <i class="bi bi-people"></i>{{ c['liqs'] }}
                   </a>
+                  {% endif %}
                 </div>
                 {% endif %}
-
 
               {% endif %}
 
