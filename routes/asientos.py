@@ -112,6 +112,28 @@ def _validar_aux_requerido(form):
         )
 
 
+def _form_to_lineas_json(form):
+    """Convierte request.form a JSON con la misma estructura que el form espera para
+    re-rellenarse cuando falla validación (devolución al form sin perder datos)."""
+    cuenta_ids      = form.getlist('cuenta_id[]')
+    debes           = form.getlist('debe[]')
+    haberes         = form.getlist('haber[]')
+    descs           = form.getlist('linea_desc[]')
+    contraparte_ids = form.getlist('contraparte_id[]')
+    lineas = []
+    for i, cid in enumerate(cuenta_ids):
+        if not cid and not (i < len(debes) and debes[i]) and not (i < len(haberes) and haberes[i]):
+            continue
+        lineas.append({
+            'cuenta_id':      int(cid) if cid else '',
+            'debe':           _parse_monto(debes[i]) if i < len(debes) else 0,
+            'haber':          _parse_monto(haberes[i]) if i < len(haberes) else 0,
+            'descripcion':    descs[i].strip() if i < len(descs) else '',
+            'contraparte_id': int(contraparte_ids[i]) if i < len(contraparte_ids) and contraparte_ids[i] else '',
+        })
+    return json.dumps(lineas)
+
+
 def _guardar_lineas(asiento_id, form):
     LineaAsiento.query.filter_by(asiento_id=asiento_id).delete()
     cuenta_ids      = form.getlist('cuenta_id[]')
@@ -193,16 +215,36 @@ def lista(eid):
     except (TypeError, ValueError):
         cuenta_id = None
 
-    # Default: mes anterior al actual si no hay ningún filtro de fecha
-    if not mes_str and not desde_str and not hasta_str:
+    # Guardamos los valores ORIGINALES (antes de expandir mes → rango) para persistir
+    # correctamente en sesión sin confundir el siguiente request.
+    _orig_mes_str = mes_str
+    _orig_desde_str = desde_str
+    _orig_hasta_str = hasta_str
+
+    # Prioridad de filtros de fecha: (desde o hasta) > mes > default.
+    # Si el usuario seteó un rango específico, ese gana y se ignora el mes
+    # (aunque venga heredado de session o de URL).
+    rango_explicito = bool(desde_str or hasta_str)
+    if rango_explicito:
+        mes_str = ''  # rango específico anula el filtro de mes
+    elif mes_str and len(mes_str) == 7:
+        # Solo aplico mes si NO hay rango explícito
+        try:
+            anio, mes = int(mes_str[:4]), int(mes_str[5:7])
+            primer = date(anio, mes, 1)
+            import calendar as _cal
+            ultimo = date(anio, mes, _cal.monthrange(anio, mes)[1])
+            desde_str = primer.isoformat()
+            hasta_str = ultimo.isoformat()
+        except ValueError:
+            pass
+    else:
+        # Default: mes anterior al actual si no hay nada
         hoy = date.today()
         if hoy.month == 1:
             mes_str = f'{hoy.year - 1}-12'
         else:
             mes_str = f'{hoy.year}-{hoy.month - 1:02d}'
-
-    # Mes vigente: si se pasa `mes=YYYY-MM`, sobreescribe desde/hasta al primer/último día.
-    if mes_str and len(mes_str) == 7:
         try:
             anio, mes = int(mes_str[:4]), int(mes_str[5:7])
             primer = date(anio, mes, 1)
@@ -271,15 +313,16 @@ def lista(eid):
     cuentas_filtro = (Cuenta.query.filter_by(empresa_id=eid, es_titulo=False, activa=True)
                       .order_by(Cuenta.codigo).all())
 
-    # Persistir filtros aplicados (solo si vinieron por URL — evita persistir el default mes-anterior)
+    # Persistir filtros aplicados (solo si vinieron por URL — evita persistir el default mes-anterior).
+    # Guardamos los valores ORIGINALES (sin expandir mes a rango) para preservar la intención del usuario.
     if url_has_filters:
         session[sess_key] = {
             'origen': origen,
             'estado': estado,
             'descripcion': descripcion,
-            'desde': desde_str,
-            'hasta': hasta_str,
-            'mes': mes_str,
+            'desde': _orig_desde_str,
+            'hasta': _orig_hasta_str,
+            'mes': _orig_mes_str,
             'cuenta_id': str(cuenta_id) if cuenta_id else '',
         }
 
@@ -331,18 +374,30 @@ def nuevo(eid):
         try:
             fecha = date.fromisoformat(fecha_str)
         except ValueError:
-            flash('Fecha inválida', 'danger')
+            flash('Fecha inválida — corregí y reintentá', 'danger')
+            from models import Prestamo as _Prestamo
+            prestamos_eid = _Prestamo.query.filter_by(empresa_id=eid, activo=True).order_by(_Prestamo.nombre).all()
             return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
-                                   cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]')
+                                   cuentas_json=_cuentas_json(cuentas), asiento=None,
+                                   lineas_json=_form_to_lineas_json(request.form),
+                                   fecha_default=fecha_str,
+                                   descripcion_default=descripcion,
+                                   contrapartes_json=_contrapartes_json(eid),
+                                   prestamos_json=json.dumps([_prestamo_dict(p) for p in prestamos_eid]))
 
         try:
             _validar_aux_requerido(request.form)
         except AuxRequeridoError as e:
-            flash(str(e), 'danger')
+            flash(str(e) + ' — completá los auxiliares faltantes y reintentá', 'danger')
+            from models import Prestamo as _Prestamo
+            prestamos_eid = _Prestamo.query.filter_by(empresa_id=eid, activo=True).order_by(_Prestamo.nombre).all()
             return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
-                                   cuentas_json=_cuentas_json(cuentas), asiento=None, lineas_json='[]',
+                                   cuentas_json=_cuentas_json(cuentas), asiento=None,
+                                   lineas_json=_form_to_lineas_json(request.form),
+                                   fecha_default=fecha_str,
+                                   descripcion_default=descripcion,
                                    contrapartes_json=_contrapartes_json(eid),
-                                   prestamos_json=json.dumps([]))
+                                   prestamos_json=json.dumps([_prestamo_dict(p) for p in prestamos_eid]))
 
         ultimo = Asiento.query.filter_by(empresa_id=eid).order_by(Asiento.numero.desc()).first()
         numero = (ultimo.numero or 0) + 1 if ultimo else 1
@@ -404,16 +459,38 @@ def editar(eid, aid):
         return redirect(url_for('asientos.detalle', eid=eid, aid=aid))
 
     if request.method == 'POST':
+        # Validar fecha sin asignar al modelo todavía (para no contaminar la sesión SQLAlchemy
+        # en caso de fallar otra validación posterior).
+        fecha_str = request.form['fecha']
         try:
-            asiento.fecha       = date.fromisoformat(request.form['fecha'])
+            fecha_validada = date.fromisoformat(fecha_str)
         except ValueError:
-            flash('Fecha inválida', 'danger')
-            return redirect(url_for('asientos.editar', eid=eid, aid=aid))
+            flash('Fecha inválida — corregí y reintentá', 'danger')
+            from models import Prestamo as _Prestamo
+            prestamos_eid = _Prestamo.query.filter_by(empresa_id=eid, activo=True).order_by(_Prestamo.nombre).all()
+            db.session.rollback()
+            return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
+                                   cuentas_json=_cuentas_json(cuentas), asiento=asiento,
+                                   lineas_json=_form_to_lineas_json(request.form),
+                                   fecha_default=fecha_str,
+                                   descripcion_default=request.form.get('descripcion', '').strip(),
+                                   contrapartes_json=_contrapartes_json(eid),
+                                   prestamos_json=json.dumps([_prestamo_dict(p) for p in prestamos_eid]))
         try:
             _validar_aux_requerido(request.form)
         except AuxRequeridoError as e:
-            flash(str(e), 'danger')
-            return redirect(url_for('asientos.editar', eid=eid, aid=aid))
+            flash(str(e) + ' — completá los auxiliares faltantes y reintentá', 'danger')
+            from models import Prestamo as _Prestamo
+            prestamos_eid = _Prestamo.query.filter_by(empresa_id=eid, activo=True).order_by(_Prestamo.nombre).all()
+            db.session.rollback()
+            return render_template('asientos/form.html', empresa=empresa, cuentas=cuentas,
+                                   cuentas_json=_cuentas_json(cuentas), asiento=asiento,
+                                   lineas_json=_form_to_lineas_json(request.form),
+                                   fecha_default=fecha_str,
+                                   descripcion_default=request.form.get('descripcion', '').strip(),
+                                   contrapartes_json=_contrapartes_json(eid),
+                                   prestamos_json=json.dumps([_prestamo_dict(p) for p in prestamos_eid]))
+        asiento.fecha = fecha_validada
 
         accion = request.form.get('accion', 'confirmar')
         asiento.descripcion = request.form['descripcion'].strip()

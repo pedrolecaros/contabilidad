@@ -102,6 +102,43 @@ def _ext_ok(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED
 
 
+_RE_RUT = None
+def _detectar_rut_en_archivo(blob: bytes, filename: str) -> str | None:
+    """Busca un RUT chileno (X[X].XXX.XXX-X o XXXXXXXX-X) en el contenido del archivo.
+    Devuelve el primer match o None. Para XLS/XLSX/CSV escanea texto plano del blob.
+    """
+    import re
+    global _RE_RUT
+    if _RE_RUT is None:
+        _RE_RUT = re.compile(rb'\b(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])\b')
+    # Para XLSX (zip) buscamos en strings de shared strings y de hojas.
+    # Heurística simple: extrae bytes ASCII/Latin1 y aplica regex.
+    try:
+        text = blob.decode('latin-1', errors='ignore')
+        # XLSX viene como zip — el regex sobre bytes funciona igual sobre el texto descomprimido
+        # cuando el RUT está en strings sin comprimir. Para zip robusto, parseamos:
+        if filename.lower().endswith('.xlsx'):
+            import zipfile
+            try:
+                with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+                    inner = b''
+                    for name in zf.namelist():
+                        if name.startswith('xl/'):
+                            inner += zf.read(name)
+                    m = _RE_RUT.search(inner)
+                    if m:
+                        return m.group(1).decode('latin-1')
+            except zipfile.BadZipFile:
+                pass
+        # XLS / CSV / TXT
+        m = _RE_RUT.search(blob[:200_000])  # solo primeros 200KB
+        if m:
+            return m.group(1).decode('latin-1')
+    except Exception:
+        return None
+    return None
+
+
 def _sha256(file_storage):
     file_storage.stream.seek(0)
     h = hashlib.sha256(file_storage.stream.read()).hexdigest()
@@ -375,6 +412,20 @@ def subir(eid, tipo):
     archivo.stream.seek(0)
     _backup_bytes = archivo.stream.read()
     archivo.stream.seek(0)
+
+    # Validar que el RUT presente en el archivo (si lo hay) coincide con el de la empresa.
+    # Aplica especialmente a cartolas (banco + tarjeta) que vienen con RUT en el header.
+    if tipo in ('banco', 'tarjeta') and _backup_bytes:
+        rut_archivo = _detectar_rut_en_archivo(_backup_bytes, archivo.filename)
+        if rut_archivo:
+            from importers.sii_f29 import _normalizar_rut as _norm_rut
+            if _norm_rut(rut_archivo) != _norm_rut(empresa.rut):
+                flash(
+                    f'El archivo contiene RUT {rut_archivo}, que NO coincide con '
+                    f'{empresa.razon_social} ({empresa.rut}) — no se importó.',
+                    'danger'
+                )
+                return redirect(url_for('importar.index', eid=eid))
 
     # Duplicate check
     existente = ArchivoImportado.query.filter_by(empresa_id=eid, sha256=sha).first()

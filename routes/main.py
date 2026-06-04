@@ -212,13 +212,32 @@ def consolidado():
         .order_by(Prestamo.empresa_id, Prestamo.tipo)
         .all())
 
+    # TC mensual por empresa: saldo cuenta 2.1.14 al cierre de cada mes (solo empresas con tc_activa)
+    # OK si saldo = 0 al cierre. Cualquier saldo distinto de cero (D o H) marca "revisar".
+    tc_status = {}  # (eid, 'YYYY-MM') -> 'ok' | 'warn' | None (sin TC)
+    tc_saldo = {}   # (eid, 'YYYY-MM') -> saldo
+    for emp in empresas:
+        if not getattr(emp, 'tc_activa', False):
+            continue
+        cta_tc = Cuenta.query.filter_by(empresa_id=emp.id, codigo='2.1.14').first()
+        if not cta_tc:
+            continue
+        for m in meses:
+            y, mm = int(m[:4]), int(m[5:7])
+            import calendar as _cal
+            ult = date(y, mm, _cal.monthrange(y, mm)[1])
+            saldo = cta_tc.saldo(hasta=ult)
+            tc_status[(emp.id, m)] = 'ok' if abs(saldo) < 1 else 'warn'
+            tc_saldo[(emp.id, m)] = saldo
+
     return render_template('consolidado.html',
         empresas=empresas, meses=meses,
         desde_mes=desde_mes, hasta_mes=hasta_mes,
         celda_data=celda_data,
         sin_respaldo=sin_respaldo,
         db_size_mb=db_size_mb, db_modified=db_modified,
-        interempresa=interempresa)
+        interempresa=interempresa,
+        tc_status=tc_status, tc_saldo=tc_saldo)
 
 
 @bp.route('/consolidado/financiero')

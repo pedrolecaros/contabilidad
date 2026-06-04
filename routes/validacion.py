@@ -1,9 +1,28 @@
 from flask import Blueprint, render_template, request
 from datetime import date
 from models import db, Empresa, Asiento, LineaAsiento, DocumentoSII, MovimientoBanco, Cuenta, Conciliacion
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 bp = Blueprint('validacion', __name__)
+
+
+def _saldo_manual_get(eid, periodo):
+    """Lee saldo manual persistido para (empresa, periodo YYYY-MM). None si no existe."""
+    r = db.session.execute(
+        text("SELECT saldo FROM saldos_cartola_manual WHERE empresa_id=:e AND periodo=:p"),
+        {'e': eid, 'p': periodo}).fetchone()
+    return r[0] if r else None
+
+
+def _saldo_manual_set(eid, periodo, saldo):
+    """Upsert saldo manual para (empresa, periodo)."""
+    db.session.execute(
+        text("""INSERT INTO saldos_cartola_manual (empresa_id, periodo, saldo, actualizado_en)
+                VALUES (:e, :p, :s, CURRENT_TIMESTAMP)
+                ON CONFLICT(empresa_id, periodo) DO UPDATE SET
+                    saldo=excluded.saldo, actualizado_en=CURRENT_TIMESTAMP"""),
+        {'e': eid, 'p': periodo, 's': saldo})
+    db.session.commit()
 
 
 @bp.route('/empresa/<int:eid>/validar')
@@ -59,13 +78,23 @@ def index(eid):
     movs_procesados      = sum(1 for m in movs_periodo if m.procesado)
     movs_sin_procesar    = movs_total_periodo - movs_procesados
 
-    # Saldo según cartola: 1) override manual via querystring,
-    # 2) último mov con saldo informado dentro del mes (excluyendo TC).
+    # Saldo según cartola — prioridad:
+    # 1) Override manual via querystring (recién enviado por el form) → guarda y usa
+    # 2) Saldo manual persistido para (empresa, periodo)
+    # 3) último mov con saldo informado dentro del mes (excluyendo TC).
+    periodo_str = f"{ano:04d}-{mes:02d}"
     cartola_manual_raw = request.args.get('saldo_cartola', '').replace('.', '').replace(',', '.').strip()
     try:
         cartola_manual = float(cartola_manual_raw) if cartola_manual_raw else None
     except ValueError:
         cartola_manual = None
+
+    if cartola_manual is not None:
+        _saldo_manual_set(eid, periodo_str, cartola_manual)
+    else:
+        cartola_manual = _saldo_manual_get(eid, periodo_str)
+        if cartola_manual is not None:
+            cartola_manual_raw = f"{cartola_manual:,.0f}".replace(',', '.')
 
     saldo_banco_cartola = None
     cartola_fecha = None

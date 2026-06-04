@@ -19,6 +19,7 @@ class Empresa(db.Model):
     tasa_ppm = db.Column(db.Float, default=1.0)              # % PPM (ej: 1.0 = 1%)
     regimen = db.Column(db.String(10), default='GENERAL')    # PYME | GENERAL
     logo_url = db.Column(db.String(500))
+    tc_activa = db.Column(db.Boolean, default=False)         # True si la empresa tiene tarjeta de crédito en uso
 
     cuentas = db.relationship('Cuenta', backref='empresa', lazy='dynamic')
     asientos = db.relationship('Asiento', backref='empresa', lazy='dynamic')

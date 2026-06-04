@@ -178,12 +178,17 @@
           </span>
           <span>{{ cuadre_banco_diff|clp }}</span>
         </li>
-        {% elif movs_no_tc_periodo > 0 %}
+        {% endif %}
+        {% if cartola_origen == 'manual' or (saldo_banco_cartola is none and movs_no_tc_periodo > 0) %}
+        {# Form siempre presente cuando es manual o cuando no hay saldo en cartola pero hay movs #}
         <li class="list-group-item py-2 small text-muted">
           <i class="bi bi-info-circle me-1"></i>
-          La cartola importada ({{ movs_no_tc_periodo }} movimientos en el período)
-          <strong>no incluye saldo</strong> (típico en Santander XLSX).
-          Ingresá manualmente el saldo de cierre para validar:
+          {% if cartola_origen == 'manual' %}
+            Saldo manual guardado. Podés modificarlo:
+          {% else %}
+            La cartola importada ({{ movs_no_tc_periodo }} movimientos) <strong>no incluye saldo</strong> (típico en Santander XLSX).
+            Ingresá manualmente el saldo de cierre:
+          {% endif %}
         </li>
         <li class="list-group-item py-2">
           <form method="get" class="d-flex gap-2 align-items-center">
@@ -192,10 +197,12 @@
             <input type="text" name="saldo_cartola" value="{{ cartola_manual_raw }}"
                    placeholder="Saldo cartola al {{ hasta|fecha_cl }}"
                    class="form-control form-control-sm" inputmode="numeric" style="max-width:200px">
-            <button type="submit" class="btn btn-sm btn-outline-primary">Validar</button>
+            <button type="submit" class="btn btn-sm btn-outline-primary">
+              {% if cartola_origen == 'manual' %}Actualizar{% else %}Validar{% endif %}
+            </button>
           </form>
         </li>
-        {% else %}
+        {% elif saldo_banco_cartola is none %}
         <li class="list-group-item py-2 small text-muted">
           <i class="bi bi-info-circle me-1"></i>No hay cartola importada en el período — no se puede validar cuadre.
         </li>

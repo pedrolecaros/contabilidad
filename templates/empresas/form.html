@@ -50,6 +50,14 @@
                   <span class="text-muted">(si no lo es, el IVA de compras es gasto)</span>
                 </label>
               </div>
+              <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" name="tc_activa" id="tc_activa"
+                       {% if empresa and empresa.tc_activa %}checked{% endif %}>
+                <label class="form-check-label small" for="tc_activa">
+                  Tiene <strong>Tarjeta de Crédito</strong> activa
+                  <span class="text-muted">(activa monitoreo del saldo TC en el consolidado)</span>
+                </label>
+              </div>
             </div>
             <div class="col-5">
               <label class="form-label small">Tasa PPM</label>

@@ -83,6 +83,7 @@ def editar(eid):
         part_str = request.form.get('participacion_ecox', '').strip()
         empresa.participacion_ecox = float(part_str) if part_str else None
         empresa.contribuyente_iva = 'contribuyente_iva' in request.form
+        empresa.tc_activa = 'tc_activa' in request.form
         empresa.activa = 'activa' in request.form
         tasa_ppm_str = request.form.get('tasa_ppm', '1.0').strip()
         empresa.tasa_ppm = float(tasa_ppm_str) if tasa_ppm_str else 1.0

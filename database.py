@@ -130,6 +130,15 @@ def _migrar(app):
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1440 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1513 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_90 REAL DEFAULT 0",
+        "ALTER TABLE empresas ADD COLUMN tc_activa BOOLEAN DEFAULT 0",
+        # Saldo manual cartola por (empresa, periodo) — para bancos sin saldo en XLSX (Santander)
+        """CREATE TABLE IF NOT EXISTS saldos_cartola_manual (
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    periodo VARCHAR(7) NOT NULL,
+    saldo REAL NOT NULL,
+    actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (empresa_id, periodo)
+)""",
         # Trigger: auto-asigna numero correlativo por empresa si viene NULL.
         # Evita que la UI muestre "número de asiento: None" cuando se insertan
         # asientos desde scripts u otro código que omita el campo.

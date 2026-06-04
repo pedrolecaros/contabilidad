@@ -201,6 +201,20 @@
                          title="F22 AT {{ c['f22_anio'] }} no cargado — click para subir">F22</a>
                     {% endif %}
                   {% endif %}
+                  {# TC badge: solo empresas con tc_activa. Verde si saldo cero, naranja si tiene saldo #}
+                  {% if tc_status.get((eid, mes)) %}
+                    {% if tc_status[(eid, mes)] == 'ok' %}
+                      <span class="badge bg-success" style="font-size:.65rem;"
+                            title="TC al cierre {{ mes }}: saldo $0 ✓">TC&#10003;</span>
+                    {% else %}
+                      <a href="{{ url_for('asientos.lista', eid=eid, cuenta_id=0, mes=mes) }}"
+                         class="badge text-decoration-none text-dark"
+                         style="background:#fd7e14; font-size:.65rem;"
+                         title="TC saldo distinto de cero al cierre {{ mes }}: ${{ '{:,.0f}'.format(tc_saldo[(eid, mes)]).replace(',', '.') }}">
+                        TC!{{ '{:,.0f}'.format(tc_saldo[(eid, mes)]|abs).replace(',', '.') }}
+                      </a>
+                    {% endif %}
+                  {% endif %}
                 </div>
 
                 {# 3. Asientos row #}

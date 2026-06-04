@@ -30,12 +30,12 @@
             <div class="col-md-3">
               <label class="form-label fw-semibold">Fecha <span class="text-danger">*</span></label>
               <input type="date" name="fecha" id="campoFecha" class="form-control"
-                     value="{{ asiento.fecha.isoformat() if asiento else (fecha_default or '') }}" required>
+                     value="{{ fecha_default if fecha_default else (asiento.fecha.isoformat() if asiento else '') }}" required>
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Descripción <span class="text-danger">*</span></label>
               <input type="text" name="descripcion" class="form-control" required
-                     value="{{ asiento.descripcion if asiento else '' }}"
+                     value="{{ descripcion_default if descripcion_default is defined and descripcion_default else (asiento.descripcion if asiento else '') }}"
                      placeholder="Descripción del asiento">
             </div>
             <div class="col-md-3">
