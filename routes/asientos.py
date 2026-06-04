@@ -1,6 +1,9 @@
 import json
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, current_app
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, current_app, session
 from datetime import date
+
+# Claves de filtro persistidas en session por empresa.
+_FILTER_KEYS = ('origen', 'estado', 'descripcion', 'desde', 'hasta', 'mes', 'cuenta_id')
 from models import db, Empresa, Asiento, LineaAsiento, Cuenta, DocumentoSII, MovimientoBanco, Conciliacion, Contraparte
 from engine.asientos import confirmar_asiento, anular_asiento
 from engine.auditoria import registrar_auditoria
@@ -161,13 +164,34 @@ ORIGEN_LABEL = {
 def lista(eid):
     empresa = Empresa.query.get_or_404(eid)
     page        = request.args.get('page', 1, type=int)
-    origen      = request.args.get('origen', '')
-    estado      = request.args.get('estado', '')
-    descripcion = request.args.get('descripcion', '').strip()
-    desde_str   = request.args.get('desde', '')
-    hasta_str   = request.args.get('hasta', '')
-    mes_str     = request.args.get('mes', '').strip()  # 'YYYY-MM'
-    cuenta_id   = request.args.get('cuenta_id', type=int)
+
+    # Persistencia de filtros: si el usuario llega sin query params de filtro,
+    # restaurar los del último uso en esta sesión (por empresa). Si trae query
+    # params explícitos, esos ganan y se guardan. ?reset=1 limpia la sesión.
+    sess_key = f'asientos_filters_{eid}'
+    if request.args.get('reset') == '1':
+        session.pop(sess_key, None)
+        return redirect(url_for('asientos.lista', eid=eid))
+
+    url_has_filters = any(k in request.args for k in _FILTER_KEYS)
+    saved = session.get(sess_key, {}) if not url_has_filters else {}
+
+    def _arg(name, default=''):
+        if url_has_filters:
+            return request.args.get(name, default)
+        return saved.get(name, default)
+
+    origen      = _arg('origen', '')
+    estado      = _arg('estado', '')
+    descripcion = (_arg('descripcion', '') or '').strip()
+    desde_str   = _arg('desde', '')
+    hasta_str   = _arg('hasta', '')
+    mes_str     = (_arg('mes', '') or '').strip()  # 'YYYY-MM'
+    cuenta_id_raw = _arg('cuenta_id', None)
+    try:
+        cuenta_id = int(cuenta_id_raw) if cuenta_id_raw not in (None, '', 'None') else None
+    except (TypeError, ValueError):
+        cuenta_id = None
 
     # Default: mes anterior al actual si no hay ningún filtro de fecha
     if not mes_str and not desde_str and not hasta_str:
@@ -246,6 +270,19 @@ def lista(eid):
 
     cuentas_filtro = (Cuenta.query.filter_by(empresa_id=eid, es_titulo=False, activa=True)
                       .order_by(Cuenta.codigo).all())
+
+    # Persistir filtros aplicados (solo si vinieron por URL — evita persistir el default mes-anterior)
+    if url_has_filters:
+        session[sess_key] = {
+            'origen': origen,
+            'estado': estado,
+            'descripcion': descripcion,
+            'desde': desde_str,
+            'hasta': hasta_str,
+            'mes': mes_str,
+            'cuenta_id': str(cuenta_id) if cuenta_id else '',
+        }
+
     return render_template('asientos/lista.html', empresa=empresa, asientos=asientos,
                            origen=origen, estado=estado,
                            descripcion=descripcion, desde_str=desde_str, hasta_str=hasta_str,

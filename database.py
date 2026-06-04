@@ -130,6 +130,22 @@ def _migrar(app):
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1440 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1513 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_90 REAL DEFAULT 0",
+        # Trigger: auto-asigna numero correlativo por empresa si viene NULL.
+        # Evita que la UI muestre "número de asiento: None" cuando se insertan
+        # asientos desde scripts u otro código que omita el campo.
+        "DROP TRIGGER IF EXISTS asientos_assign_numero",
+        """CREATE TRIGGER asientos_assign_numero
+AFTER INSERT ON asientos
+FOR EACH ROW
+WHEN NEW.numero IS NULL
+BEGIN
+    UPDATE asientos
+    SET numero = COALESCE(
+        (SELECT MAX(numero) FROM asientos
+         WHERE empresa_id = NEW.empresa_id AND id <> NEW.id), 0
+    ) + 1
+    WHERE id = NEW.id;
+END""",
     ]
     with db.engine.connect() as con:
         for sql in migraciones:
