@@ -88,7 +88,6 @@ def subir_consolidado():
         empresa_id=eid, tipo='OTROS', nombre_archivo=archivo.filename,
         sha256=sha, periodo=periodo or '',
         fecha_importacion=__import__('datetime').datetime.now(), ndocs=0,
-        respaldo_url=f'local:{sub_rel}',
     )
     db.session.add(registro); db.session.commit()
     flash(f'"{archivo.filename}" guardado en {empresa.razon_social} ({"global" if not periodo else periodo})', 'success')

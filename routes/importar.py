@@ -460,7 +460,6 @@ def subir(eid, tipo):
                 nombre_archivo=archivo.filename, sha256=sha,
                 periodo=periodo_libre or '',
                 fecha_importacion=datetime.now(), ndocs=0,
-                respaldo_url=f'local:{sub_rel}',
             )
             db.session.add(registro)
             db.session.commit()
