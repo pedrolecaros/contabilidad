@@ -14,10 +14,6 @@
   <input type="number" name="anio" value="{{ anio }}" min="2020" max="2030"
          class="form-control form-control-sm" style="width:90px"
          onchange="this.form.submit()">
-  <a href="{{ url_for('tributario.rli', eid=empresa.id, anio=anio) }}"
-     class="btn btn-sm btn-outline-secondary ms-auto" title="Ver cálculo contable (devengado)">
-    Ver RLI contable
-  </a>
 </form>
 
 <div class="row g-3 mb-4">

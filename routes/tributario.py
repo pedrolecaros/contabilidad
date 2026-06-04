@@ -499,6 +499,16 @@ def rli_pyme(eid):
 
 @bp.route('/empresa/<int:eid>/tributario/rli')
 def rli(eid):
+    """RLI — redirige al cálculo correcto según régimen tributario de la empresa.
+    PYME → base caja (rli_pyme). General → cálculo contable (rli_contable interno).
+    """
+    empresa = Empresa.query.get_or_404(eid)
+    if empresa.regimen == 'PYME':
+        return redirect(url_for('tributario.rli_pyme', eid=eid, **request.args))
+    return _rli_contable(eid)
+
+
+def _rli_contable(eid):
     empresa = Empresa.query.get_or_404(eid)
     hoy = date.today()
     anio = int(request.args.get('anio', hoy.year))

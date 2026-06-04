@@ -28,12 +28,6 @@
         {% endfor %}
       </select>
     </form>
-    {% if empresa.regimen == 'PYME' %}
-    <a href="{{ url_for('tributario.rli_pyme', eid=empresa.id, anio=anio) }}"
-       class="btn btn-info btn-sm">
-      <i class="bi bi-calculator me-1"></i>Ver RLI PYME (base caja)
-    </a>
-    {% endif %}
     <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-printer me-1"></i>Imprimir
     </button>
