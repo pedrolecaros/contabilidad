@@ -40,9 +40,9 @@
       <td class="text-end small text-success">{{ f.ingresos|clp }}</td>
       <td class="text-end small text-danger">{{ f.egresos|clp }}</td>
       <td class="text-end {% if f.rli_anio >= 0 %}text-primary{% else %}text-warning{% endif %}">{{ f.rli_anio|clp }}</td>
-      <td class="text-end small text-info">{{ f.arrastre|clp }}</td>
+      <td class="text-end small text-info">{{ (-f.arrastre)|clp if f.arrastre else 0|clp }}</td>
       <td class="text-end small text-muted">{{ f.consumido|clp }}</td>
-      <td class="text-end small text-info">{{ f.remanente|clp }}</td>
+      <td class="text-end small text-info">{{ (-f.remanente)|clp if f.remanente else 0|clp }}</td>
       <td class="text-end fw-bold {% if f.rli_imponible > 0 %}text-danger{% else %}text-success{% endif %}">{{ f.rli_imponible|clp }}</td>
     </tr>
     {% endfor %}
@@ -51,7 +51,7 @@
       <td class="text-end">{{ totales.ingresos|clp }}</td>
       <td class="text-end">{{ totales.egresos|clp }}</td>
       <td class="text-end">{{ totales.rli_anio|clp }}</td>
-      <td class="text-end">{{ totales.arrastre|clp }}</td>
+      <td class="text-end">{{ (-totales.arrastre)|clp if totales.arrastre else 0|clp }}</td>
       <td></td>
       <td></td>
       <td class="text-end">{{ totales.rli_imponible|clp }}</td>
