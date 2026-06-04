@@ -445,7 +445,8 @@ def subir(eid, tipo):
     try:
         tipo_upper = tipo.upper() if tipo != 'banco' else 'BANCO'
         if tipo == 'otros':
-            # Documento libre: solo guardar backup, no procesar
+            # Documento libre: solo guardar backup, no procesar.
+            # Responde JSON porque el form-import en el UI espera JSON (fetch + res.json()).
             from storage import save_import_backup
             periodo_libre = (request.form.get('periodo') or '').strip() or None
             categoria = (request.form.get('categoria') or 'OTROS').strip()
@@ -461,8 +462,11 @@ def subir(eid, tipo):
             )
             db.session.add(registro)
             db.session.commit()
-            flash(f'Documento "{archivo.filename}" guardado en backup ({categoria}{", " + periodo_libre if periodo_libre else ""})', 'success')
-            return redirect(url_for('importar.index', eid=eid))
+            return jsonify({
+                'ok': True, 'tipo': 'OTROS', 'nombre': archivo.filename,
+                'importados': 0, 'errores': [],
+                'aviso': f'Documento guardado en backup ({categoria}{", " + periodo_libre if periodo_libre else " — GLOBAL"})',
+            })
         if tipo == 'compras':
             resultado = libro_compras.importar(archivo, eid)
             tipo_upper = 'COMPRAS'
