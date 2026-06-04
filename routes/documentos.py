@@ -1,111 +1,136 @@
-"""Documentos adjuntos por empresa — repositorio libre para Excels, PDFs, contratos,
-respaldos, etc. Sin estructura contable; solo backup centralizado por sociedad."""
+"""Explorador de documentos: lista TODOS los archivos en backup por empresa
+(libros SII, cartolas, F29, F22, fotos respaldo, otros). Permite descargar y eliminar."""
 import os
-from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, send_from_directory, abort
-from datetime import datetime
+from flask import (Blueprint, render_template, redirect, url_for, request, flash,
+                   current_app, send_from_directory, abort)
 from sqlalchemy import text
-from models import db, Empresa
-from storage import save_attachment
+from models import db, Empresa, ArchivoImportado
 
 bp = Blueprint('documentos', __name__)
 
 
-CATEGORIAS = [
-    'Crédito privado', 'Leasing', 'Contrato', 'Escritura',
-    'Excel respaldo', 'PDF respaldo', 'Acta', 'Otro',
-]
+def _rut_clean(rut: str) -> str:
+    return (rut or '').replace('.', '').replace('-', '') or 'sin_rut'
 
 
-@bp.route('/empresa/<int:eid>/documentos', methods=['GET', 'POST'])
+def _scan_dir(root, rel='', max_depth=4):
+    """Recorre el árbol y devuelve lista plana de archivos."""
+    items = []
+    full = os.path.join(root, rel) if rel else root
+    if not os.path.isdir(full):
+        return items
+    try:
+        entries = sorted(os.listdir(full))
+    except (OSError, PermissionError):
+        return items
+    for name in entries:
+        if name.startswith('.'):
+            continue
+        path = os.path.join(full, name)
+        rel_path = os.path.join(rel, name) if rel else name
+        if os.path.isdir(path):
+            depth = rel_path.count(os.sep)
+            if depth < max_depth:
+                items.extend(_scan_dir(root, rel_path, max_depth))
+        elif os.path.isfile(path):
+            try:
+                st = os.stat(path)
+                parts = rel_path.split(os.sep)
+                # parts puede ser [TIPO, periodo, filename] o [TIPO, filename] o solo [filename]
+                tipo = parts[0] if len(parts) >= 2 else '(raíz)'
+                periodo = parts[1] if len(parts) >= 3 else ''
+                fname = parts[-1]
+                items.append({
+                    'rel_path': rel_path,
+                    'nombre': fname,
+                    'tipo': tipo,
+                    'periodo': periodo if periodo not in ('sin_periodo', '') else '',
+                    'tamano': st.st_size,
+                    'mtime': st.st_mtime,
+                })
+            except OSError:
+                pass
+    return items
+
+
+@bp.route('/empresa/<int:eid>/archivos')
 def index(eid):
     empresa = Empresa.query.get_or_404(eid)
+    rut_clean = _rut_clean(empresa.rut)
+    base = os.path.join(current_app.config['UPLOAD_FOLDER'],
+                        'backups_importacion', rut_clean)
+    archivos = _scan_dir(base, max_depth=5)
 
-    if request.method == 'POST':
-        archivo = request.files.get('archivo')
-        if not archivo or not archivo.filename:
-            flash('Seleccioná un archivo', 'warning')
-            return redirect(url_for('documentos.index', eid=eid))
+    # Filtros
+    f_tipo = request.args.get('tipo', '').strip().upper()
+    f_periodo = request.args.get('periodo', '').strip()
+    f_search = request.args.get('q', '').strip().lower()
 
-        categoria = request.form.get('categoria', '').strip() or 'Otro'
-        descripcion = request.form.get('descripcion', '').strip()
+    if f_tipo:
+        archivos = [a for a in archivos if a['tipo'].upper() == f_tipo]
+    if f_periodo:
+        archivos = [a for a in archivos if a['periodo'] == f_periodo]
+    if f_search:
+        archivos = [a for a in archivos if f_search in a['nombre'].lower()]
 
-        # Snapshot bytes para conocer tamaño
-        archivo.stream.seek(0, 2)
-        tamano = archivo.stream.tell()
-        archivo.stream.seek(0)
+    # Ordenar por mtime desc
+    archivos.sort(key=lambda x: x['mtime'], reverse=True)
 
-        try:
-            archivo_url = save_attachment(archivo, archivo.filename,
-                                          current_app.config['UPLOAD_FOLDER'],
-                                          subfolder=f'documentos/{empresa.rut}')
-        except ValueError as e:
-            flash(f'Error al guardar archivo: {e}', 'danger')
-            return redirect(url_for('documentos.index', eid=eid))
+    # Agregados: tipos y periodos únicos para los filtros
+    all_archivos = _scan_dir(base, max_depth=5)
+    tipos = sorted({a['tipo'] for a in all_archivos})
+    periodos = sorted({a['periodo'] for a in all_archivos if a['periodo']}, reverse=True)
 
-        db.session.execute(text("""
-            INSERT INTO documentos_adjuntos (empresa_id, nombre, categoria, descripcion, archivo_url, tamano, fecha_subida)
-            VALUES (:e, :n, :c, :d, :u, :t, :f)
-        """), {
-            'e': eid, 'n': archivo.filename, 'c': categoria, 'd': descripcion,
-            'u': archivo_url, 't': tamano, 'f': datetime.now()
-        })
-        db.session.commit()
-        flash(f'Documento "{archivo.filename}" guardado', 'success')
-        return redirect(url_for('documentos.index', eid=eid))
-
-    # GET — listar documentos
-    docs = db.session.execute(text("""
-        SELECT id, nombre, categoria, descripcion, archivo_url, tamano, fecha_subida
-        FROM documentos_adjuntos
-        WHERE empresa_id = :e
-        ORDER BY fecha_subida DESC
-    """), {'e': eid}).fetchall()
+    total_bytes = sum(a['tamano'] for a in archivos)
 
     return render_template('documentos/index.html',
-                           empresa=empresa, docs=docs, categorias=CATEGORIAS)
+        empresa=empresa, archivos=archivos,
+        tipos=tipos, periodos=periodos,
+        f_tipo=f_tipo, f_periodo=f_periodo, f_search=f_search,
+        total_bytes=total_bytes, total_count=len(all_archivos),
+        rut_clean=rut_clean)
 
 
-@bp.route('/empresa/<int:eid>/documentos/<int:doc_id>/descargar')
-def descargar(eid, doc_id):
-    r = db.session.execute(text(
-        "SELECT archivo_url, nombre FROM documentos_adjuntos WHERE id=:d AND empresa_id=:e"
-    ), {'d': doc_id, 'e': eid}).fetchone()
-    if not r:
-        abort(404)
-    archivo_url, nombre = r
-    # archivo_url puede ser 'local:carpeta/archivo' o ruta directa
-    if archivo_url.startswith('local:'):
-        rel = archivo_url[6:]
-    else:
-        rel = archivo_url
-    upload_folder = current_app.config['UPLOAD_FOLDER']
-    full_path = os.path.join(upload_folder, rel)
-    if not os.path.isfile(full_path):
-        flash(f'Archivo no encontrado en disco: {rel}', 'danger')
+@bp.route('/empresa/<int:eid>/archivos/descargar')
+def descargar(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    rel = request.args.get('rel', '').strip()
+    if not rel or '..' in rel.split('/'):
+        abort(400)
+    rut_clean = _rut_clean(empresa.rut)
+    base = os.path.join(current_app.config['UPLOAD_FOLDER'],
+                        'backups_importacion', rut_clean)
+    full = os.path.join(base, rel)
+    if not os.path.isfile(full):
+        flash(f'Archivo no encontrado: {rel}', 'danger')
         return redirect(url_for('documentos.index', eid=eid))
-    directory = os.path.dirname(full_path)
-    fname = os.path.basename(full_path)
-    return send_from_directory(directory, fname, as_attachment=True, download_name=nombre)
+    directory = os.path.dirname(full)
+    fname = os.path.basename(full)
+    return send_from_directory(directory, fname, as_attachment=True)
 
 
-@bp.route('/empresa/<int:eid>/documentos/<int:doc_id>/eliminar', methods=['POST'])
-def eliminar(eid, doc_id):
-    r = db.session.execute(text(
-        "SELECT archivo_url, nombre FROM documentos_adjuntos WHERE id=:d AND empresa_id=:e"
-    ), {'d': doc_id, 'e': eid}).fetchone()
-    if not r:
-        abort(404)
-    archivo_url, nombre = r
-    # Borrar archivo de disco
-    rel = archivo_url[6:] if archivo_url.startswith('local:') else archivo_url
-    full_path = os.path.join(current_app.config['UPLOAD_FOLDER'], rel)
-    try:
-        if os.path.isfile(full_path):
-            os.remove(full_path)
-    except Exception as e:
-        flash(f'Aviso: archivo no se pudo borrar de disco ({e})', 'warning')
-    # Borrar registro DB
-    db.session.execute(text("DELETE FROM documentos_adjuntos WHERE id=:d"), {'d': doc_id})
-    db.session.commit()
-    flash(f'Documento "{nombre}" eliminado', 'info')
+@bp.route('/empresa/<int:eid>/archivos/eliminar', methods=['POST'])
+def eliminar(eid):
+    empresa = Empresa.query.get_or_404(eid)
+    rel = request.form.get('rel', '').strip()
+    if not rel or '..' in rel.split('/'):
+        flash('Ruta inválida', 'danger')
+        return redirect(url_for('documentos.index', eid=eid))
+    rut_clean = _rut_clean(empresa.rut)
+    base = os.path.join(current_app.config['UPLOAD_FOLDER'],
+                        'backups_importacion', rut_clean)
+    full = os.path.join(base, rel)
+    if not os.path.isfile(full):
+        flash(f'Archivo no encontrado: {rel}', 'warning')
+    else:
+        try:
+            os.remove(full)
+            # Limpiar registro en archivos_importados si existe (matchea por sufijo)
+            db.session.execute(text(
+                "DELETE FROM archivos_importados WHERE empresa_id=:e AND respaldo_url LIKE :p"
+            ), {'e': eid, 'p': f'%{rel}'})
+            db.session.commit()
+            flash(f'Archivo "{os.path.basename(rel)}" eliminado', 'info')
+        except Exception as e:
+            flash(f'Error al eliminar: {e}', 'danger')
     return redirect(url_for('documentos.index', eid=eid))

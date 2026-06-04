@@ -444,6 +444,25 @@ def subir(eid, tipo):
 
     try:
         tipo_upper = tipo.upper() if tipo != 'banco' else 'BANCO'
+        if tipo == 'otros':
+            # Documento libre: solo guardar backup, no procesar
+            from storage import save_import_backup
+            periodo_libre = (request.form.get('periodo') or '').strip() or None
+            categoria = (request.form.get('categoria') or 'OTROS').strip()
+            sub_rel = save_import_backup(_backup_bytes, archivo.filename,
+                                          current_app.config['UPLOAD_FOLDER'],
+                                          empresa.rut, categoria, periodo_libre)
+            registro = ArchivoImportado(
+                empresa_id=eid, tipo=categoria.upper(),
+                nombre_archivo=archivo.filename, sha256=sha,
+                periodo=periodo_libre or '',
+                fecha_importacion=datetime.now(), ndocs=0,
+                respaldo_url=f'local:{sub_rel}',
+            )
+            db.session.add(registro)
+            db.session.commit()
+            flash(f'Documento "{archivo.filename}" guardado en backup ({categoria}{", " + periodo_libre if periodo_libre else ""})', 'success')
+            return redirect(url_for('importar.index', eid=eid))
         if tipo == 'compras':
             resultado = libro_compras.importar(archivo, eid)
             tipo_upper = 'COMPRAS'

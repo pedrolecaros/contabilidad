@@ -95,6 +95,16 @@ def create_app(config_override=None):
         except Exception:
             return str(value)
 
+    @app.template_filter('fecha_unix')
+    def fmt_fecha_unix(value):
+        if not value:
+            return ''
+        from datetime import datetime
+        try:
+            return datetime.fromtimestamp(value).strftime('%d/%m/%Y %H:%M')
+        except Exception:
+            return ''
+
     @app.template_filter('fromjson')
     def fmt_fromjson(value):
         import json

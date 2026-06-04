@@ -1,59 +1,82 @@
 {% extends 'base.html' %}
-{% block title %}Documentos – {{ empresa.razon_social }}{% endblock %}
+{% block title %}Archivos – {{ empresa.razon_social }}{% endblock %}
 {% block content %}
-<h5 class="mb-3"><i class="bi bi-folder2-open me-2"></i>Documentos adjuntos</h5>
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Archivos en backup</h5>
+  <span class="text-muted small ms-2">
+    {{ archivos|length }} {% if f_tipo or f_periodo or f_search %}filtrados de {{ total_count }}{% else %}de {{ total_count }}{% endif %}
+    · Total: {{ '%.1f'|format(total_bytes / 1024 / 1024) }} MB
+  </span>
+  <a href="{{ url_for('importar.index', eid=empresa.id) }}"
+     class="btn btn-sm btn-outline-primary ms-auto">
+    <i class="bi bi-plus-lg me-1"></i>Subir archivo
+  </a>
+</div>
 
-<form method="post" enctype="multipart/form-data" class="row g-2 align-items-end mb-4 p-3 bg-light rounded">
-  <div class="col-md-4">
-    <label class="form-label small">Archivo</label>
-    <input type="file" name="archivo" class="form-control form-control-sm" required>
-  </div>
-  <div class="col-md-2">
-    <label class="form-label small">Categoría</label>
-    <select name="categoria" class="form-select form-select-sm">
-      {% for c in categorias %}
-        <option value="{{ c }}">{{ c }}</option>
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <div class="col-auto">
+    <label class="form-label small mb-0">Categoría</label>
+    <select name="tipo" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Todas</option>
+      {% for t in tipos %}
+      <option value="{{ t }}" {% if t == f_tipo %}selected{% endif %}>{{ t }}</option>
       {% endfor %}
     </select>
   </div>
-  <div class="col-md-4">
-    <label class="form-label small">Descripción (opcional)</label>
-    <input type="text" name="descripcion" class="form-control form-control-sm" placeholder="Ej. Tabla desarrollo créditos privados 2026">
+  <div class="col-auto">
+    <label class="form-label small mb-0">Período</label>
+    <select name="periodo" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Todos</option>
+      {% for p in periodos %}
+      <option value="{{ p }}" {% if p == f_periodo %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
   </div>
-  <div class="col-md-2">
-    <button type="submit" class="btn btn-primary btn-sm w-100">
-      <i class="bi bi-upload me-1"></i>Subir
-    </button>
+  <div class="col-auto">
+    <label class="form-label small mb-0">Buscar</label>
+    <input type="text" name="q" value="{{ f_search }}" class="form-control form-control-sm"
+           placeholder="nombre archivo...">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrar</button>
+    {% if f_tipo or f_periodo or f_search %}
+    <a href="{{ url_for('documentos.index', eid=empresa.id) }}" class="btn btn-sm btn-outline-danger ms-1">
+      <i class="bi bi-x"></i>
+    </a>
+    {% endif %}
   </div>
 </form>
 
-{% if docs %}
+{% if archivos %}
 <table class="table table-sm table-hover">
   <thead class="table-dark">
     <tr>
       <th>Archivo</th>
       <th>Categoría</th>
-      <th>Descripción</th>
+      <th>Período</th>
       <th class="text-end">Tamaño</th>
-      <th>Subido</th>
+      <th>Modificado</th>
       <th></th>
     </tr>
   </thead>
   <tbody>
-    {% for d in docs %}
+    {% for a in archivos %}
     <tr>
       <td>
-        <a href="{{ url_for('documentos.descargar', eid=empresa.id, doc_id=d.id) }}" class="text-decoration-none">
-          <i class="bi bi-file-earmark me-1"></i>{{ d.nombre }}
+        <a href="{{ url_for('documentos.descargar', eid=empresa.id, rel=a.rel_path) }}"
+           class="text-decoration-none">
+          <i class="bi bi-file-earmark me-1"></i>{{ a.nombre }}
         </a>
       </td>
-      <td><span class="badge bg-secondary">{{ d.categoria }}</span></td>
-      <td class="small text-muted">{{ d.descripcion or '' }}</td>
-      <td class="text-end small">{{ '%.1f'|format(d.tamano / 1024) }} KB</td>
-      <td class="small text-muted">{{ d.fecha_subida|fecha_cl if d.fecha_subida else '' }}</td>
+      <td><span class="badge bg-secondary">{{ a.tipo }}</span></td>
+      <td class="small">{{ a.periodo or '-' }}</td>
+      <td class="text-end small">{{ '%.1f'|format(a.tamano / 1024) }} KB</td>
+      <td class="small text-muted">{{ a.mtime|fecha_unix if a.mtime else '' }}</td>
       <td class="text-end">
-        <form method="post" action="{{ url_for('documentos.eliminar', eid=empresa.id, doc_id=d.id) }}" style="display:inline"
-              onsubmit="return confirm('¿Eliminar este documento?');">
+        <form method="post" action="{{ url_for('documentos.eliminar', eid=empresa.id) }}"
+              style="display:inline"
+              onsubmit="return confirm('¿Eliminar este archivo del backup?');">
+          <input type="hidden" name="rel" value="{{ a.rel_path }}">
           <button class="btn btn-sm btn-outline-danger" title="Eliminar">
             <i class="bi bi-trash"></i>
           </button>
@@ -64,6 +87,12 @@
   </tbody>
 </table>
 {% else %}
-<p class="text-muted">No hay documentos cargados. Subí PDFs, Excels o cualquier archivo de respaldo para esta empresa.</p>
+<p class="text-muted">No hay archivos en backup. Subí archivos desde la sección <a href="{{ url_for('importar.index', eid=empresa.id) }}">Importar</a>.</p>
 {% endif %}
+
+<div class="small text-muted mt-3">
+  <i class="bi bi-info-circle me-1"></i>
+  Archivos almacenados en <code>uploads/backups_importacion/{{ rut_clean }}/</code>.
+  Cada importación (compras/ventas/honorarios/banco/TC/F29/F22/otros) deja copia automática acá.
+</div>
 {% endblock %}
