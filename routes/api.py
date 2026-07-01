@@ -759,6 +759,13 @@ def asiento_eliminar(aid):
         m.procesado = False; m.asiento_id = None
     for d in DocumentoSII.query.filter_by(asiento_id=aid).all():
         d.procesado = False; d.asiento_id = None
+    # Snapshot recuperable en Papelera (mismo formato que el borrado desde la UI)
+    from routes.papelera import enviar_papelera, _ser_asiento
+    enviar_papelera(
+        'ASIENTO', a.id, a.empresa_id,
+        f'Asiento #{a.numero} – {a.descripcion or ""}',
+        _ser_asiento(a)
+    )
     from models import AsientoAudit
     AsientoAudit.query.filter_by(asiento_id=aid).delete()
     LineaAsiento.query.filter_by(asiento_id=aid).delete()
