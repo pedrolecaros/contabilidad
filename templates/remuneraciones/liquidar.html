@@ -19,6 +19,33 @@
   </a>
 </div>
 
+{% if emp.pago_quincenal and not preview %}
+<div class="modal fade" id="modalQuincenal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-primary">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Trabajador con pago quincenal</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          <strong>{{ emp.nombre_completo }}</strong> recibe remuneración
+          <strong>semanal / quincenal</strong>.
+        </p>
+        <p class="mb-0">
+          Los pagos intermedios entregados durante el mes deben considerarse como
+          <strong>anticipo</strong>. Ingrésalos en el campo <em>«Anticipos»</em> para que se
+          descuenten del líquido final a pagar.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if ultima_liq %}
 <div id="ultima-liq-data" style="display:none"
      data-horas="{{ ultima_liq.horas_extra }}"
@@ -107,6 +134,17 @@
           <label class="form-label">Otros haberes variables ($)</label>
           <input type="number" name="otros" class="form-control" min="0" step="1" value="0">
         </div>
+        {% if emp.pago_quincenal %}
+        <div class="col-md-3">
+          <label class="form-label text-primary">
+            <i class="bi bi-cash-coin me-1"></i>Anticipos ($)
+          </label>
+          <input type="number" name="anticipo" class="form-control border-primary" min="0" step="1" value="0">
+          <div class="form-text">Pagos semanales/quincenales ya entregados. Se descuentan del líquido final.</div>
+        </div>
+        {% else %}
+        <input type="hidden" name="anticipo" value="0">
+        {% endif %}
 
         <div class="col-12">
           <div class="alert alert-light py-2 small mb-0 border">
@@ -204,11 +242,25 @@
   </div>
 
   {# Líquido #}
+  {% set anticipo_prev = anticipo | default(0) | float %}
   <div class="col-12">
     <div class="card border-success shadow-sm">
-      <div class="card-body py-2 d-flex justify-content-between align-items-center">
-        <strong class="fs-5">Líquido a pagar</strong>
-        <strong class="fs-4 text-success">${{ preview.liquido | clp }}</strong>
+      <div class="card-body py-2">
+        {% if anticipo_prev %}
+        <div class="d-flex justify-content-between align-items-center">
+          <span>Sueldo líquido</span>
+          <span>${{ preview.liquido | clp }}</span>
+        </div>
+        <div class="d-flex justify-content-between align-items-center text-danger">
+          <span>Menos: Anticipos</span>
+          <span>-${{ anticipo_prev | clp }}</span>
+        </div>
+        <hr class="my-2">
+        {% endif %}
+        <div class="d-flex justify-content-between align-items-center">
+          <strong class="fs-5">Líquido a pagar</strong>
+          <strong class="fs-4 text-success">${{ (preview.liquido - anticipo_prev) | clp }}</strong>
+        </div>
       </div>
     </div>
   </div>
@@ -276,6 +328,7 @@
       <input type="hidden" name="dias_trabajados" value="{{ form_data.dias_trabajados | default(30) }}">
       <input type="hidden" name="horas_extra"     value="{{ form_data.horas_extra }}">
       <input type="hidden" name="otros"           value="{{ form_data.otros }}">
+      <input type="hidden" name="anticipo"        value="{{ form_data.anticipo | default(0) }}">
       <button type="submit" name="accion" value="borrador" class="btn btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Guardar Borrador
       </button>
@@ -370,6 +423,12 @@ document.addEventListener('DOMContentLoaded', function () {
   // Auto-load variables for the default period (step 1 only)
   const periodoInput = document.getElementById('liquidar_periodo');
   if (periodoInput) cargarVariables(periodoInput.value);
+
+  // Recordatorio pago quincenal → anticipo
+  const modalEl = document.getElementById('modalQuincenal');
+  if (modalEl && window.bootstrap) {
+    new bootstrap.Modal(modalEl).show();
+  }
 });
 
 // Copiar del mes anterior

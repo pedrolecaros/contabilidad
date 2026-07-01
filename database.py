@@ -131,6 +131,9 @@ def _migrar(app):
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_1513 REAL DEFAULT 0",
         "ALTER TABLE declaraciones_f22 ADD COLUMN codigo_90 REAL DEFAULT 0",
         "ALTER TABLE empresas ADD COLUMN tc_activa BOOLEAN DEFAULT 0",
+        # Trabajadores con pago semanal/quincenal + anticipo por liquidación
+        "ALTER TABLE empleados ADD COLUMN pago_quincenal BOOLEAN DEFAULT 0",
+        "ALTER TABLE liquidaciones ADD COLUMN anticipo REAL DEFAULT 0.0",
         # Documentos adjuntos por empresa (PDFs, Excels libres, respaldos varios)
         """CREATE TABLE IF NOT EXISTS documentos_adjuntos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

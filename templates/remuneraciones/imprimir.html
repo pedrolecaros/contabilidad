@@ -132,10 +132,25 @@
 
 <!-- Líquido -->
 <table style="margin-top:4px">
+  {% if liq.anticipo %}
+  <tr>
+    <td style="padding:4px 8px">Sueldo Líquido</td>
+    <td class="text-right" style="width:25%;padding:4px 8px">$ {{ num(liq.liquido) }}</td>
+  </tr>
+  <tr>
+    <td style="padding:4px 8px">Menos: Anticipos</td>
+    <td class="text-right" style="width:25%;padding:4px 8px">-$ {{ num(liq.anticipo) }}</td>
+  </tr>
+  <tr class="liquido-row">
+    <td style="font-size:13pt;padding:6px 8px">LÍQUIDO A PAGAR</td>
+    <td class="text-right" style="width:25%;font-size:13pt;padding:6px 8px">$ {{ num(liq.liquido - liq.anticipo) }}</td>
+  </tr>
+  {% else %}
   <tr class="liquido-row">
     <td style="font-size:13pt;padding:6px 8px">SUELDO LÍQUIDO A PAGAR</td>
     <td class="text-right" style="width:25%;font-size:13pt;padding:6px 8px">$ {{ num(liq.liquido) }}</td>
   </tr>
+  {% endif %}
 </table>
 
 

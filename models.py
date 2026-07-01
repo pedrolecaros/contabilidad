@@ -288,6 +288,9 @@ class Empleado(db.Model):
     tasa_mutual = db.Column(db.Float, default=0.0093)
     apv_monto = db.Column(db.Float, default=0.0)   # APV mensual en pesos
     apv_tipo  = db.Column(db.String(1), default='A')  # 'A' o 'B'
+    # Trabajador con pagos semanales/quincenales: cada pago intermedio se registra
+    # como anticipo y se descuenta del líquido final del mes (ej. José Luis Hermosilla).
+    pago_quincenal = db.Column(db.Boolean, default=False)
     activo = db.Column(db.Boolean, default=True)
 
     empresa = db.relationship('Empresa', backref=db.backref('empleados', lazy='dynamic'))
@@ -324,6 +327,9 @@ class Liquidacion(db.Model):
     impuesto_renta = db.Column(db.Float, default=0.0)
     total_descuentos = db.Column(db.Float, default=0.0)
     liquido = db.Column(db.Float, default=0.0)
+    # Anticipos ya pagados en el mes (pagos semanales/quincenales). Se descuentan
+    # del líquido legal para obtener el líquido a pagar al cierre del mes.
+    anticipo = db.Column(db.Float, default=0.0)
     # Aportes empleador
     sis = db.Column(db.Float, default=0.0)
     afp_emp = db.Column(db.Float, default=0.0)

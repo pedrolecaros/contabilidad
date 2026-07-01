@@ -93,6 +93,7 @@ def liquidar(eid, emp_id):
         periodo = request.form.get('periodo', '').strip()
         horas_extra = float(request.form.get('horas_extra', 0) or 0)
         otros = float(request.form.get('otros', 0) or 0)
+        anticipo = float(request.form.get('anticipo', 0) or 0)
         dias_trabajados = max(1, min(30, int(request.form.get('dias_trabajados', 30) or 30)))
         accion = request.form.get('accion', 'calcular')
 
@@ -147,8 +148,10 @@ def liquidar(eid, emp_id):
             return render_template('remuneraciones/liquidar.html', empresa=empresa, emp=emp,
                                    vars_mes=vars, periodo_default=periodo,
                                    preview=resultado, dias_trabajados=dias_trabajados,
+                                   anticipo=anticipo,
                                    form_data={'periodo': periodo, 'horas_extra': horas_extra,
-                                              'otros': otros, 'dias_trabajados': dias_trabajados})
+                                              'otros': otros, 'anticipo': anticipo,
+                                              'dias_trabajados': dias_trabajados})
 
         # accion == 'borrador' o 'emitir' → guardar
         existe = Liquidacion.query.filter_by(empleado_id=emp_id, periodo=periodo).first()
@@ -161,6 +164,7 @@ def liquidar(eid, emp_id):
         for campo, valor in resultado.items():
             if hasattr(liq, campo):
                 setattr(liq, campo, valor)
+        liq.anticipo = anticipo
         db.session.add(liq)
         db.session.commit()
         if accion == 'emitir':
@@ -821,6 +825,7 @@ def _poblar(emp, form):
     raw_apv = (form.get('apv_monto', '0') or '0').replace('.', '').replace(',', '.')
     emp.apv_monto = float(raw_apv) if raw_apv else 0.0
     emp.apv_tipo = form.get('apv_tipo', 'A') or 'A'
+    emp.pago_quincenal = form.get('pago_quincenal') == 'on'
     emp.activo = form.get('activo') == 'on'
     fi = form.get('fecha_ingreso', '').strip()
     if fi:

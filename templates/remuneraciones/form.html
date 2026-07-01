@@ -64,6 +64,20 @@
       <label class="form-check-label" for="activo">Activo</label>
     </div>
   </div>
+  <div class="col-md-5">
+    <label class="form-label">Frecuencia de pago</label>
+    <div class="form-check mt-2">
+      <input class="form-check-input" type="checkbox" name="pago_quincenal" id="pago_quincenal"
+             {{ 'checked' if emp and emp.pago_quincenal }}>
+      <label class="form-check-label" for="pago_quincenal">
+        Recibe remuneración semanal / quincenal
+      </label>
+      <div class="form-text">
+        Si está marcado, al liquidar se recordará registrar los pagos intermedios como
+        <strong>anticipo</strong> y se habilitará el campo para descontarlos del líquido final.
+      </div>
+    </div>
+  </div>
 
   <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1">Haberes fijos</h6></div>
 

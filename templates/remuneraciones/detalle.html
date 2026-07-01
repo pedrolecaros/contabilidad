@@ -138,10 +138,26 @@
 
     <div class="card shadow-sm border-success mb-3">
       <div class="card-body py-3">
+        {% if liq.anticipo %}
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span>Sueldo Líquido</span>
+          <span>$ {{ num(liq.liquido) }}</span>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-1 text-danger">
+          <span>Menos: Anticipos</span>
+          <span>-$ {{ num(liq.anticipo) }}</span>
+        </div>
+        <hr class="my-2">
+        <div class="d-flex justify-content-between align-items-center">
+          <h5 class="mb-0 text-success">Líquido a Pagar</h5>
+          <h4 class="mb-0 text-success"><strong>$ {{ num(liq.liquido - liq.anticipo) }}</strong></h4>
+        </div>
+        {% else %}
         <div class="d-flex justify-content-between align-items-center">
           <h5 class="mb-0 text-success">Sueldo Líquido</h5>
           <h4 class="mb-0 text-success"><strong>$ {{ num(liq.liquido) }}</strong></h4>
         </div>
+        {% endif %}
       </div>
     </div>
   </div>
