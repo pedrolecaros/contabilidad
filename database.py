@@ -1,6 +1,20 @@
 from models import db, Cuenta
 from engine.plan_cuentas_default import PLAN_CUENTAS_CHILE, CODIGOS_REQUIERE_AUX
 
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
+
+@event.listens_for(Engine, "connect")
+def _sqlite_enforce_fk(dbapi_connection, connection_record):
+    """Activa el enforcement de foreign keys en cada conexión SQLite.
+    SQLite lo trae apagado por defecto; sin esto las FK son decorativas."""
+    import sqlite3
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cur = dbapi_connection.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
 
 def _migrar(app):
     """Agrega columnas nuevas a tablas existentes si no existen (SQLite no soporta IF NOT EXISTS)."""

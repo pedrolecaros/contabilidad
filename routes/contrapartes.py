@@ -286,10 +286,19 @@ def editar(eid, cid):
 @bp.route('/empresa/<int:eid>/contrapartes/<int:cid>/eliminar', methods=['POST'])
 def eliminar(eid, cid):
     cp = Contraparte.query.get_or_404(cid)
+    vista = request.form.get('vista', request.args.get('vista', ''))
+    # Bloquear el borrado si la contraparte está referenciada: dejar líneas de
+    # asiento o conciliaciones sin su auxiliar rompería la regla requiere_aux.
+    n_lineas = LineaAsiento.query.filter_by(contraparte_id=cid).count()
+    n_conc = Conciliacion.query.filter_by(contraparte_id=cid).count()
+    if n_lineas or n_conc:
+        flash(f'No se puede eliminar "{cp.razon_social}": está en uso '
+              f'({n_lineas} líneas de asiento, {n_conc} conciliaciones). '
+              f'Márcala como inactiva en vez de borrarla.', 'danger')
+        return redirect(url_for('contrapartes.detalle', eid=eid, cid=cid))
     db.session.delete(cp)
     db.session.commit()
     flash('Contraparte eliminada', 'warning')
-    vista = request.form.get('vista', request.args.get('vista', ''))
     return redirect(url_for('contrapartes.index', eid=eid, vista=vista) if vista else url_for('contrapartes.index', eid=eid))
 
 

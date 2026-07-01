@@ -203,6 +203,9 @@ def eliminar(eid, pid):
         flash('No autorizado', 'danger')
         return redirect(url_for('prestamos.lista', eid=eid))
     nombre = prestamo.nombre
+    # Desvincular asientos que apunten a este préstamo (el asiento sigue válido).
+    Asiento.query.filter_by(prestamo_id=pid).update(
+        {'prestamo_id': None, 'prestamo_sentido': '-'})
     db.session.delete(prestamo)
     db.session.commit()
     flash(f'Préstamo "{nombre}" eliminado', 'warning')

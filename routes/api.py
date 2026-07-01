@@ -759,6 +759,8 @@ def asiento_eliminar(aid):
         m.procesado = False; m.asiento_id = None
     for d in DocumentoSII.query.filter_by(asiento_id=aid).all():
         d.procesado = False; d.asiento_id = None
+    from models import AsientoAudit
+    AsientoAudit.query.filter_by(asiento_id=aid).delete()
     LineaAsiento.query.filter_by(asiento_id=aid).delete()
     db.session.delete(a)
     db.session.commit()
