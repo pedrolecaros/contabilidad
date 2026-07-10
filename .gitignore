@@ -6,3 +6,6 @@ uploads/
 .env
 contab2025/
 ejemplos/
+
+# runtime log del server de dev
+flask.log

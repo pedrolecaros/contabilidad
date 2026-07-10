@@ -604,6 +604,28 @@ async function descargarUno(tipo, periodo) {
   return job.result || {ok: false, error: job.message || 'Error desconocido'};
 }
 
+// ── Tope de período: no se puede bajar el mes en curso ────────────────────
+function _mesAnterior() {
+  const hoy = new Date();
+  const y = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+  const m = hoy.getMonth() === 0 ? 12 : hoy.getMonth();
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+function _periodoDescargaValido(periodo) {
+  if (periodo > _mesAnterior()) {
+    alert('No se puede bajar el mes en curso ni meses futuros. El último período disponible es ' + _mesAnterior() + '.');
+    return false;
+  }
+  return true;
+}
+(function initAutoMes() {
+  const inp = document.getElementById('autoMes');
+  if (!inp) return;
+  const prev = _mesAnterior();
+  inp.max = prev;
+  if (!inp.value || inp.value > prev) inp.value = prev;
+})();
+
 // ── Botones individuales ──────────────────────────────────────────────────
 document.querySelectorAll('.btn-auto-sii').forEach(btn => {
   btn.addEventListener('click', async function() {
@@ -611,6 +633,7 @@ document.querySelectorAll('.btn-auto-sii').forEach(btn => {
     const tipo    = this.dataset.tipo;
     const periodo = document.getElementById('autoMes').value;
     if (!periodo) { alert('Selecciona un período'); return; }
+    if (!_periodoDescargaValido(periodo)) return;
 
     cancelado = false;
     activoPolling = true;
@@ -647,6 +670,7 @@ document.getElementById('btnDescargarTodo').addEventListener('click', async func
   if (activoPolling) return;
   const periodo = document.getElementById('autoMes').value;
   if (!periodo) { alert('Selecciona un período'); return; }
+  if (!_periodoDescargaValido(periodo)) return;
 
   const tipos = ['compras','ventas','honorarios'];
   cancelado = false;

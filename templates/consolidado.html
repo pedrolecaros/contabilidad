@@ -365,9 +365,13 @@
   }
 
   window.abrirModalBajarSII = function () {
+    const prev = _mesAnterior();
+    const inp = document.getElementById('bajarPeriodo');
+    // Tope: no se puede bajar el mes en curso (evita importar a mitad de mes).
+    inp.max = prev;
+    // Default = mes anterior; si el filtro "Hasta" apunta a algo <= mes anterior, respetarlo.
     const hasta = document.getElementById('filtroHasta');
-    document.getElementById('bajarPeriodo').value =
-      (hasta && hasta.value) ? hasta.value : _mesAnterior();
+    inp.value = (hasta && hasta.value && hasta.value <= prev) ? hasta.value : prev;
     // Reset UI
     document.getElementById('bajarForm').classList.remove('d-none');
     document.getElementById('bajarProgress').classList.add('d-none');
@@ -378,9 +382,10 @@
 
   const modalEl = document.getElementById('modalBajarSII');
   modalEl.addEventListener('show.bs.modal', () => {
-    if (!document.getElementById('bajarPeriodo').value) {
-      document.getElementById('bajarPeriodo').value = _mesAnterior();
-    }
+    const prev = _mesAnterior();
+    const inp = document.getElementById('bajarPeriodo');
+    inp.max = prev;
+    if (!inp.value || inp.value > prev) inp.value = prev;
   });
 
   let _bajarJobId = null;
@@ -393,6 +398,10 @@
   window.iniciarBajarTodos = function () {
     const periodo = document.getElementById('bajarPeriodo').value;
     if (!periodo) { alert('Selecciona un período'); return; }
+    if (periodo > _mesAnterior()) {
+      alert('No se puede bajar el mes en curso ni meses futuros. El último período disponible es ' + _mesAnterior() + '.');
+      return;
+    }
 
     const eids = [...document.querySelectorAll('.chk-bajar-empresa:checked')]
                    .map(c => c.value).join(',');
